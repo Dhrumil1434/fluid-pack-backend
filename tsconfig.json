@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    /* Language and Environment */
+    "target": "ES2016" /* Specifies the target ECMAScript version. */,
+    "module": "commonjs" /* Sets the module system for the project. */,
+    "esModuleInterop": true /* Enables compatibility between CommonJS and ES Modules. */,
+    "forceConsistentCasingInFileNames": true /* Ensures consistent file name casing across the project. */,
+    "outDir": "./dist",
+    /* Type Checking */
+    "strict": true /* Enables all strict type-checking options. */,
+    "noImplicitAny": true /* Raises errors for variables with implicit 'any' type. */,
+    "strictNullChecks": true /* Ensures variables cannot be null or undefined unless specified. */,
+    "strictFunctionTypes": true /* Enforces strict checking of function types. */,
+    "strictBindCallApply": true /* Checks the 'bind', 'call', and 'apply' methods' arguments. */,
+    "strictPropertyInitialization": true /* Ensures class properties are initialized properly. */,
+    "noImplicitThis": true /* Warns when 'this' has an implicit 'any' type. */,
+    "useUnknownInCatchVariables": true /* Treats catch clause variables as 'unknown' instead of 'any'. */,
+    "alwaysStrict": true /* Parses files in strict mode and emits "use strict". */,
+    "noUnusedLocals": true /* Reports errors on unused local variables. */,
+    "noUnusedParameters": true /* Reports errors on unused function parameters. */,
+    "exactOptionalPropertyTypes": true /* Interprets optional property types as written, rather than adding 'undefined'. */,
+    "noImplicitReturns": true /* Ensures all code paths in a function return a value. */,
+    "noFallthroughCasesInSwitch": true /* Reports errors for fallthrough cases in switch statements. */,
+    "noUncheckedIndexedAccess": true /* Adds 'undefined' to a type when accessed using an index. */,
+    "noImplicitOverride": true /* Requires 'override' modifier for methods that override a base class method. */,
+    "noPropertyAccessFromIndexSignature": true /* Enforces using indexed accessors for keys declared using an index signature. */,
+
+    /* Modules */
+    "moduleResolution": "node" /* Determines how modules are resolved. */,
+    "resolveJsonModule": true /* Allows importing JSON files as modules. */,
+
+    /* Emit */
+    "sourceMap": true /* Generates corresponding '.map' files for debugging. */,
+    "removeComments": true /* Removes comments from the emitted JavaScript. */,
+    "noEmitOnError": true /* Prevents emitting files if there are any errors. */,
+
+    /* Interop Constraints */
+    "isolatedModules": true /* Ensures each file can be safely transpiled without relying on other files. */,
+
+    /* Completeness */
+    "skipLibCheck": true /* Skips type checking of declaration files. */
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}
