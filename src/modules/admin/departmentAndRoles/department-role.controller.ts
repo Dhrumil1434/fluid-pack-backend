@@ -5,6 +5,7 @@ import { Role } from '../../../models/role.model';
 import { ApiResponse } from '../../../utils/ApiResponse';
 import { StatusCodes } from 'http-status-codes';
 import { ApiError } from '../../../utils/ApiError';
+import { ERROR_MESSAGES } from './department-role.error.code';
 
 class DepartmentAndRoleController {
   // ---------- Department CRUD ----------
@@ -15,12 +16,12 @@ class DepartmentAndRoleController {
 
       if (await Department.isNameTaken(name)) {
         throw new ApiError(
+          ERROR_MESSAGES.DEPARTMENT.ACTION.CREATE,
           StatusCodes.CONFLICT,
-          'CREATE_DEPARTMENT',
-          'ALREADY_EXISTS',
+          ERROR_MESSAGES.DEPARTMENT.ALREADY_EXISTS.code,
+          ERROR_MESSAGES.DEPARTMENT.ALREADY_EXISTS.message,
         );
       }
-
       const department = await Department.create({ name, description });
 
       res
@@ -51,9 +52,10 @@ class DepartmentAndRoleController {
       const department = await Department.findById(id);
       if (!department) {
         throw new ApiError(
+          ERROR_MESSAGES.DEPARTMENT.ACTION.GET,
           StatusCodes.NOT_FOUND,
-          'GET_DEPARTMENT',
-          'NOT_FOUND',
+          ERROR_MESSAGES.DEPARTMENT.NOT_FOUND.code,
+          ERROR_MESSAGES.DEPARTMENT.NOT_FOUND.message,
         );
       }
 
@@ -70,9 +72,10 @@ class DepartmentAndRoleController {
       const existing = await Department.findOne({ name, _id: { $ne: id } });
       if (existing) {
         throw new ApiError(
-          StatusCodes.CONFLICT,
-          'UPDATE_DEPARTMENT',
-          'ALREADY_EXISTS',
+          ERROR_MESSAGES.DEPARTMENT.ACTION.UPDATE,
+          StatusCodes.NOT_FOUND,
+          ERROR_MESSAGES.ROLE.NOT_FOUND.code,
+          ERROR_MESSAGES.ROLE.NOT_FOUND.message,
         );
       }
 
@@ -84,9 +87,10 @@ class DepartmentAndRoleController {
 
       if (!department) {
         throw new ApiError(
-          StatusCodes.NOT_FOUND,
-          'UPDATE_DEPARTMENT',
-          'NOT_FOUND',
+          ERROR_MESSAGES.ROLE.ACTION.UPDATE,
+          StatusCodes.CONFLICT,
+          ERROR_MESSAGES.ROLE.ALREADY_EXISTS.code,
+          ERROR_MESSAGES.ROLE.ALREADY_EXISTS.message,
         );
       }
 
@@ -107,9 +111,10 @@ class DepartmentAndRoleController {
       const department = await Department.findByIdAndDelete(id);
       if (!department) {
         throw new ApiError(
+          ERROR_MESSAGES.DEPARTMENT.ACTION.GET,
           StatusCodes.NOT_FOUND,
-          'DELETE_DEPARTMENT',
-          'NOT_FOUND',
+          ERROR_MESSAGES.DEPARTMENT.NOT_FOUND.code,
+          ERROR_MESSAGES.DEPARTMENT.NOT_FOUND.message,
         );
       }
 
@@ -129,7 +134,12 @@ class DepartmentAndRoleController {
     const { name, description } = req.body;
 
     if (await Role.isNameTaken(name)) {
-      throw new ApiError(StatusCodes.CONFLICT, 'CREATE_ROLE', 'ALREADY_EXISTS');
+      throw new ApiError(
+        ERROR_MESSAGES.ROLE.ACTION.CREATE,
+        StatusCodes.CONFLICT,
+        'CREATE_ROLE',
+        'ALREADY_EXISTS',
+      );
     }
 
     const role = await Role.create({ name, description });
@@ -151,7 +161,12 @@ class DepartmentAndRoleController {
 
     const role = await Role.findById(id);
     if (!role) {
-      throw new ApiError(StatusCodes.NOT_FOUND, 'GET_ROLE', 'NOT_FOUND');
+      throw new ApiError(
+        ERROR_MESSAGES.ROLE.ACTION.GET,
+        StatusCodes.NOT_FOUND,
+        'GET_ROLE',
+        'NOT_FOUND',
+      );
     }
 
     res.json(new ApiResponse(StatusCodes.OK, role, 'Role found'));
@@ -164,7 +179,12 @@ class DepartmentAndRoleController {
     // Check if another role with the same name already exists
     const existing = await Role.findOne({ name, _id: { $ne: id } });
     if (existing) {
-      throw new ApiError(StatusCodes.CONFLICT, 'UPDATE_ROLE', 'ALREADY_EXISTS');
+      throw new ApiError(
+        ERROR_MESSAGES.ROLE.ACTION.UPDATE,
+        StatusCodes.CONFLICT,
+        'UPDATE_ROLE',
+        'ALREADY_EXISTS',
+      );
     }
 
     const role = await Role.findByIdAndUpdate(
@@ -174,7 +194,12 @@ class DepartmentAndRoleController {
     );
 
     if (!role) {
-      throw new ApiError(StatusCodes.NOT_FOUND, 'UPDATE_ROLE', 'NOT_FOUND');
+      throw new ApiError(
+        ERROR_MESSAGES.ROLE.ACTION.UPDATE,
+        StatusCodes.NOT_FOUND,
+        'UPDATE_ROLE',
+        'NOT_FOUND',
+      );
     }
 
     res.json(
@@ -187,7 +212,12 @@ class DepartmentAndRoleController {
 
     const role = await Role.findByIdAndDelete(id);
     if (!role) {
-      throw new ApiError(StatusCodes.NOT_FOUND, 'DELETE_ROLE', 'NOT_FOUND');
+      throw new ApiError(
+        ERROR_MESSAGES.DEPARTMENT.ACTION.DELETE,
+        StatusCodes.NOT_FOUND,
+        'DELETE_ROLE',
+        'NOT_FOUND',
+      );
     }
 
     res.json(
