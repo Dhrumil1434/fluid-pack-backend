@@ -24,6 +24,7 @@ const errorHandler = (
 
   res.status(err.statusCode).json({
     success: err.success,
+    action: err.action,
     errorCode: err.errorCode,
     message: err.message,
     errors: err.errors,

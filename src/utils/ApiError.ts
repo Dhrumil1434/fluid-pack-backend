@@ -12,6 +12,7 @@ interface DataDetail {
 }
 
 class ApiError extends Error {
+  action: string;
   statusCode: number;
   errorCode: string;
   success: boolean;
@@ -19,14 +20,17 @@ class ApiError extends Error {
   data: DataDetail[]; // ✅ Properly typed data as an array of objects
 
   constructor(
+    action: string = 'INTERNAL_ACTION',
     statusCode: number = StatusCodes.INTERNAL_SERVER_ERROR,
     errorCode: string = 'INTERNAL_ERROR',
+
     message: string = getReasonPhrase(statusCode),
     errors: ErrorDetail[] = [],
     data: DataDetail[] = [], // ✅ Ensures it's an array of { expectedField, description }
     stack: string = '',
   ) {
     super(message);
+    this.action = action;
     this.statusCode = statusCode;
     this.errorCode = errorCode;
     this.success = false;
