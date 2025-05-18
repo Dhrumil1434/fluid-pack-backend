@@ -15,6 +15,7 @@ export const validateRequest = (schema: Joi.ObjectSchema) => {
 
       return next(
         new ApiError(
+          'ENTERING_DATA',
           StatusCodes.BAD_REQUEST,
           'VALIDATION_ERROR',
           'Invalid Inputs',
