@@ -3,6 +3,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import { errorHandler } from './middlewares/errorhandler';
+import userRouter from './routes/user.route';
+import departmentAndRoleRouter from './routes/department-role.route';
 class App {
   public app: Application;
 
@@ -29,7 +31,10 @@ class App {
     this.app.use(morgan(':method :url :status :response-time ms'));
   }
 
-  private setRoutes(): void {}
+  private setRoutes(): void {
+    this.app.use('/api/user', userRouter);
+    this.app.use('/api/admin', departmentAndRoleRouter);
+  }
 
   private setErrorHandler(): void {
     this.app.use(errorHandler);
