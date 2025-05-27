@@ -8,6 +8,7 @@ import UserService from './services/user.service';
 import { ApiError } from '../../utils/ApiError';
 
 import { User } from '../../models/user.model';
+import { ApiResponse } from '../../utils/ApiResponse';
 
 export interface AuthenticatedRequest extends Request {
   cookies: { accessToken?: string; refreshToken?: string }; // Define cookies with accessToken
@@ -89,6 +90,21 @@ class UserController {
       .status(StatusCodes.OK)
       .json({ message: 'Password reset link sent to email' });
   });
+
+  static logoutUser = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response) => {
+      const response = new ApiResponse(
+        StatusCodes.OK,
+        {},
+        'Logout successfully',
+      );
+      res
+        .clearCookie('accessToken', { httpOnly: true, secure: true })
+        .clearCookie('refreshToken', { httpOnly: true, secure: true })
+        .status(StatusCodes.OK)
+        .json(response);
+    },
+  );
 }
 
 export default UserController;
