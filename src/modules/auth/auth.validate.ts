@@ -1,7 +1,7 @@
 import Joi from 'joi';
 import mongoose from 'mongoose';
 
-export const registerUserSchema = Joi.object({
+export const RegisterSchema = Joi.object({
   username: Joi.string().trim().lowercase().min(3).max(30).required(),
 
   email: Joi.string().email().trim().lowercase().required(),
@@ -15,23 +15,10 @@ export const registerUserSchema = Joi.object({
     )
     .required(),
 
-  department: Joi.string()
-    .custom((value, helpers) => {
-      if (!mongoose.Types.ObjectId.isValid(value)) {
-        return helpers.error('any.invalid');
-      }
-      return value;
-    }, 'ObjectId Validation')
-    .required(),
+   
+  role: Joi.string().length(24).hex().required(),
+  department: Joi.string().length(24).hex().required(),
 
-  role: Joi.string()
-    .custom((value, helpers) => {
-      if (!mongoose.Types.ObjectId.isValid(value)) {
-        return helpers.error('any.invalid');
-      }
-      return value;
-    }, 'ObjectId Validation')
-    .required(),
 
   isApproved: Joi.boolean().optional(),
 
@@ -46,6 +33,10 @@ export const registerUserSchema = Joi.object({
 });
 
 
+export const LoginSchema = Joi.object({
+  email: Joi.string().email().trim().lowercase().required(),
+  password: Joi.string().required()
+});
 
 
-
+ 

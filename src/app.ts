@@ -5,6 +5,8 @@ import morgan from 'morgan';
 import { errorHandler } from './middlewares/errorhandler';
 import userRouter from './routes/user.route';
 import departmentAndRoleRouter from './routes/department-role.route';
+import authRouter from '../src/routes/auth.route'
+
 class App {
   public app: Application;
 
@@ -32,6 +34,7 @@ class App {
   }
 
   private setRoutes(): void {
+    this.app.use('/api/auth', authRouter);
     this.app.use('/api/user', userRouter);
     this.app.use('/api/admin', departmentAndRoleRouter);
   }

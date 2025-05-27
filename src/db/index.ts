@@ -30,11 +30,16 @@ const connectDB = async (): Promise<Connection | void> => {
       `✅ MongoDB connected! Host: ${connectionInstance.connection.host}`,
     );
 
+     
+
     return connectionInstance.connection;
   } catch (error) {
     console.error('❌ Error connecting to MongoDB:', error);
     process.exit(1); // Exit the process with failure code
   }
 };
+
+
+
 
 export default connectDB;

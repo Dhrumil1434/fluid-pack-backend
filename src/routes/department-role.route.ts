@@ -8,35 +8,45 @@ import {
   createRoleSchema,
   updateRoleSchema,
 } from '../modules/admin/departmentAndRoles/department-roles.validator';
+import { verifyJWT } from '../middlewares/auth.middleware';
+import { authorizeRoles } from '../middlewares/authorizeRole.middleware';
 
 const router = Router();
+
+const adminOnly = [verifyJWT, authorizeRoles('admin')];
+// const adminOrSupervisor = [verifyJWT, authorizeRoles('admin', 'supervisor')];
+// const allAuthorized = [verifyJWT, authorizeRoles('admin', 'manager', 'supervisor')];
+
 
 // -------- Department Routes --------
 
 router.post(
   '/department/create',
+  adminOnly,
   upload.none(),
   validateRequest(createDepartmentSchema),
   DepartmentAndRoleController.createDepartment,
 );
 
-router.get('/departments', DepartmentAndRoleController.getAllDepartments);
+router.get('/departments',adminOnly, DepartmentAndRoleController.getAllDepartments);
 
-router.get('/department/:id', DepartmentAndRoleController.getDepartmentById);
+router.get('/department/:id',adminOnly, DepartmentAndRoleController.getDepartmentById);
 
 router.put(
   '/department/:id',
+  adminOnly, 
   upload.none(),
   validateRequest(updateDepartmentSchema),
   DepartmentAndRoleController.updateDepartment,
 );
 
-router.delete('/department/:id', DepartmentAndRoleController.deleteDepartment);
+router.delete('/department/:id',adminOnly, DepartmentAndRoleController.deleteDepartment);
 
 // -------- Role Routes --------
 
 router.post(
   '/role/create',
+  adminOnly,
   upload.none(),
   validateRequest(createRoleSchema),
   DepartmentAndRoleController.createRole,
@@ -48,11 +58,12 @@ router.get('/role/:id', DepartmentAndRoleController.getRoleById);
 
 router.put(
   '/role/:id',
+  adminOnly,
   upload.none(),
   validateRequest(updateRoleSchema),
   DepartmentAndRoleController.updateRole,
 );
 
-router.delete('/role/:id', DepartmentAndRoleController.deleteRole);
+router.delete('/role/:id',adminOnly, DepartmentAndRoleController.deleteRole);
 
 export default router;

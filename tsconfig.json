@@ -2,7 +2,7 @@
   "compilerOptions": {
     /* Language and Environment */
     "target": "ES2016" /* Specifies the target ECMAScript version. */,
-    "module": "commonjs" /* Sets the module system for the project. */,
+    "module": "CommonJS" /* Sets the module system for the project. */,
     "esModuleInterop": true /* Enables compatibility between CommonJS and ES Modules. */,
     "forceConsistentCasingInFileNames": true /* Ensures consistent file name casing across the project. */,
     "outDir": "./dist",
@@ -39,7 +39,8 @@
 
     /* Completeness */
     "skipLibCheck": true /* Skips type checking of declaration files. */,
-    "typeRoots": ["./node_modules/@types", "./env.d.ts"]
+    "typeRoots": ["./types", "./node_modules/@types", "./env.d.ts"]
+
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]
