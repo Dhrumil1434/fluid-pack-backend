@@ -41,7 +41,13 @@ class UserService {
     }
 
     // Set approval flag if role is 'admin'
-    const isApproved = roleDoc.name?.toLowerCase() === 'admin';
+    let isApproved = false;
+
+    // ✅ If the role is admin, check if there is already an approved admin
+    if (roleDoc.name?.toLowerCase() === 'admin') {
+      const existingAdmin = await User.findOne({ role, isApproved: true });
+      isApproved = !existingAdmin; // Approve if no admin exists
+    }
 
     // Create and save new user
     const newUser = new User({
