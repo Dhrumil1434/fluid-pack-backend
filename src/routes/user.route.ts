@@ -22,6 +22,7 @@ router.post(
   validateRequest(loginUserSchema),
   UserController.loginUser,
 );
+router.post('/logout', upload.any(), UserController.logoutUser);
 router.patch(
   '/:id/approve',
   verifyJWT,
