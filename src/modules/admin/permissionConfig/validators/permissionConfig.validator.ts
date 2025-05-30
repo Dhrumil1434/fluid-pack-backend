@@ -184,3 +184,58 @@ export const checkPermissionSchema = Joi.object({
     .optional(),
   machineValue: Joi.number().positive().optional(),
 });
+export const idParamSchema = Joi.object({
+  id: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .required()
+    .messages({
+      'string.pattern.base': 'Invalid ID format',
+      'any.required': 'ID is required',
+    }),
+});
+
+/**
+ * Validation schema for action parameter
+ */
+export const actionParamSchema = Joi.object({
+  action: Joi.string()
+    .valid(...Object.values(ActionType))
+    .required()
+    .messages({
+      'any.only': 'Invalid action type',
+      'any.required': 'Action is required',
+    }),
+});
+
+/**
+ * Validation schema for pagination query parameters
+ */
+export const paginationQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1).messages({
+    'number.base': 'Page must be a number',
+    'number.integer': 'Page must be an integer',
+    'number.min': 'Page must be at least 1',
+  }),
+  limit: Joi.number().integer().min(1).max(100).default(10).messages({
+    'number.base': 'Limit must be a number',
+    'number.integer': 'Limit must be an integer',
+    'number.min': 'Limit must be at least 1',
+    'number.max': 'Limit cannot exceed 100',
+  }),
+});
+
+/**
+ * Validation schema for permission check query parameters
+ */
+export const permissionCheckQuerySchema = Joi.object({
+  categoryId: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .optional()
+    .messages({
+      'string.pattern.base': 'Invalid category ID format',
+    }),
+  machineValue: Joi.number().positive().optional().messages({
+    'number.base': 'Machine value must be a number',
+    'number.positive': 'Machine value must be positive',
+  }),
+});

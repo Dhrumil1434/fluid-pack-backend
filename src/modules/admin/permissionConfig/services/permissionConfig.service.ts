@@ -8,21 +8,22 @@ import {
   PermissionLevel,
 } from '../../../../models/permissionConfig.model';
 import { IUser, User } from '../../../../models/user.model';
-import { ERROR_MESSAGES } from '../permissionCongif.error.constants';
+
 import { ApiError } from '../../../../utils/ApiError';
+import { ERROR_MESSAGES } from '../permissionCongif.error.constants';
 
 export interface CreatePermissionConfigData {
   name: string;
   description: string;
   action: ActionType;
-  roleIds?: string[];
-  userIds?: string[];
-  departmentIds?: string[];
-  categoryIds?: string[];
+  roleIds?: string[] | undefined;
+  userIds?: string[] | undefined;
+  departmentIds?: string[] | undefined;
+  categoryIds?: string[] | undefined;
   permission: PermissionLevel;
-  approverRoles?: string[];
-  maxValue?: number;
-  priority?: number;
+  approverRoles?: string[] | undefined;
+  maxValue?: number | undefined;
+  priority?: number | undefined;
   createdBy: string;
 }
 
@@ -47,6 +48,16 @@ export interface PermissionCheckResult {
   approverRoles?: mongoose.Types.ObjectId[];
   matchedRule?: IPermissionConfig;
   reason?: string;
+}
+
+export interface PaginatedPermissionConfigs {
+  configs: IPermissionConfig[];
+  total: number;
+  pages: number;
+}
+
+export interface UserPermissions {
+  [key: string]: PermissionCheckResult;
 }
 
 class PermissionConfigService {
@@ -76,7 +87,12 @@ class PermissionConfigService {
 
       // Convert string IDs to ObjectIds
       const permissionConfigData = {
-        ...data,
+        name: data.name,
+        description: data.description,
+        action: data.action,
+        permission: data.permission,
+        priority: data.priority || 0,
+        isActive: true,
         roleIds: data.roleIds?.map((id) => new mongoose.Types.ObjectId(id)),
         userIds: data.userIds?.map((id) => new mongoose.Types.ObjectId(id)),
         departmentIds: data.departmentIds?.map(
@@ -88,6 +104,7 @@ class PermissionConfigService {
         approverRoles: data.approverRoles?.map(
           (id) => new mongoose.Types.ObjectId(id),
         ),
+        maxValue: data.maxValue,
         createdBy: new mongoose.Types.ObjectId(data.createdBy),
       };
 
@@ -114,11 +131,7 @@ class PermissionConfigService {
   static async getAll(
     page = 1,
     limit = 10,
-  ): Promise<{
-    configs: IPermissionConfig[];
-    total: number;
-    pages: number;
-  }> {
+  ): Promise<PaginatedPermissionConfigs> {
     const skip = (page - 1) * limit;
 
     const [configs, total] = await Promise.all([
@@ -144,6 +157,38 @@ class PermissionConfigService {
   }
 
   /**
+   * Get permission configurations by action
+   */
+  static async getByAction(
+    action: ActionType,
+    page = 1,
+    limit = 10,
+  ): Promise<PaginatedPermissionConfigs> {
+    const skip = (page - 1) * limit;
+
+    const [configs, total] = await Promise.all([
+      PermissionConfig.find({ action, isActive: true })
+        .populate('roleIds', 'name')
+        .populate('userIds', 'username email')
+        .populate('departmentIds', 'name')
+        .populate('categoryIds', 'name')
+        .populate('approverRoles', 'name')
+        .populate('createdBy', 'username email')
+        .sort({ priority: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      PermissionConfig.countDocuments({ action, isActive: true }),
+    ]);
+
+    return {
+      configs: configs as IPermissionConfig[],
+      total,
+      pages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
    * Get permission configuration by ID
    */
   static async getById(id: string): Promise<IPermissionConfig> {
@@ -157,7 +202,7 @@ class PermissionConfigService {
 
     if (!permissionConfig) {
       throw new ApiError(
-        ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.update,
+        ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.get,
         StatusCodes.NOT_FOUND,
         ERROR_MESSAGES.PERMISSION_CONFIG.NOT_FOUND.code,
         ERROR_MESSAGES.PERMISSION_CONFIG.NOT_FOUND.message,
@@ -176,7 +221,7 @@ class PermissionConfigService {
   ): Promise<IPermissionConfig> {
     try {
       // Check if priority is being updated and if it conflicts
-      if (data.priority && data.priority > 0) {
+      if (data.priority !== undefined && data.priority > 0) {
         const existingConfig = await PermissionConfig.findOne({
           priority: data.priority,
           isActive: true,
@@ -194,25 +239,51 @@ class PermissionConfigService {
       }
 
       // Convert string IDs to ObjectIds
-      const updateData = {
-        ...data,
-        roleIds: data.roleIds?.map((id) => new mongoose.Types.ObjectId(id)),
-        userIds: data.userIds?.map((id) => new mongoose.Types.ObjectId(id)),
-        departmentIds: data.departmentIds?.map(
+      const updateData: Record<string, unknown> = {};
+
+      if (data.name !== undefined) updateData['name'] = data.name;
+      if (data.description !== undefined)
+        updateData['description'] = data.description;
+      if (data.action !== undefined) updateData['action'] = data.action;
+      if (data.permission !== undefined)
+        updateData['permission'] = data.permission;
+      if (data.priority !== undefined) updateData['priority'] = data.priority;
+      if (data.isActive !== undefined) updateData['isActive'] = data.isActive;
+      if (data.maxValue !== undefined) updateData['maxValue'] = data.maxValue;
+
+      if (data.roleIds !== undefined) {
+        updateData['roleIds'] = data.roleIds.map(
           (id) => new mongoose.Types.ObjectId(id),
-        ),
-        categoryIds: data.categoryIds?.map(
+        );
+      }
+      if (data.userIds !== undefined) {
+        updateData['userIds'] = data.userIds.map(
           (id) => new mongoose.Types.ObjectId(id),
-        ),
-        approverRoles: data.approverRoles?.map(
+        );
+      }
+      if (data.departmentIds !== undefined) {
+        updateData['departmentIds'] = data.departmentIds.map(
           (id) => new mongoose.Types.ObjectId(id),
-        ),
-      };
+        );
+      }
+      if (data.categoryIds !== undefined) {
+        updateData['categoryIds'] = data.categoryIds.map(
+          (id) => new mongoose.Types.ObjectId(id),
+        );
+      }
+      if (data.approverRoles !== undefined) {
+        updateData['approverRoles'] = data.approverRoles.map(
+          (id) => new mongoose.Types.ObjectId(id),
+        );
+      }
 
       const permissionConfig = await PermissionConfig.findByIdAndUpdate(
         id,
         updateData,
-        { new: true, runValidators: true },
+        {
+          new: true,
+          runValidators: true,
+        },
       )
         .populate('roleIds', 'name')
         .populate('userIds', 'username email')
@@ -245,7 +316,7 @@ class PermissionConfigService {
   }
 
   /**
-   * Delete permission configuration (soft delete by setting isActive to false)
+   * Delete permission configuration (soft delete)
    */
   static async delete(id: string): Promise<void> {
     const permissionConfig = await PermissionConfig.findByIdAndUpdate(
@@ -265,6 +336,14 @@ class PermissionConfigService {
   }
 
   /**
+   * Toggle permission configuration active status
+   */
+  static async toggleActiveStatus(id: string): Promise<IPermissionConfig> {
+    const currentConfig = await this.getById(id);
+    return this.update(id, { isActive: !currentConfig.isActive });
+  }
+
+  /**
    * Check permissions for a user and action
    */
   static async checkPermission(
@@ -276,8 +355,8 @@ class PermissionConfigService {
     try {
       // Get user details with role and department
       const user = await User.findById(userId)
-        .populate('role')
-        .populate('department');
+        .populate('role_id')
+        .populate('department_id');
 
       if (!user) {
         return {
@@ -353,6 +432,29 @@ class PermissionConfigService {
   }
 
   /**
+   * Get all permissions for a user
+   */
+  static async getUserPermissions(
+    userId: string,
+    categoryId?: string,
+    machineValue?: number,
+  ): Promise<UserPermissions> {
+    const actions = Object.values(ActionType);
+    const permissions: UserPermissions = {};
+
+    for (const action of actions) {
+      permissions[action] = await this.checkPermission(
+        userId,
+        action,
+        categoryId,
+        machineValue,
+      );
+    }
+
+    return permissions;
+  }
+
+  /**
    * Check if a permission config matches the user and context
    */
   private static checkConfigMatch(
@@ -370,17 +472,21 @@ class PermissionConfigService {
     }
 
     // Check role-specific rules
-    if (config.roleIds && config.roleIds.length > 0) {
+    if (config.roleIds && config.roleIds.length > 0 && user.role) {
       const roleIdStrings = config.roleIds.map((id) => id.toString());
-      if (!roleIdStrings.includes(user.role._id.toString())) {
+      if (!roleIdStrings.includes(user.role.toString())) {
         return false;
       }
     }
 
     // Check department-specific rules
-    if (config.departmentIds && config.departmentIds.length > 0) {
+    if (
+      config.departmentIds &&
+      config.departmentIds.length > 0 &&
+      user.department
+    ) {
       const deptIdStrings = config.departmentIds.map((id) => id.toString());
-      if (!deptIdStrings.includes(user.department._id.toString())) {
+      if (!deptIdStrings.includes(user.department.toString())) {
         return false;
       }
     }
