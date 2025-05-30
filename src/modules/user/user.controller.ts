@@ -67,12 +67,13 @@ class UserController {
       );
     }
 
-    user.isApproved = true;
+    user.isApproved = !user.isApproved;
+
     await user.save();
 
     res.status(StatusCodes.OK).json({
       success: true,
-      message: 'User approved successfully',
+      message: `User's approvity : ${user.isApproved} `,
       data: {
         _id: user._id,
         username: user.username,
