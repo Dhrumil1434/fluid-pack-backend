@@ -11,6 +11,7 @@ import PermissionConfigController from '../modules/admin/permissionConfig/permis
 import { upload } from '../middlewares/multer.middleware';
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
+import { validateParamReferences } from '../modules/admin/permissionConfig/middlewares/permissionConfig.validation.middleware';
 
 const router = Router();
 
@@ -20,6 +21,12 @@ router.post(
   verifyJWT,
   AuthRole('admin'),
   upload.any(),
+  validateParamReferences({
+    validateUserId: true,
+    validateRoleId: true,
+    validateCategoryId: true,
+    validateMachineId: true,
+  }),
   validateRequest(createPermissionConfigSchema),
   PermissionConfigController.createPermissionConfig,
 );

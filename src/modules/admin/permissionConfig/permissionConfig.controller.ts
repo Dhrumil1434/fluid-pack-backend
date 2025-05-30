@@ -8,6 +8,7 @@ import PermissionConfigService, {
   CreatePermissionConfigData,
   UpdatePermissionConfigData,
 } from './services/permissionConfig.service';
+import ValidationService from './validators/permissionConfig.reference.validator';
 import { ActionType } from '../../../models/permissionConfig.model';
 
 export interface AuthenticatedRequest extends Request {
@@ -63,6 +64,18 @@ class PermissionConfigController {
           'User authentication required',
         );
       }
+
+      // Validate all reference IDs before creating
+      console.log('🔍 Validating reference IDs...');
+      await ValidationService.validatePermissionConfigReferences({
+        roleIds,
+        userIds,
+        departmentIds,
+        categoryIds,
+        approverRoles,
+        createdBy: req.user._id,
+      });
+      console.log('✅ Reference validation passed');
 
       const permissionConfig = await PermissionConfigService.create({
         name,
@@ -202,6 +215,17 @@ class PermissionConfigController {
       const { id } = req.params;
       const updateData = req.body as UpdatePermissionConfigData;
 
+      // Validate reference IDs before updating
+      console.log('🔍 Validating reference IDs for update...');
+      await ValidationService.validatePermissionConfigReferences({
+        roleIds: updateData.roleIds,
+        userIds: updateData.userIds,
+        departmentIds: updateData.departmentIds,
+        categoryIds: updateData.categoryIds,
+        approverRoles: updateData.approverRoles,
+      });
+      console.log('✅ Update reference validation passed');
+
       const permissionConfig = await PermissionConfigService.update(
         id!, // Non-null assertion
         updateData,
@@ -244,6 +268,7 @@ class PermissionConfigController {
       res.status(StatusCodes.OK).json(response);
     },
   );
+
   /**
    * Toggle permission configuration active status
    */
@@ -264,6 +289,7 @@ class PermissionConfigController {
       res.status(StatusCodes.OK).json(response);
     },
   );
+
   /**
    * Check user permissions for a specific action
    */
@@ -289,6 +315,20 @@ class PermissionConfigController {
           'INVALID_ACTION',
           'Invalid action type provided',
         );
+      }
+
+      // Validate categoryId if provided
+      if (categoryId) {
+        const categoryValid =
+          await ValidationService.validateSingleCategoryId(categoryId);
+        if (!categoryValid) {
+          throw new ApiError(
+            'CHECKING_PERMISSION',
+            StatusCodes.BAD_REQUEST,
+            'INVALID_CATEGORY',
+            'Invalid category ID provided',
+          );
+        }
       }
 
       const permissionResult = await PermissionConfigService.checkPermission(
@@ -324,6 +364,20 @@ class PermissionConfigController {
 
       const { categoryId, machineValue } = req.query as PermissionCheckQuery;
       const userId = req.user._id;
+
+      // Validate categoryId if provided
+      if (categoryId) {
+        const categoryValid =
+          await ValidationService.validateSingleCategoryId(categoryId);
+        if (!categoryValid) {
+          throw new ApiError(
+            'GETTING_USER_PERMISSIONS',
+            StatusCodes.BAD_REQUEST,
+            'INVALID_CATEGORY',
+            'Invalid category ID provided',
+          );
+        }
+      }
 
       const permissions = await PermissionConfigService.getUserPermissions(
         userId,
@@ -368,6 +422,20 @@ class PermissionConfigController {
         );
       }
 
+      // Validate categoryId if provided
+      if (categoryId) {
+        const categoryValid =
+          await ValidationService.validateSingleCategoryId(categoryId);
+        if (!categoryValid) {
+          throw new ApiError(
+            'CHECKING_RESOURCE_PERMISSION',
+            StatusCodes.BAD_REQUEST,
+            'INVALID_CATEGORY',
+            'Invalid category ID provided',
+          );
+        }
+      }
+
       const permissionResult = await PermissionConfigService.checkPermission(
         req.user._id,
         action as ActionType,
@@ -379,6 +447,43 @@ class PermissionConfigController {
         StatusCodes.OK,
         permissionResult,
         'Resource permission check completed successfully',
+      );
+
+      res.status(StatusCodes.OK).json(response);
+    },
+  );
+
+  /**
+   * Validate multiple category IDs (utility endpoint)
+   */
+  static validateCategoryIds = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const { categoryIds } = req.body;
+
+      if (!categoryIds || !Array.isArray(categoryIds)) {
+        throw new ApiError(
+          'VALIDATING_CATEGORIES',
+          StatusCodes.BAD_REQUEST,
+          'INVALID_INPUT',
+          'Category IDs array is required',
+        );
+      }
+
+      const validationResult =
+        await ValidationService.validateCategoryIds(categoryIds);
+
+      const response = new ApiResponse(
+        StatusCodes.OK,
+        {
+          isValid: validationResult.isValid,
+          validIds: categoryIds.filter(
+            (id) => !validationResult.invalidIds.includes(id),
+          ),
+          invalidIds: validationResult.invalidIds,
+        },
+        validationResult.isValid
+          ? 'All category IDs are valid'
+          : `Found ${validationResult.invalidIds.length} invalid category IDs`,
       );
 
       res.status(StatusCodes.OK).json(response);
