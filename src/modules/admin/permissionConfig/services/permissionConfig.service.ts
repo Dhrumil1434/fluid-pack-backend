@@ -48,6 +48,7 @@ export interface PermissionCheckResult {
   approverRoles?: mongoose.Types.ObjectId[];
   matchedRule?: IPermissionConfig;
   reason?: string;
+  matchedBy?: string | undefined; // What condition matched (role, user, department, category)
 }
 
 export interface PaginatedPermissionConfigs {
@@ -73,6 +74,7 @@ class PermissionConfigService {
         const existingConfig = await PermissionConfig.findOne({
           priority: data.priority,
           isActive: true,
+          action: data.action, // Check priority within same action
         });
 
         if (existingConfig) {
@@ -353,10 +355,10 @@ class PermissionConfigService {
     machineValue?: number,
   ): Promise<PermissionCheckResult> {
     try {
-      // Get user details with role and department
+      // Get user details with role and department - Fixed the populate issue
       const user = await User.findById(userId)
-        .populate('role_id')
-        .populate('department_id');
+        .populate('role', 'name')
+        .populate('department', 'name');
 
       if (!user) {
         return {
@@ -366,28 +368,38 @@ class PermissionConfigService {
         };
       }
 
-      // Get all active permission configs for this action, sorted by priority
+      // Get all active permission configs for this action, sorted by priority (highest first)
       const permissionConfigs = await PermissionConfig.find({
         action,
         isActive: true,
-      }).sort({ priority: -1 });
+      }).sort({ priority: -1, createdAt: -1 });
+
+      if (permissionConfigs.length === 0) {
+        return {
+          allowed: false,
+          requiresApproval: false,
+          reason: 'No permission rules found for this action',
+        };
+      }
 
       // Check each config in priority order
       for (const config of permissionConfigs) {
-        const matches = this.checkConfigMatch(
+        const matchResult = this.checkConfigMatch(
           user,
           config,
           categoryId,
           machineValue,
         );
 
-        if (matches) {
+        if (matchResult.matches) {
           switch (config.permission) {
             case PermissionLevel.ALLOWED:
               return {
                 allowed: true,
                 requiresApproval: false,
                 matchedRule: config,
+                matchedBy: matchResult.matchedBy,
+                reason: `Access granted by ${matchResult.matchedBy} permission rule`,
               };
 
             case PermissionLevel.REQUIRES_APPROVAL: {
@@ -395,9 +407,11 @@ class PermissionConfigService {
                 allowed: false,
                 requiresApproval: true,
                 matchedRule: config,
+                matchedBy: matchResult.matchedBy,
+                reason: `Approval required by ${matchResult.matchedBy} permission rule`,
               };
 
-              if (config.approverRoles) {
+              if (config.approverRoles && config.approverRoles.length > 0) {
                 result.approverRoles = config.approverRoles;
               }
 
@@ -409,7 +423,8 @@ class PermissionConfigService {
                 allowed: false,
                 requiresApproval: false,
                 matchedRule: config,
-                reason: 'Access denied by permission rule',
+                matchedBy: matchResult.matchedBy,
+                reason: `Access denied by ${matchResult.matchedBy} permission rule`,
               };
           }
         }
@@ -419,9 +434,10 @@ class PermissionConfigService {
       return {
         allowed: false,
         requiresApproval: false,
-        reason: 'No matching permission rule found',
+        reason: 'No matching permission rule found - access denied by default',
       };
-    } catch {
+    } catch (error) {
+      console.error('Permission check error:', error);
       throw new ApiError(
         'CHECKING_PERMISSION',
         StatusCodes.INTERNAL_SERVER_ERROR,
@@ -443,12 +459,20 @@ class PermissionConfigService {
     const permissions: UserPermissions = {};
 
     for (const action of actions) {
-      permissions[action] = await this.checkPermission(
-        userId,
-        action,
-        categoryId,
-        machineValue,
-      );
+      try {
+        permissions[action] = await this.checkPermission(
+          userId,
+          action,
+          categoryId,
+          machineValue,
+        );
+      } catch {
+        permissions[action] = {
+          allowed: false,
+          requiresApproval: false,
+          reason: 'Error checking permission',
+        };
+      }
     }
 
     return permissions;
@@ -462,49 +486,77 @@ class PermissionConfigService {
     config: IPermissionConfig,
     categoryId?: string,
     machineValue?: number,
-  ): boolean {
+  ): { matches: boolean; matchedBy?: string } {
+    const conditions = [];
+
     // Check user-specific rules
     if (config.userIds && config.userIds.length > 0) {
       const userIdStrings = config.userIds.map((id) => id.toString());
-      if (!userIdStrings.includes(user.id?.toString())) {
-        return false;
+      if (userIdStrings.includes(user.id.toString())) {
+        return { matches: true, matchedBy: 'user-specific rule' };
       }
+      conditions.push('user');
     }
 
-    // Check role-specific rules
+    // Check role-specific rules - Fixed property access
     if (config.roleIds && config.roleIds.length > 0 && user.role) {
       const roleIdStrings = config.roleIds.map((id) => id.toString());
-      if (!roleIdStrings.includes(user.role.toString())) {
-        return false;
+      if (roleIdStrings.includes(user.role.toString())) {
+        return { matches: true, matchedBy: 'role-based rule' };
       }
+      conditions.push('role');
     }
 
-    // Check department-specific rules
+    // Check department-specific rules - Fixed property access
     if (
       config.departmentIds &&
       config.departmentIds.length > 0 &&
       user.department
     ) {
       const deptIdStrings = config.departmentIds.map((id) => id.toString());
-      if (!deptIdStrings.includes(user.department.toString())) {
-        return false;
+      if (deptIdStrings.includes(user.department.toString())) {
+        return { matches: true, matchedBy: 'department-based rule' };
       }
+      conditions.push('department');
     }
 
     // Check category-specific rules
-    if (config.categoryIds && config.categoryIds.length > 0 && categoryId) {
+    if (config.categoryIds && config.categoryIds.length > 0) {
+      if (!categoryId) {
+        // If config has category restriction but no categoryId provided, no match
+        return { matches: false };
+      }
       const categoryIdStrings = config.categoryIds.map((id) => id.toString());
       if (!categoryIdStrings.includes(categoryId)) {
-        return false;
+        return { matches: false };
       }
+      conditions.push('category');
     }
 
     // Check value-based rules
-    if (config.maxValue && machineValue && machineValue > config.maxValue) {
-      return false;
+    if (config.maxValue !== undefined) {
+      if (machineValue === undefined || machineValue > config.maxValue) {
+        return { matches: false };
+      }
+      conditions.push('value');
     }
 
-    return true;
+    // If we have at least one condition and all specified conditions passed, it's a match
+    if (conditions.length > 0) {
+      return { matches: true, matchedBy: conditions.join(' + ') + ' rule' };
+    }
+
+    // If no conditions are specified, it's a global rule (matches everyone)
+    if (
+      (!config.userIds || config.userIds.length === 0) &&
+      (!config.roleIds || config.roleIds.length === 0) &&
+      (!config.departmentIds || config.departmentIds.length === 0) &&
+      (!config.categoryIds || config.categoryIds.length === 0)
+    ) {
+      return { matches: true, matchedBy: 'global rule' };
+    }
+
+    return { matches: false };
   }
 }
 

@@ -15,7 +15,7 @@ import { validateRequest } from '../middlewares/validateRequest';
 import { validateParams } from '../middlewares/validateRequest';
 import { validateQuery } from '../middlewares/validateRequest';
 import PermissionConfigController from '../modules/admin/permissionConfig/permissionConfig.controller';
-import { upload } from '../middlewares/multer.middleware';
+
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
 
@@ -26,7 +26,7 @@ router.post(
   '/',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
   validateRequest(createPermissionConfigSchema),
   PermissionConfigController.createPermissionConfig,
 );
@@ -36,7 +36,7 @@ router.get(
   '/',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
   validateQuery(paginationQuerySchema),
   PermissionConfigController.getAllPermissionConfigs,
 );
@@ -46,7 +46,7 @@ router.get(
   '/action/:action',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
   validateParams(actionParamSchema),
   validateQuery(paginationQuerySchema),
   PermissionConfigController.getPermissionConfigsByAction,
@@ -56,7 +56,7 @@ router.get(
 router.get(
   '/my-permissions',
   verifyJWT,
-  upload.any(),
+
   validateQuery(permissionCheckQuerySchema),
   PermissionConfigController.getMyPermissions,
 );
@@ -65,7 +65,7 @@ router.get(
 router.post(
   '/check',
   verifyJWT,
-  upload.any(),
+
   validateRequest(checkPermissionSchema),
   PermissionConfigController.checkPermission,
 );
@@ -74,7 +74,6 @@ router.post(
 router.get(
   '/check/:action',
   verifyJWT,
-  upload.any(),
   validateParams(actionParamSchema),
   validateQuery(permissionCheckQuerySchema),
   PermissionConfigController.checkResourcePermission,
@@ -85,7 +84,7 @@ router.post(
   '/validate-categories',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
   validateRequest(categoryValidationSchema),
   PermissionConfigController.validateCategoryIds,
 );
@@ -95,7 +94,7 @@ router.get(
   '/:id',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
   validateParams(idParamSchema),
   PermissionConfigController.getPermissionConfigById,
 );
@@ -105,7 +104,7 @@ router.put(
   '/:id',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
   validateParams(idParamSchema),
   validateRequest(updatePermissionConfigSchema),
   PermissionConfigController.updatePermissionConfig,
@@ -116,7 +115,7 @@ router.patch(
   '/:id/toggle',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
   validateParams(idParamSchema),
   PermissionConfigController.togglePermissionConfig,
 );
@@ -126,7 +125,7 @@ router.delete(
   '/:id',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
   validateParams(idParamSchema),
   PermissionConfigController.deletePermissionConfig,
 );
