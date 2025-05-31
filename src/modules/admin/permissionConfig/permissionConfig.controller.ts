@@ -25,7 +25,7 @@ interface PaginationQuery {
   limit?: string;
 }
 
-interface PermissionCheckRequest {
+interface PermissionCheckBody {
   action: ActionType;
   categoryId?: string;
   machineValue?: number;
@@ -34,6 +34,10 @@ interface PermissionCheckRequest {
 interface PermissionCheckQuery {
   categoryId?: string;
   machineValue?: string;
+}
+
+interface CategoryValidationBody {
+  categoryIds: string[];
 }
 
 class PermissionConfigController {
@@ -66,7 +70,6 @@ class PermissionConfigController {
       }
 
       // Validate all reference IDs before creating
-      console.log('🔍 Validating reference IDs...');
       await ValidationService.validatePermissionConfigReferences({
         roleIds,
         userIds,
@@ -75,7 +78,6 @@ class PermissionConfigController {
         approverRoles,
         createdBy: req.user._id,
       });
-      console.log('✅ Reference validation passed');
 
       const permissionConfig = await PermissionConfigService.create({
         name,
@@ -107,9 +109,9 @@ class PermissionConfigController {
    */
   static getAllPermissionConfigs = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const { page, limit } = req.query as PaginationQuery;
-      const pageNumber = parseInt(page || '1');
-      const limitNumber = parseInt(limit || '10');
+      const { page = '1', limit = '10' } = req.query as PaginationQuery;
+      const pageNumber = parseInt(page);
+      const limitNumber = parseInt(limit);
 
       const result = await PermissionConfigService.getAll(
         pageNumber,
@@ -140,20 +142,10 @@ class PermissionConfigController {
   static getPermissionConfigsByAction = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const { action } = req.params;
-      const { page, limit } = req.query as PaginationQuery;
+      const { page = '1', limit = '10' } = req.query as PaginationQuery;
 
-      // Validate action
-      if (!Object.values(ActionType).includes(action as ActionType)) {
-        throw new ApiError(
-          'FETCHING_PERMISSIONS',
-          StatusCodes.BAD_REQUEST,
-          'INVALID_ACTION',
-          'Invalid action type provided',
-        );
-      }
-
-      const pageNumber = parseInt(page || '1');
-      const limitNumber = parseInt(limit || '10');
+      const pageNumber = parseInt(page);
+      const limitNumber = parseInt(limit);
 
       const result = await PermissionConfigService.getByAction(
         action as ActionType,
@@ -188,7 +180,7 @@ class PermissionConfigController {
 
       if (!id) {
         throw new ApiError(
-          'FETCHING_PERMISSION',
+          'FETCHING_PERMISSION_CONFIG',
           StatusCodes.BAD_REQUEST,
           'MISSING_PARAMETER',
           'Permission configuration ID is required',
@@ -215,8 +207,16 @@ class PermissionConfigController {
       const { id } = req.params;
       const updateData = req.body as UpdatePermissionConfigData;
 
-      // Validate reference IDs before updating
-      console.log('🔍 Validating reference IDs for update...');
+      if (!id) {
+        throw new ApiError(
+          'UPDATING_PERMISSION_CONFIG',
+          StatusCodes.BAD_REQUEST,
+          'MISSING_PARAMETER',
+          'Permission configuration ID is required',
+        );
+      }
+
+      // Validate reference IDs before updating if they exist
       await ValidationService.validatePermissionConfigReferences({
         roleIds: updateData.roleIds,
         userIds: updateData.userIds,
@@ -224,10 +224,9 @@ class PermissionConfigController {
         categoryIds: updateData.categoryIds,
         approverRoles: updateData.approverRoles,
       });
-      console.log('✅ Update reference validation passed');
 
       const permissionConfig = await PermissionConfigService.update(
-        id!, // Non-null assertion
+        id,
         updateData,
       );
 
@@ -246,11 +245,11 @@ class PermissionConfigController {
    */
   static deletePermissionConfig = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const id = req.params['id'] ?? '';
+      const { id } = req.params;
 
-      if (!id.trim()) {
+      if (!id) {
         throw new ApiError(
-          'DELETING_PERMISSION',
+          'DELETING_PERMISSION_CONFIG',
           StatusCodes.BAD_REQUEST,
           'MISSING_PARAMETER',
           'Permission configuration ID is required',
@@ -276,9 +275,17 @@ class PermissionConfigController {
     async (req: Request, res: Response): Promise<void> => {
       const { id } = req.params;
 
-      const updatedConfig = await PermissionConfigService.toggleActiveStatus(
-        id as string,
-      );
+      if (!id) {
+        throw new ApiError(
+          'TOGGLING_PERMISSION_CONFIG',
+          StatusCodes.BAD_REQUEST,
+          'MISSING_PARAMETER',
+          'Permission configuration ID is required',
+        );
+      }
+
+      const updatedConfig =
+        await PermissionConfigService.toggleActiveStatus(id);
 
       const response = new ApiResponse(
         StatusCodes.OK,
@@ -291,12 +298,12 @@ class PermissionConfigController {
   );
 
   /**
-   * Check user permissions for a specific action
+   * Check user permissions for a specific action (POST)
    */
   static checkPermission = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const { action, categoryId, machineValue } =
-        req.body as PermissionCheckRequest;
+        req.body as PermissionCheckBody;
 
       if (!req.user) {
         throw new ApiError(
@@ -304,16 +311,6 @@ class PermissionConfigController {
           StatusCodes.UNAUTHORIZED,
           'USER_NOT_AUTHENTICATED',
           'User authentication required',
-        );
-      }
-
-      // Validate action
-      if (!Object.values(ActionType).includes(action)) {
-        throw new ApiError(
-          'CHECKING_PERMISSION',
-          StatusCodes.BAD_REQUEST,
-          'INVALID_ACTION',
-          'Invalid action type provided',
         );
       }
 
@@ -396,7 +393,7 @@ class PermissionConfigController {
   );
 
   /**
-   * Check if user can perform action on specific resource
+   * Check if user can perform action on specific resource (GET)
    */
   static checkResourcePermission = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -409,16 +406,6 @@ class PermissionConfigController {
           StatusCodes.UNAUTHORIZED,
           'USER_NOT_AUTHENTICATED',
           'User authentication required',
-        );
-      }
-
-      // Validate action
-      if (!Object.values(ActionType).includes(action as ActionType)) {
-        throw new ApiError(
-          'CHECKING_RESOURCE_PERMISSION',
-          StatusCodes.BAD_REQUEST,
-          'INVALID_ACTION',
-          'Invalid action type provided',
         );
       }
 
@@ -458,7 +445,7 @@ class PermissionConfigController {
    */
   static validateCategoryIds = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const { categoryIds } = req.body;
+      const { categoryIds } = req.body as CategoryValidationBody;
 
       if (!categoryIds || !Array.isArray(categoryIds)) {
         throw new ApiError(
