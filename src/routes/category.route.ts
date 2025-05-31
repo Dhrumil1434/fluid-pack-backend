@@ -6,7 +6,7 @@ import {
   categoryPaginationQuerySchema,
 } from '../modules/admin/categories/validators/category.validator';
 import { validateRequest } from '../middlewares/validateRequest';
-
+import { validateParams } from '../middlewares/validateRequest';
 import { upload } from '../middlewares/multer.middleware';
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
@@ -41,7 +41,8 @@ router.get('/active', upload.any(), CategoryController.getActiveCategories);
 router.get(
   '/exists/:id',
   upload.any(),
-  validateRequest(categoryIdParamSchema, 'params'),
+  // validateRequest(categoryIdParamSchema, 'params'),
+  validateParams(categoryIdParamSchema),
   CategoryController.checkCategoryExists,
 );
 
@@ -49,7 +50,8 @@ router.get(
 router.get(
   '/:id',
   upload.any(),
-  validateRequest(categoryIdParamSchema, 'params'),
+  // validateRequest(categoryIdParamSchema, 'params'),
+  validateParams(categoryIdParamSchema),
   CategoryController.getCategoryById,
 );
 
@@ -59,7 +61,8 @@ router.put(
   verifyJWT,
   AuthRole('admin'),
   upload.any(),
-  validateRequest(categoryIdParamSchema, 'params'),
+  // validateRequest(categoryIdParamSchema, 'params'),
+  validateParams(categoryIdParamSchema),
   validateRequest(updateCategorySchema),
   CategoryController.updateCategory,
 );
@@ -70,7 +73,8 @@ router.delete(
   verifyJWT,
   AuthRole('admin'),
   upload.any(),
-  validateRequest(categoryIdParamSchema, 'params'),
+  // validateRequest(categoryIdParamSchema, 'params'),
+  validateParams(categoryIdParamSchema),
   CategoryController.deleteCategory,
 );
 
