@@ -1,5 +1,4 @@
-// permission-config.route.ts
-
+// routes/permissionConfig.routes.ts
 import { Router } from 'express';
 import {
   createPermissionConfigSchema,
@@ -7,13 +6,18 @@ import {
   checkPermissionSchema,
   actionParamSchema,
   idParamSchema,
+  paginationQuerySchema,
+  permissionCheckQuerySchema,
+  categoryValidationSchema,
 } from '../modules/admin/permissionConfig/validators/permissionConfig.validator';
 import { validateRequest } from '../middlewares/validateRequest';
+// import { validateParams } from '../middlewares/validateParams';
+import { validateParams } from '../middlewares/validateRequest';
+import { validateQuery } from '../middlewares/validateRequest';
 import PermissionConfigController from '../modules/admin/permissionConfig/permissionConfig.controller';
-import { upload } from '../middlewares/multer.middleware';
+
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
-import { validateParamReferences } from '../modules/admin/permissionConfig/middlewares/permissionConfig.validation.middleware';
 
 const router = Router();
 
@@ -22,69 +26,76 @@ router.post(
   '/',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
-  validateParamReferences({
-    validateUserId: true,
-    validateRoleId: true,
-    validateCategoryId: true,
-    validateMachineId: true,
-  }),
+
   validateRequest(createPermissionConfigSchema),
   PermissionConfigController.createPermissionConfig,
 );
 
-// Get all permission configurations with pagination - Admin/Manager
+// Get all permission configurations with pagination - Admin only
 router.get(
   '/',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
+  validateQuery(paginationQuerySchema),
   PermissionConfigController.getAllPermissionConfigs,
 );
 
-// Get permission configurations by action - Admin/Manager
+// Get permission configurations by action - Admin only
 router.get(
   '/action/:action',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
-  validateRequest(actionParamSchema, 'params'),
+
+  validateParams(actionParamSchema),
+  validateQuery(paginationQuerySchema),
   PermissionConfigController.getPermissionConfigsByAction,
 );
 
-// Check user permissions (for current user)
+// Check user permissions (for current user) - All authenticated users
 router.get(
   '/my-permissions',
   verifyJWT,
-  upload.any(),
+
+  validateQuery(permissionCheckQuerySchema),
   PermissionConfigController.getMyPermissions,
 );
 
-// Check permission for specific action and resource
+// Check permission for specific action and resource (POST) - All authenticated users
 router.post(
   '/check',
   verifyJWT,
-  upload.any(),
+
   validateRequest(checkPermissionSchema),
   PermissionConfigController.checkPermission,
 );
 
-// Check resource permission via GET (alternative endpoint)
+// Check resource permission via GET - All authenticated users
 router.get(
   '/check/:action',
   verifyJWT,
-  upload.any(),
-  validateRequest(actionParamSchema),
+  validateParams(actionParamSchema),
+  validateQuery(permissionCheckQuerySchema),
   PermissionConfigController.checkResourcePermission,
 );
 
-// Get permission configuration by ID - Admin/Manager
+// Validate category IDs utility endpoint - Admin only
+router.post(
+  '/validate-categories',
+  verifyJWT,
+  AuthRole('admin'),
+
+  validateRequest(categoryValidationSchema),
+  PermissionConfigController.validateCategoryIds,
+);
+
+// Get permission configuration by ID - Admin only
 router.get(
   '/:id',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
-  validateRequest(idParamSchema , 'params'),
+
+  validateParams(idParamSchema),
   PermissionConfigController.getPermissionConfigById,
 );
 
@@ -93,7 +104,8 @@ router.put(
   '/:id',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
+  validateParams(idParamSchema),
   validateRequest(updatePermissionConfigSchema),
   PermissionConfigController.updatePermissionConfig,
 );
@@ -103,7 +115,8 @@ router.patch(
   '/:id/toggle',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
+  validateParams(idParamSchema),
   PermissionConfigController.togglePermissionConfig,
 );
 
@@ -112,7 +125,8 @@ router.delete(
   '/:id',
   verifyJWT,
   AuthRole('admin'),
-  upload.any(),
+
+  validateParams(idParamSchema),
   PermissionConfigController.deletePermissionConfig,
 );
 

@@ -3,31 +3,70 @@ import Joi from 'joi';
 import { StatusCodes } from 'http-status-codes';
 import { ApiError } from '../utils/ApiError';
 
-export const validateRequest = (
+/**
+ * Common function to handle Joi validation
+ */
+const handleValidation = (
   schema: Joi.ObjectSchema,
-  source: 'body' | 'params' | 'query' = 'body'
+  data: unknown,
+  label: string,
+  next: NextFunction,
 ) => {
+  const { error, value } = schema.validate(data, {
+    abortEarly: false,
+    allowUnknown: false,
+    stripUnknown: true,
+  });
+
+  if (error) {
+    const errors = error.details.map((err) => ({
+      field: err.path.join('.'),
+      message: err.message,
+    }));
+
+    return next(
+      new ApiError(
+        'VALIDATION_ERROR',
+        StatusCodes.BAD_REQUEST,
+        `INVALID_REQUEST_${label.toUpperCase()}`,
+        `Request ${label} validation failed`,
+        errors,
+      ),
+    );
+  }
+
+  return value;
+};
+
+/**
+ * Middleware to validate request body
+ */
+export const validateRequest = (schema: Joi.ObjectSchema) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    const dataToValidate = req[source];
+    const validated = handleValidation(schema, req.body, 'body', next);
+    if (validated) req.body = validated;
+    next();
+  };
+};
 
-    const { error } = schema.validate(dataToValidate, { abortEarly: false });
-    if (error) {
-      const errors = error.details.map((err) => ({
-        field: err.path.join('.'),
-        message: err.message,
-      }));
+/**
+ * Middleware to validate request parameters
+ */
+export const validateParams = (schema: Joi.ObjectSchema) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const validated = handleValidation(schema, req.params, 'params', next);
+    if (validated) req.params = validated;
+    next();
+  };
+};
 
-      return next(
-        new ApiError(
-          'ENTERING_DATA',
-          StatusCodes.BAD_REQUEST,
-          'VALIDATION_ERROR',
-          'Invalid Inputs',
-          errors,
-        ),
-      );
-    }
-
+/**
+ * Middleware to validate request query
+ */
+export const validateQuery = (schema: Joi.ObjectSchema) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const validated = handleValidation(schema, req.query, 'query', next);
+    if (validated) req.query = validated;
     next();
   };
 };
