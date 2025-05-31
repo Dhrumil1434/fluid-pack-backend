@@ -1,3 +1,5 @@
+// permission-config.route.ts
+
 import { Router } from 'express';
 import {
   createPermissionConfigSchema,
@@ -46,7 +48,7 @@ router.get(
   verifyJWT,
   AuthRole('admin'),
   upload.any(),
-  validateRequest(actionParamSchema),
+  validateRequest(actionParamSchema, 'params'),
   PermissionConfigController.getPermissionConfigsByAction,
 );
 
@@ -82,7 +84,7 @@ router.get(
   verifyJWT,
   AuthRole('admin'),
   upload.any(),
-  validateRequest(idParamSchema),
+  validateRequest(idParamSchema , 'params'),
   PermissionConfigController.getPermissionConfigById,
 );
 

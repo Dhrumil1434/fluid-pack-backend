@@ -39,6 +39,8 @@ class UserController {
       req.user = tokens;
 
       const options = { httpOnly: true, secure: true };
+     
+
       res
         .status(StatusCodes.OK)
         .cookie('accessToken', tokens.accessToken, options)

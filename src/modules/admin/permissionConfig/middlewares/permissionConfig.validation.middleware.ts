@@ -1,3 +1,6 @@
+// permissionConfig.validation.middleware.ts
+
+
 import { Request, Response, NextFunction } from 'express';
 import ValidationService from '../validators/permissionConfig.reference.validator';
 import { ApiError } from '../../../../utils/ApiError';

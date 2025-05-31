@@ -41,7 +41,7 @@ router.get('/active', upload.any(), CategoryController.getActiveCategories);
 router.get(
   '/exists/:id',
   upload.any(),
-  validateRequest(categoryIdParamSchema),
+  validateRequest(categoryIdParamSchema, 'params'),
   CategoryController.checkCategoryExists,
 );
 
@@ -49,7 +49,7 @@ router.get(
 router.get(
   '/:id',
   upload.any(),
-  validateRequest(categoryIdParamSchema),
+  validateRequest(categoryIdParamSchema, 'params'),
   CategoryController.getCategoryById,
 );
 
@@ -59,7 +59,7 @@ router.put(
   verifyJWT,
   AuthRole('admin'),
   upload.any(),
-  validateRequest(categoryIdParamSchema),
+  validateRequest(categoryIdParamSchema, 'params'),
   validateRequest(updateCategorySchema),
   CategoryController.updateCategory,
 );
@@ -70,7 +70,7 @@ router.delete(
   verifyJWT,
   AuthRole('admin'),
   upload.any(),
-  validateRequest(categoryIdParamSchema),
+  validateRequest(categoryIdParamSchema, 'params'),
   CategoryController.deleteCategory,
 );
 
