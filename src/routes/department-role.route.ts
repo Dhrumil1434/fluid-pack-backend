@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { validateRequest } from '../middlewares/validateRequest';
-import { upload } from '../middlewares/multer.middleware';
 import DepartmentAndRoleController from '../modules/admin/departmentAndRoles/department-role.controller';
 import {
   createDepartmentSchema,
@@ -15,7 +14,7 @@ const router = Router();
 
 router.post(
   '/department/create',
-  upload.none(),
+
   validateRequest(createDepartmentSchema),
   DepartmentAndRoleController.createDepartment,
 );
@@ -26,7 +25,7 @@ router.get('/department/:id', DepartmentAndRoleController.getDepartmentById);
 
 router.put(
   '/department/:id',
-  upload.none(),
+
   validateRequest(updateDepartmentSchema),
   DepartmentAndRoleController.updateDepartment,
 );
@@ -37,7 +36,7 @@ router.delete('/department/:id', DepartmentAndRoleController.deleteDepartment);
 
 router.post(
   '/role/create',
-  upload.none(),
+
   validateRequest(createRoleSchema),
   DepartmentAndRoleController.createRole,
 );
@@ -48,7 +47,7 @@ router.get('/role/:id', DepartmentAndRoleController.getRoleById);
 
 router.put(
   '/role/:id',
-  upload.none(),
+
   validateRequest(updateRoleSchema),
   DepartmentAndRoleController.updateRole,
 );
