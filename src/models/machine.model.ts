@@ -10,7 +10,7 @@ export interface IMachine extends Document {
   is_approved: boolean;
   images: string[]; // Array of image URLs/paths
   updatedBy?: mongoose.Types.ObjectId;
-  deletedAt?: Date;
+  deletedAt?: Date | null;
   metadata: Record<string, unknown>;
   createdAt?: Date;
   updatedAt?: Date;
