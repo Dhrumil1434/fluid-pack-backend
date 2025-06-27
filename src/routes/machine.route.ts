@@ -18,6 +18,8 @@ import {
   uploadMachineImages,
   uploadMachineImagesUpdate,
 } from '../middlewares/multer.middleware';
+import { checkPermission } from '../modules/admin/permissionConfig/middlewares/permissionConfig.validation.middleware';
+import { ActionType } from '../models/permissionConfig.model';
 
 const router = Router();
 
@@ -25,6 +27,7 @@ const router = Router();
 router.post(
   '/',
   verifyJWT,
+  checkPermission([ActionType.CREATE_MACHINE]),
   uploadMachineImages.array('images', 5), // Allow up to 5 images with field name 'images'
   validateRequest(createMachineSchema),
   MachineController.createMachine,
