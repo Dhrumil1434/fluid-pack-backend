@@ -32,14 +32,14 @@ export interface CreatePermissionConfigData {
   name: string;
   description: string;
   action: ActionType;
-  roleIds?: string[];
-  userIds?: string[];
-  departmentIds?: string[];
-  categoryIds?: string[];
+  roleIds?: string[] | undefined;
+  userIds?: string[] | undefined;
+  departmentIds?: string[] | undefined;
+  categoryIds?: string[] | undefined;
   permission: PermissionLevel;
-  approverRoles?: string[];
-  maxValue?: number;
-  priority?: number;
+  approverRoles?: string[] | undefined;
+  maxValue?: number | undefined;
+  priority?: number | undefined;
   createdBy: string;
 }
 
@@ -94,6 +94,13 @@ class PermissionConfigService {
   private static clearCache(): void {
     this.permissionCache.clear();
     this.lastCacheUpdate = 0;
+  }
+
+  /**
+   * Clear permission cache (public method for external use)
+   */
+  static clearPermissionCache(): void {
+    this.clearCache();
   }
 
   /**
@@ -426,6 +433,19 @@ class PermissionConfigService {
           reason: 'User not found',
         };
       }
+      // Admin bypass: allow all actions
+      // Check if user has admin role by comparing role ID
+      const adminRoleId = '685f8b9eabf7c0dbfbb3cb34'; // Admin role ID from your data
+      const userRoleId = typeof user.role === 'string' ? user.role : (user.role as any)?._id?.toString();
+      
+      if (userRoleId === adminRoleId) {
+        return {
+          allowed: true,
+          requiresApproval: false,
+          reason: 'Admin role override - full access granted',
+          matchedBy: 'admin role',
+        };
+      }
 
       // Try to get cached configs first
       let permissionConfigs = this.getCachedConfigs(action);
@@ -571,20 +591,39 @@ class PermissionConfigService {
   ): ConfigMatchResult {
     const conditions: string[] = [];
 
+    // Helper function to safely get ID string from ObjectId or populated object
+    const getSafeIdString = (field: any): string | null => {
+      if (!field) return null;
+      if (typeof field === 'string') return field;
+      if (field._id) return field._id.toString();
+      if (field.toString) return field.toString();
+      return null;
+    };
+
     // Check user-specific rules (highest priority)
     if (config.userIds?.length) {
       const userIdStrings = config.userIds.map(id => id.toString());
-      if (userIdStrings.includes(user.id.toString())) {
+      const userId = getSafeIdString(user._id);
+      if (userId && userIdStrings.includes(userId)) {
         return { matches: true, matchedBy: 'user-specific rule' };
       }
-      conditions.push('user');
+      // If user-specific rule exists but doesn't match, return false
+      return { matches: false };
     }
 
     // Check role-specific rules
     if (config.roleIds?.length && user.role) {
       const roleIdStrings = config.roleIds.map(id => id.toString());
-      if (roleIdStrings.includes(user.role.toString())) {
-        return { matches: true, matchedBy: 'role-based rule' };
+      // Handle both ObjectId and populated object cases
+      let userRoleId: string | null = null;
+      if (typeof user.role === 'object' && user.role._id) {
+        userRoleId = user.role._id.toString();
+      } else if (user.role?.toString) {
+        userRoleId = user.role.toString();
+      }
+      
+      if (!userRoleId || !roleIdStrings.includes(userRoleId)) {
+        return { matches: false };
       }
       conditions.push('role');
     }
@@ -592,8 +631,16 @@ class PermissionConfigService {
     // Check department-specific rules
     if (config.departmentIds?.length && user.department) {
       const deptIdStrings = config.departmentIds.map(id => id.toString());
-      if (deptIdStrings.includes(user.department.toString())) {
-        return { matches: true, matchedBy: 'department-based rule' };
+      // Handle both ObjectId and populated object cases
+      let userDeptId: string | null = null;
+      if (typeof user.department === 'object' && user.department._id) {
+        userDeptId = user.department._id.toString();
+      } else if (user.department?.toString) {
+        userDeptId = user.department.toString();
+      }
+      
+      if (!userDeptId || !deptIdStrings.includes(userDeptId)) {
+        return { matches: false };
       }
       conditions.push('department');
     }

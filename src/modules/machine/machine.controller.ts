@@ -99,7 +99,6 @@ class MachineController {
       const limit = parseInt(value.limit as string) || 10;
 
       const result = await MachineService.getAll(page, limit, filters);
-
       const response = new ApiResponse(
         StatusCodes.OK,
         result,

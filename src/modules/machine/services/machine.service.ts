@@ -64,7 +64,7 @@ class MachineService {
       const existingMachine = await Machine.findOne({
         name: { $regex: new RegExp(`^${data.name}$`, 'i') },
         category_id: data.category_id,
-        isActive: true,
+        deletedAt: null,
       });
 
       if (existingMachine) {
@@ -115,7 +115,7 @@ class MachineService {
   ): Promise<MachineListResult> {
     try {
       const skip = (page - 1) * limit;
-      const query: Record<string, unknown> = { isActive: true };
+      const query: Record<string, unknown> = { deletedAt: null };
 
       // Apply filters
       if (filters.category_id) {
@@ -178,7 +178,7 @@ class MachineService {
 
       const machine = await Machine.findOne({
         _id: id,
-        isActive: true,
+        deletedAt: null,
       }).populate([
         { path: 'category_id', select: 'name description' },
         { path: 'created_by', select: 'username email' },
@@ -223,7 +223,7 @@ class MachineService {
       // Check if machine exists
       const existingMachine = await Machine.findOne({
         _id: id,
-        isActive: true,
+        deletedAt: null,
       });
 
       if (!existingMachine) {
@@ -259,7 +259,7 @@ class MachineService {
           name: { $regex: new RegExp(`^${data.name}$`, 'i') },
           category_id: categoryId,
           _id: { $ne: id },
-          isActive: true,
+          deletedAt: null,
         });
 
         if (duplicateMachine) {
@@ -314,7 +314,7 @@ class MachineService {
 
       const machine = await Machine.findOne({
         _id: id,
-        isActive: true,
+        deletedAt: null,
       });
 
       if (!machine) {
@@ -327,7 +327,6 @@ class MachineService {
       }
 
       await Machine.findByIdAndUpdate(id, {
-        isActive: false,
         deletedAt: new Date(),
       });
     } catch (error) {
@@ -347,7 +346,7 @@ class MachineService {
   static async getApprovedMachines(): Promise<IMachine[]> {
     try {
       return await Machine.find({
-        isActive: true,
+        deletedAt: null,
         is_approved: true,
       })
         .populate([
@@ -385,7 +384,7 @@ class MachineService {
 
       const machine = await Machine.findOne({
         _id: id,
-        isActive: true,
+        deletedAt: null,
       });
 
       if (!machine) {
@@ -433,7 +432,7 @@ class MachineService {
 
       const machine = await Machine.findOne({
         _id: id,
-        isActive: true,
+        deletedAt: null,
       });
 
       return !!machine;
@@ -458,7 +457,7 @@ class MachineService {
 
       return await Machine.find({
         category_id: categoryId,
-        isActive: true,
+        deletedAt: null,
         is_approved: true,
       })
         .populate([

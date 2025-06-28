@@ -13,7 +13,6 @@ import { validateParams } from '../middlewares/validateRequest';
 import { validateQuery } from '../middlewares/validateRequest';
 import MachineController from '../modules/machine/machine.controller';
 import { verifyJWT } from '../middlewares/auth.middleware';
-import { AuthRole } from '../middlewares/auth-role.middleware';
 import {
   uploadMachineImages,
   uploadMachineImagesUpdate,
@@ -54,26 +53,27 @@ router.get(
 router.put(
   '/:id',
   verifyJWT,
+  checkPermission([ActionType.EDIT_MACHINE]),
   uploadMachineImagesUpdate.array('images', 5), // Allow up to 5 new images
   validateParams(machineIdParamSchema),
   validateRequest(updateMachineSchema),
   MachineController.updateMachine,
 );
 
-// Delete machine - Requires authentication and admin role
+// Delete machine - Requires authentication and permission
 router.delete(
   '/:id',
   verifyJWT,
-  AuthRole('admin'),
+  checkPermission([ActionType.DELETE_MACHINE]),
   validateParams(machineIdParamSchema),
   MachineController.deleteMachine,
 );
 
-// Update machine approval status - Requires admin role
+// Update machine approval status - Requires permission
 router.patch(
   '/:id/approval',
   verifyJWT,
-  AuthRole('admin'),
+  checkPermission([ActionType.APPROVE_MACHINE]),
   validateParams(machineIdParamSchema),
   validateRequest(machineApprovalSchema),
   MachineController.updateMachineApproval,

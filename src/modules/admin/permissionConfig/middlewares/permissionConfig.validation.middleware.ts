@@ -19,7 +19,9 @@ export const checkPermission = (actions: ActionType[]) => {
       }
 
       // Admin bypass: allow all actions
-      if (user.role === 'admin') {
+      // Handle both string role and populated role object
+      const userRole = typeof user.role === 'string' ? user.role : user.role?.name;
+      if (userRole === 'admin') {
         (req as any).permissionInfo = {
           actions,
           adminOverride: true,
