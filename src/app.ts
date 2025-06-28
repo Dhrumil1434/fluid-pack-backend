@@ -7,6 +7,7 @@ import userRouter from './routes/user.route';
 import departmentAndRoleRouter from './routes/department-role.route';
 import permissionRouter from './routes/permission-config.route';
 import categoryRouter from './routes/category.route';
+import machineRouter from './routes/machine.route';
 class App {
   public app: Application;
 
@@ -38,6 +39,7 @@ class App {
     this.app.use('/api/admin', departmentAndRoleRouter);
     this.app.use('/api/admin/category', categoryRouter);
     this.app.use('/api/permission', permissionRouter);
+    this.app.use('/api/machine', machineRouter);
   }
 
   private setErrorHandler(): void {
