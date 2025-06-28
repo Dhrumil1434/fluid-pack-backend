@@ -8,6 +8,9 @@ import departmentAndRoleRouter from './routes/department-role.route';
 import permissionRouter from './routes/permission-config.route';
 import categoryRouter from './routes/category.route';
 import machineRouter from './routes/machine.route';
+import machineApprovalRouter from './routes/machine-approval.route';
+import qaMachineRouter from './routes/qa-machine.route';
+
 class App {
   public app: Application;
 
@@ -37,6 +40,9 @@ class App {
   private setRoutes(): void {
     this.app.use('/api/user', userRouter);
     this.app.use('/api/admin', departmentAndRoleRouter);
+    this.app.use('/api/machines', machineRouter);
+    this.app.use('/api/machine-approvals', machineApprovalRouter);
+    this.app.use('/api/qa-machines', qaMachineRouter);
     this.app.use('/api/admin/category', categoryRouter);
     this.app.use('/api/permission', permissionRouter);
     this.app.use('/api/machine', machineRouter);

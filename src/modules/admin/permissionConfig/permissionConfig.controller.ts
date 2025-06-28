@@ -596,28 +596,18 @@ class PermissionConfigController {
    * POST /api/permission-configs/validate-categories
    */
   static validateCategoryIds = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const { categoryIds } = req.body as CategoryValidationBody;
 
       try {
-        const validationResult =
-          await ValidationService.validateCategoryIds(categoryIds);
+        const validationResult = await ValidationService.validateCategoryIds(
+          categoryIds,
+        );
 
         const response = new ApiResponse(
           StatusCodes.OK,
-          {
-            isValid: validationResult.isValid,
-            totalIds: categoryIds.length,
-            validCount: categoryIds.length - validationResult.invalidIds.length,
-            invalidCount: validationResult.invalidIds.length,
-            validIds: categoryIds.filter(
-              (id) => !validationResult.invalidIds.includes(id),
-            ),
-            invalidIds: validationResult.invalidIds,
-          },
-          validationResult.isValid
-            ? 'All category IDs are valid'
-            : `Found ${validationResult.invalidIds.length} invalid category IDs out of ${categoryIds.length}`,
+          validationResult,
+          'Category validation completed',
         );
 
         res.status(StatusCodes.OK).json(response);
@@ -626,10 +616,37 @@ class PermissionConfigController {
           throw error;
         }
         throw new ApiError(
-          'VALIDATE_CATEGORY_IDS',
+          'VALIDATE_CATEGORIES',
           StatusCodes.INTERNAL_SERVER_ERROR,
           'VALIDATION_FAILED',
           'Failed to validate category IDs',
+        );
+      }
+    },
+  );
+
+  /**
+   * Clear permission cache
+   * POST /api/permission-configs/clear-cache
+   */
+  static clearPermissionCache = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      try {
+        PermissionConfigService.clearPermissionCache();
+
+        const response = new ApiResponse(
+          StatusCodes.OK,
+          { message: 'Permission cache cleared successfully' },
+          'Permission cache cleared successfully',
+        );
+
+        res.status(StatusCodes.OK).json(response);
+      } catch (error) {
+        throw new ApiError(
+          'CLEAR_PERMISSION_CACHE',
+          StatusCodes.INTERNAL_SERVER_ERROR,
+          'CACHE_CLEAR_FAILED',
+          'Failed to clear permission cache',
         );
       }
     },

@@ -232,12 +232,12 @@ class ValidationService {
    * Comprehensive validation for PermissionConfig
    */
   static async validatePermissionConfigReferences(data: {
-    roleIds?: string[];
-    userIds?: string[];
-    departmentIds?: string[];
-    categoryIds?: string[];
-    approverRoles?: string[];
-    createdBy?: string;
+    roleIds?: string[] | undefined;
+    userIds?: string[] | undefined;
+    departmentIds?: string[] | undefined;
+    categoryIds?: string[] | undefined;
+    approverRoles?: string[] | undefined;
+    createdBy?: string | undefined;
   }): Promise<void> {
     const validationPromises = [];
     const errors: string[] = [];

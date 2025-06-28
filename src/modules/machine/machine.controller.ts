@@ -20,6 +20,12 @@ import {
 import { asyncHandler } from '../../utils/asyncHandler';
 import { ApiResponse } from '../../utils/ApiResponse';
 import { ApiError } from '../../utils/ApiError';
+import { 
+  moveFilesToMachineDirectory, 
+  deleteMachineImages, 
+  cleanupMachineDirectory 
+} from '../../middlewares/multer.middleware';
+
 export interface AuthenticatedRequest extends Request {
   user?: {
     _id: string;
@@ -39,6 +45,11 @@ class MachineController {
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const { error, value } = createMachineSchema.validate(req.body);
       if (error) {
+        // Clean up uploaded files if validation fails
+        if (req.files && Array.isArray(req.files)) {
+          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          deleteMachineImages(filePaths);
+        }
         throw new ApiError(
           'CREATE_MACHINE_VALIDATION',
           StatusCodes.BAD_REQUEST,
@@ -48,6 +59,11 @@ class MachineController {
       }
 
       if (!req.user) {
+        // Clean up uploaded files if authentication fails
+        if (req.files && Array.isArray(req.files)) {
+          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          deleteMachineImages(filePaths);
+        }
         throw new ApiError(
           'CREATE_MACHINE',
           StatusCodes.UNAUTHORIZED,
@@ -56,19 +72,54 @@ class MachineController {
         );
       }
 
-      const createData: CreateMachineData = {
-        ...value,
-        created_by: req.user._id,
-      };
+      let imagePaths: string[] = [];
+      
+      try {
+        // Move uploaded files to machine directory if files were uploaded
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+          // Create a temporary ID for the machine to organize files
+          const tempId = new Date().getTime().toString();
+          imagePaths = await moveFilesToMachineDirectory(req.files as Express.Multer.File[], tempId);
+        }
 
-      const machine = await MachineService.create(createData);
+        const createData: CreateMachineData = {
+          ...value,
+          created_by: req.user._id,
+          images: imagePaths,
+        };
 
-      const response = new ApiResponse(
-        StatusCodes.CREATED,
-        machine,
-        'Machine created successfully. Awaiting approval.',
-      );
-      res.status(response.statusCode).json(response);
+        const machine = await MachineService.create(createData);
+
+        // Move files to the actual machine directory after successful creation
+        if (imagePaths.length > 0) {
+          const tempId = new Date().getTime().toString();
+          const actualImagePaths = await moveFilesToMachineDirectory(
+            req.files as Express.Multer.File[], 
+            (machine as any)._id.toString()
+          );
+          
+          // Update the machine with correct image paths
+          await MachineService.update((machine as any)._id.toString(), {
+            images: actualImagePaths
+          });
+          
+          // Clean up temp directory
+          cleanupMachineDirectory(tempId);
+        }
+
+        const response = new ApiResponse(
+          StatusCodes.CREATED,
+          machine,
+          'Machine created successfully. Awaiting approval.',
+        );
+        res.status(response.statusCode).json(response);
+      } catch (error) {
+        // Clean up uploaded files if creation fails
+        if (imagePaths.length > 0) {
+          deleteMachineImages(imagePaths);
+        }
+        throw error;
+      }
     },
   );
 
@@ -99,7 +150,6 @@ class MachineController {
       const limit = parseInt(value.limit as string) || 10;
 
       const result = await MachineService.getAll(page, limit, filters);
-
       const response = new ApiResponse(
         StatusCodes.OK,
         result,
@@ -144,6 +194,11 @@ class MachineController {
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const paramsValidation = machineIdParamSchema.validate(req.params);
       if (paramsValidation.error) {
+        // Clean up uploaded files if validation fails
+        if (req.files && Array.isArray(req.files)) {
+          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          deleteMachineImages(filePaths);
+        }
         throw new ApiError(
           'UPDATE_MACHINE_VALIDATION',
           StatusCodes.BAD_REQUEST,
@@ -154,6 +209,11 @@ class MachineController {
 
       const bodyValidation = updateMachineSchema.validate(req.body);
       if (bodyValidation.error) {
+        // Clean up uploaded files if validation fails
+        if (req.files && Array.isArray(req.files)) {
+          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          deleteMachineImages(filePaths);
+        }
         throw new ApiError(
           'UPDATE_MACHINE_VALIDATION',
           StatusCodes.BAD_REQUEST,
@@ -163,6 +223,11 @@ class MachineController {
       }
 
       if (!req.user) {
+        // Clean up uploaded files if authentication fails
+        if (req.files && Array.isArray(req.files)) {
+          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          deleteMachineImages(filePaths);
+        }
         throw new ApiError(
           'UPDATE_MACHINE',
           StatusCodes.UNAUTHORIZED,
@@ -171,22 +236,41 @@ class MachineController {
         );
       }
 
-      const updateData: UpdateMachineData = {
-        ...bodyValidation.value,
-        updatedBy: req.user._id,
-      };
+      let imagePaths: string[] = [];
+      
+      try {
+        // Move uploaded files to machine directory if files were uploaded
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+          imagePaths = await moveFilesToMachineDirectory(
+            req.files as Express.Multer.File[], 
+            paramsValidation.value.id
+          );
+        }
 
-      const machine = await MachineService.update(
-        paramsValidation.value.id,
-        updateData,
-      );
+        const updateData: UpdateMachineData = {
+          ...bodyValidation.value,
+          updatedBy: req.user._id,
+          images: imagePaths.length > 0 ? imagePaths : undefined,
+        };
 
-      const response = new ApiResponse(
-        StatusCodes.OK,
-        machine,
-        'Machine updated successfully',
-      );
-      res.status(response.statusCode).json(response);
+        const machine = await MachineService.update(
+          paramsValidation.value.id,
+          updateData,
+        );
+
+        const response = new ApiResponse(
+          StatusCodes.OK,
+          machine,
+          'Machine updated successfully',
+        );
+        res.status(response.statusCode).json(response);
+      } catch (error) {
+        // Clean up uploaded files if update fails
+        if (imagePaths.length > 0) {
+          deleteMachineImages(imagePaths);
+        }
+        throw error;
+      }
     },
   );
 

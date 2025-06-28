@@ -115,7 +115,7 @@ class MachineService {
   ): Promise<MachineListResult> {
     try {
       const skip = (page - 1) * limit;
-      const query: Record<string, unknown> = { isActive: true };
+      const query: Record<string, unknown> = { deletedAt: null };
 
       // Apply filters
       if (filters.category_id) {

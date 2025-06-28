@@ -2,92 +2,73 @@
 
 
 import { Request, Response, NextFunction } from 'express';
-import ValidationService from '../validators/permissionConfig.reference.validator';
-import { ApiError } from '../../../../utils/ApiError';
 import { StatusCodes } from 'http-status-codes';
+import { ApiError } from '../../../../utils/ApiError';
+import PermissionConfigService from '../services/permissionConfig.service';
+import { ActionType } from '../../../../models/permissionConfig.model';
 
-export interface ValidationConfig {
-  validateUsers?: boolean;
-  validateRoles?: boolean;
-  validateDepartments?: boolean;
-  validateCategories?: boolean;
-  validateMachines?: boolean;
-}
-
-export const validateParamReferences = (config: {
-  validateUserId?: boolean;
-  validateCategoryId?: boolean;
-  validateRoleId?: boolean;
-  validateMachineId?: boolean;
-}) => {
-  return async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
+export const checkPermission = (actions: ActionType[]) => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { params } = req;
-
-      // Validate user ID parameter
-      if (config.validateUserId && params['userId']) {
-        const isValid = await ValidationService.validateSingleUserId(
-          params['userId'],
+      // User must be authenticated and attached to req.user
+      const user = (req as any).user;
+      if (!user) {
+        throw new ApiError(
+          'PERMISSION_CHECK',
+          StatusCodes.UNAUTHORIZED,
+          'USER_NOT_AUTHENTICATED',
+          'User authentication required',
         );
-        if (!isValid) {
-          throw new ApiError(
-            'VALIDATION_ERROR',
-            StatusCodes.BAD_REQUEST,
-            'INVALID_USER_REFERENCE',
-            `Invalid user ID: ${params['userId']}`,
-          );
-        }
       }
 
-      // Validate category ID parameter
-      if (config.validateCategoryId && params['categoryId']) {
-        const isValid = await ValidationService.validateSingleCategoryId(
-          params['categoryId'],
+      // Admin bypass: allow all actions
+      // Handle both string role and populated role object
+      const userRole = typeof user.role === 'string' ? user.role : user.role?.name;
+      if (userRole === 'admin') {
+        (req as any).permissionInfo = {
+          actions,
+          adminOverride: true,
+          reason: 'Admin role override - full access granted',
+        };
+        return next();
+      }
+
+      // Extract context (categoryId, machineValue) from body or query
+      const categoryId = req.body?.['categoryId'] || req.body?.['category_id'] || req.query?.['categoryId'];
+      const machineValue = req.body?.['machineValue'] || req.query?.['machineValue'];
+
+      // Check all actions
+      for (const action of actions) {
+        const result = await PermissionConfigService.checkPermission(
+          user._id,
+          action,
+          categoryId,
+          machineValue !== undefined ? parseFloat(machineValue) : undefined,
         );
-        if (!isValid) {
-          throw new ApiError(
-            'VALIDATION_ERROR',
-            StatusCodes.BAD_REQUEST,
-            'INVALID_CATEGORY_REFERENCE',
-            `Invalid category ID: ${params['categoryId']}`,
-          );
+        if (!result.allowed) {
+          if (result.requiresApproval) {
+            throw new ApiError(
+              'PERMISSION_CHECK',
+              StatusCodes.FORBIDDEN,
+              'APPROVAL_REQUIRED',
+              `Action '${action}' requires approval. ${result.reason}`,
+            );
+          } else {
+            throw new ApiError(
+              'PERMISSION_CHECK',
+              StatusCodes.FORBIDDEN,
+              'PERMISSION_DENIED',
+              `Action '${action}' denied. ${result.reason}`,
+            );
+          }
         }
       }
 
-      // Validate role ID parameter
-      if (config.validateRoleId && params['roleId']) {
-        const result = await ValidationService.validateRoleIds([
-          params['roleId'],
-        ]);
-        if (!result.isValid) {
-          throw new ApiError(
-            'VALIDATION_ERROR',
-            StatusCodes.BAD_REQUEST,
-            'INVALID_ROLE_REFERENCE',
-            `Invalid role ID: ${params['roleId']}`,
-          );
-        }
-      }
-
-      // Validate machine ID parameter
-      if (config.validateMachineId && params['machineId']) {
-        const result = await ValidationService.validateMachineIds([
-          params['machineId'],
-        ]);
-        if (!result.isValid) {
-          throw new ApiError(
-            'VALIDATION_ERROR',
-            StatusCodes.BAD_REQUEST,
-            'INVALID_MACHINE_REFERENCE',
-            `Invalid machine ID: ${params['machineId']}`,
-          );
-        }
-      }
-
+      // Attach permission info for downstream use
+      (req as any).permissionInfo = {
+        actions,
+        adminOverride: false,
+      };
       next();
     } catch (error) {
       next(error);

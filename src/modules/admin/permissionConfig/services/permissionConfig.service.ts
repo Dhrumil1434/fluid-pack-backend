@@ -12,6 +12,22 @@ import { IUser, User } from '../../../../models/user.model';
 import { ApiError } from '../../../../utils/ApiError';
 import { ERROR_MESSAGES } from '../permissionCongif.error.constants';
 
+// Constants
+const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_PRIORITY = 0;
+const CACHE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+// Populate options for consistent data fetching
+const POPULATE_OPTIONS = {
+  roleIds: { path: 'roleIds', select: 'name' },
+  userIds: { path: 'userIds', select: 'username email' },
+  departmentIds: { path: 'departmentIds', select: 'name' },
+  categoryIds: { path: 'categoryIds', select: 'name' },
+  approverRoles: { path: 'approverRoles', select: 'name' },
+  createdBy: { path: 'createdBy', select: 'username email' },
+} as const;
+
+// Types
 export interface CreatePermissionConfigData {
   name: string;
   description: string;
@@ -48,7 +64,7 @@ export interface PermissionCheckResult {
   approverRoles?: mongoose.Types.ObjectId[];
   matchedRule?: IPermissionConfig;
   reason?: string;
-  matchedBy?: string | undefined; // What condition matched (role, user, department, category)
+  matchedBy?: string;
 }
 
 export interface PaginatedPermissionConfigs {
@@ -61,51 +77,149 @@ export interface UserPermissions {
   [key: string]: PermissionCheckResult;
 }
 
+interface ConfigMatchResult {
+  matches: boolean;
+  matchedBy?: string;
+}
+
 class PermissionConfigService {
+  // Cache for permission configs to reduce database calls
+  private static permissionCache = new Map<string, IPermissionConfig[]>();
+  private static cacheTimeout = 5 * 60 * 1000; // 5 minutes
+  private static lastCacheUpdate = 0;
+
+  /**
+   * Clear permission cache
+   */
+  private static clearCache(): void {
+    this.permissionCache.clear();
+    this.lastCacheUpdate = 0;
+  }
+
+  /**
+   * Clear permission cache (public method for external use)
+   */
+  static clearPermissionCache(): void {
+    this.clearCache();
+  }
+
+  /**
+   * Check if cache is valid
+   */
+  private static isCacheValid(): boolean {
+    return Date.now() - this.lastCacheUpdate < this.cacheTimeout;
+  }
+
+  /**
+   * Get cached permission configs for an action
+   */
+  private static getCachedConfigs(action: ActionType): IPermissionConfig[] | null {
+    if (!this.isCacheValid()) {
+      this.clearCache();
+      return null;
+    }
+    return this.permissionCache.get(action) || null;
+  }
+
+  /**
+   * Cache permission configs for an action
+   */
+  private static cacheConfigs(action: ActionType, configs: IPermissionConfig[]): void {
+    this.permissionCache.set(action, configs);
+    this.lastCacheUpdate = Date.now();
+  }
+
+  /**
+   * Convert string IDs to ObjectIds safely
+   */
+  private static convertToObjectIds(ids?: string[]): mongoose.Types.ObjectId[] | undefined {
+    if (!ids || ids.length === 0) return undefined;
+    return ids.map(id => new mongoose.Types.ObjectId(id));
+  }
+
+  /**
+   * Create standardized populate query
+   */
+  private static createPopulateQuery() {
+    return PermissionConfig.find()
+      .populate(POPULATE_OPTIONS.roleIds)
+      .populate(POPULATE_OPTIONS.userIds)
+      .populate(POPULATE_OPTIONS.departmentIds)
+      .populate(POPULATE_OPTIONS.categoryIds)
+      .populate(POPULATE_OPTIONS.approverRoles)
+      .populate(POPULATE_OPTIONS.createdBy);
+  }
+
+  /**
+   * Create standardized error
+   */
+  private static createError(
+    action: string,
+    statusCode: number,
+    errorCode: string,
+    message: string
+  ): ApiError {
+    return new ApiError(action, statusCode, errorCode, message);
+  }
+
+  /**
+   * Validate priority uniqueness
+   */
+  private static async validatePriority(
+    priority: number,
+    action?: ActionType,
+    excludeId?: string
+  ): Promise<void> {
+    if (priority <= 0) return;
+
+    const query: any = {
+      priority,
+      isActive: true,
+    };
+
+    if (action) {
+      query.action = action;
+    }
+
+    if (excludeId) {
+      query._id = { $ne: excludeId };
+    }
+
+    const existingConfig = await PermissionConfig.findOne(query);
+
+    if (existingConfig) {
+      throw this.createError(
+        ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.create,
+        StatusCodes.CONFLICT,
+        ERROR_MESSAGES.PERMISSION_CONFIG.INVALID_PRIORITY.code,
+        ERROR_MESSAGES.PERMISSION_CONFIG.INVALID_PRIORITY.message,
+      );
+    }
+  }
+
   /**
    * Create a new permission configuration
    */
-  static async create(
-    data: CreatePermissionConfigData,
-  ): Promise<IPermissionConfig> {
+  static async create(data: CreatePermissionConfigData): Promise<IPermissionConfig> {
     try {
-      // Check for duplicate priority if specified
-      if (data.priority && data.priority > 0) {
-        const existingConfig = await PermissionConfig.findOne({
-          priority: data.priority,
-          isActive: true,
-          action: data.action, // Check priority within same action
-        });
-
-        if (existingConfig) {
-          throw new ApiError(
-            ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.create,
-            StatusCodes.CONFLICT,
-            ERROR_MESSAGES.PERMISSION_CONFIG.INVALID_PRIORITY.code,
-            ERROR_MESSAGES.PERMISSION_CONFIG.INVALID_PRIORITY.message,
-          );
-        }
+      // Validate priority if specified
+      if (data.priority) {
+        await this.validatePriority(data.priority, data.action);
       }
 
-      // Convert string IDs to ObjectIds
+      // Prepare data with ObjectId conversion
       const permissionConfigData = {
         name: data.name,
         description: data.description,
         action: data.action,
         permission: data.permission,
-        priority: data.priority || 0,
+        priority: data.priority || DEFAULT_PRIORITY,
         isActive: true,
-        roleIds: data.roleIds?.map((id) => new mongoose.Types.ObjectId(id)),
-        userIds: data.userIds?.map((id) => new mongoose.Types.ObjectId(id)),
-        departmentIds: data.departmentIds?.map(
-          (id) => new mongoose.Types.ObjectId(id),
-        ),
-        categoryIds: data.categoryIds?.map(
-          (id) => new mongoose.Types.ObjectId(id),
-        ),
-        approverRoles: data.approverRoles?.map(
-          (id) => new mongoose.Types.ObjectId(id),
-        ),
+        roleIds: this.convertToObjectIds(data.roleIds),
+        userIds: this.convertToObjectIds(data.userIds),
+        departmentIds: this.convertToObjectIds(data.departmentIds),
+        categoryIds: this.convertToObjectIds(data.categoryIds),
+        approverRoles: this.convertToObjectIds(data.approverRoles),
         maxValue: data.maxValue,
         createdBy: new mongoose.Types.ObjectId(data.createdBy),
       };
@@ -113,12 +227,14 @@ class PermissionConfigService {
       const permissionConfig = new PermissionConfig(permissionConfigData);
       await permissionConfig.save();
 
+      // Clear cache after creation
+      this.clearCache();
+
       return permissionConfig;
     } catch (error) {
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      throw new ApiError(
+      if (error instanceof ApiError) throw error;
+      
+      throw this.createError(
         ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.create,
         StatusCodes.INTERNAL_SERVER_ERROR,
         'PERMISSION_CONFIG_CREATION_FAILED',
@@ -130,20 +246,11 @@ class PermissionConfigService {
   /**
    * Get all permission configurations with pagination
    */
-  static async getAll(
-    page = 1,
-    limit = 10,
-  ): Promise<PaginatedPermissionConfigs> {
+  static async getAll(page = 1, limit = DEFAULT_PAGE_SIZE): Promise<PaginatedPermissionConfigs> {
     const skip = (page - 1) * limit;
 
     const [configs, total] = await Promise.all([
-      PermissionConfig.find()
-        .populate('roleIds', 'name')
-        .populate('userIds', 'username email')
-        .populate('departmentIds', 'name')
-        .populate('categoryIds', 'name')
-        .populate('approverRoles', 'name')
-        .populate('createdBy', 'username email')
+      this.createPopulateQuery()
         .sort({ priority: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -164,18 +271,13 @@ class PermissionConfigService {
   static async getByAction(
     action: ActionType,
     page = 1,
-    limit = 10,
+    limit = DEFAULT_PAGE_SIZE
   ): Promise<PaginatedPermissionConfigs> {
     const skip = (page - 1) * limit;
 
     const [configs, total] = await Promise.all([
-      PermissionConfig.find({ action, isActive: true })
-        .populate('roleIds', 'name')
-        .populate('userIds', 'username email')
-        .populate('departmentIds', 'name')
-        .populate('categoryIds', 'name')
-        .populate('approverRoles', 'name')
-        .populate('createdBy', 'username email')
+      this.createPopulateQuery()
+        .where({ action, isActive: true })
         .sort({ priority: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -194,16 +296,12 @@ class PermissionConfigService {
    * Get permission configuration by ID
    */
   static async getById(id: string): Promise<IPermissionConfig> {
-    const permissionConfig = await PermissionConfig.findById(id)
-      .populate('roleIds', 'name')
-      .populate('userIds', 'username email')
-      .populate('departmentIds', 'name')
-      .populate('categoryIds', 'name')
-      .populate('approverRoles', 'name')
-      .populate('createdBy', 'username email');
+    const permissionConfig = await this.createPopulateQuery()
+      .findById(id)
+      .lean();
 
     if (!permissionConfig) {
-      throw new ApiError(
+      throw this.createError(
         ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.get,
         StatusCodes.NOT_FOUND,
         ERROR_MESSAGES.PERMISSION_CONFIG.NOT_FOUND.code,
@@ -211,91 +309,53 @@ class PermissionConfigService {
       );
     }
 
-    return permissionConfig;
+    return permissionConfig as IPermissionConfig;
   }
 
   /**
    * Update permission configuration
    */
-  static async update(
-    id: string,
-    data: UpdatePermissionConfigData,
-  ): Promise<IPermissionConfig> {
+  static async update(id: string, data: UpdatePermissionConfigData): Promise<IPermissionConfig> {
     try {
-      // Check if priority is being updated and if it conflicts
-      if (data.priority !== undefined && data.priority > 0) {
-        const existingConfig = await PermissionConfig.findOne({
-          priority: data.priority,
-          isActive: true,
-          _id: { $ne: id },
-        });
-
-        if (existingConfig) {
-          throw new ApiError(
-            ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.update,
-            StatusCodes.CONFLICT,
-            ERROR_MESSAGES.PERMISSION_CONFIG.INVALID_PRIORITY.code,
-            ERROR_MESSAGES.PERMISSION_CONFIG.INVALID_PRIORITY.message,
-          );
-        }
+      // Validate priority if being updated
+      if (data.priority !== undefined) {
+        await this.validatePriority(data.priority, data.action ?? undefined, id);
       }
 
-      // Convert string IDs to ObjectIds
+      // Build update data object
       const updateData: Record<string, unknown> = {};
+      
+      // Simple field updates
+      const simpleFields = ['name', 'description', 'action', 'permission', 'priority', 'isActive', 'maxValue'];
+      simpleFields.forEach(field => {
+        if (data[field as keyof UpdatePermissionConfigData] !== undefined) {
+          updateData[field] = data[field as keyof UpdatePermissionConfigData];
+        }
+      });
 
-      if (data.name !== undefined) updateData['name'] = data.name;
-      if (data.description !== undefined)
-        updateData['description'] = data.description;
-      if (data.action !== undefined) updateData['action'] = data.action;
-      if (data.permission !== undefined)
-        updateData['permission'] = data.permission;
-      if (data.priority !== undefined) updateData['priority'] = data.priority;
-      if (data.isActive !== undefined) updateData['isActive'] = data.isActive;
-      if (data.maxValue !== undefined) updateData['maxValue'] = data.maxValue;
-
-      if (data.roleIds !== undefined) {
-        updateData['roleIds'] = data.roleIds.map(
-          (id) => new mongoose.Types.ObjectId(id),
-        );
-      }
-      if (data.userIds !== undefined) {
-        updateData['userIds'] = data.userIds.map(
-          (id) => new mongoose.Types.ObjectId(id),
-        );
-      }
-      if (data.departmentIds !== undefined) {
-        updateData['departmentIds'] = data.departmentIds.map(
-          (id) => new mongoose.Types.ObjectId(id),
-        );
-      }
-      if (data.categoryIds !== undefined) {
-        updateData['categoryIds'] = data.categoryIds.map(
-          (id) => new mongoose.Types.ObjectId(id),
-        );
-      }
-      if (data.approverRoles !== undefined) {
-        updateData['approverRoles'] = data.approverRoles.map(
-          (id) => new mongoose.Types.ObjectId(id),
-        );
-      }
+      // ID array field updates
+      const idFields = ['roleIds', 'userIds', 'departmentIds', 'categoryIds', 'approverRoles'];
+      idFields.forEach(field => {
+        if (data[field as keyof UpdatePermissionConfigData] !== undefined) {
+          updateData[field] = this.convertToObjectIds(data[field as keyof UpdatePermissionConfigData] as string[]);
+        }
+      });
 
       const permissionConfig = await PermissionConfig.findByIdAndUpdate(
         id,
         updateData,
-        {
-          new: true,
-          runValidators: true,
-        },
+        { new: true, runValidators: true }
       )
-        .populate('roleIds', 'name')
-        .populate('userIds', 'username email')
-        .populate('departmentIds', 'name')
-        .populate('categoryIds', 'name')
-        .populate('approverRoles', 'name')
-        .populate('createdBy', 'username email');
+        .populate(POPULATE_OPTIONS.roleIds)
+        .populate(POPULATE_OPTIONS.userIds)
+        .populate(POPULATE_OPTIONS.departmentIds)
+        .populate(POPULATE_OPTIONS.categoryIds)
+        .populate(POPULATE_OPTIONS.approverRoles)
+        .populate(POPULATE_OPTIONS.createdBy)
+        .lean();
 
       if (!permissionConfig) {
-        throw new ApiError(
+        throw this.createError(
           ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.update,
           StatusCodes.NOT_FOUND,
           ERROR_MESSAGES.PERMISSION_CONFIG.NOT_FOUND.code,
@@ -303,12 +363,14 @@ class PermissionConfigService {
         );
       }
 
-      return permissionConfig;
+      // Clear cache after update
+      this.clearCache();
+
+      return permissionConfig as IPermissionConfig;
     } catch (error) {
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      throw new ApiError(
+      if (error instanceof ApiError) throw error;
+      
+      throw this.createError(
         ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.update,
         StatusCodes.INTERNAL_SERVER_ERROR,
         'PERMISSION_CONFIG_UPDATE_FAILED',
@@ -324,17 +386,20 @@ class PermissionConfigService {
     const permissionConfig = await PermissionConfig.findByIdAndUpdate(
       id,
       { isActive: false },
-      { new: true },
+      { new: true }
     );
 
     if (!permissionConfig) {
-      throw new ApiError(
+      throw this.createError(
         ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.delete,
         StatusCodes.NOT_FOUND,
         ERROR_MESSAGES.PERMISSION_CONFIG.NOT_FOUND.code,
         ERROR_MESSAGES.PERMISSION_CONFIG.NOT_FOUND.message,
       );
     }
+
+    // Clear cache after deletion
+    this.clearCache();
   }
 
   /**
@@ -355,10 +420,11 @@ class PermissionConfigService {
     machineValue?: number,
   ): Promise<PermissionCheckResult> {
     try {
-      // Get user details with role and department - Fixed the populate issue
+      // Get user details with role and department
       const user = await User.findById(userId)
         .populate('role', 'name')
-        .populate('department', 'name');
+        .populate('department', 'name')
+        .lean();
 
       if (!user) {
         return {
@@ -367,12 +433,35 @@ class PermissionConfigService {
           reason: 'User not found',
         };
       }
+      // Admin bypass: allow all actions
+      // Check if user has admin role by comparing role ID
+      const adminRoleId = '685f8b9eabf7c0dbfbb3cb34'; // Admin role ID from your data
+      const userRoleId = typeof user.role === 'string' ? user.role : (user.role as any)?._id?.toString();
+      
+      if (userRoleId === adminRoleId) {
+        return {
+          allowed: true,
+          requiresApproval: false,
+          reason: 'Admin role override - full access granted',
+          matchedBy: 'admin role',
+        };
+      }
 
-      // Get all active permission configs for this action, sorted by priority (highest first)
-      const permissionConfigs = await PermissionConfig.find({
-        action,
-        isActive: true,
-      }).sort({ priority: -1, createdAt: -1 });
+      // Try to get cached configs first
+      let permissionConfigs = this.getCachedConfigs(action);
+
+      if (!permissionConfigs) {
+        // Fetch from database if not cached
+        permissionConfigs = await PermissionConfig.find({
+          action,
+          isActive: true,
+        })
+          .sort({ priority: -1, createdAt: -1 })
+          .lean();
+
+        // Cache the results
+        this.cacheConfigs(action, permissionConfigs);
+      }
 
       if (permissionConfigs.length === 0) {
         return {
@@ -384,49 +473,10 @@ class PermissionConfigService {
 
       // Check each config in priority order
       for (const config of permissionConfigs) {
-        const matchResult = this.checkConfigMatch(
-          user,
-          config,
-          categoryId,
-          machineValue,
-        );
+        const matchResult = this.checkConfigMatch(user, config, categoryId, machineValue);
 
         if (matchResult.matches) {
-          switch (config.permission) {
-            case PermissionLevel.ALLOWED:
-              return {
-                allowed: true,
-                requiresApproval: false,
-                matchedRule: config,
-                matchedBy: matchResult.matchedBy,
-                reason: `Access granted by ${matchResult.matchedBy} permission rule`,
-              };
-
-            case PermissionLevel.REQUIRES_APPROVAL: {
-              const result: PermissionCheckResult = {
-                allowed: false,
-                requiresApproval: true,
-                matchedRule: config,
-                matchedBy: matchResult.matchedBy,
-                reason: `Approval required by ${matchResult.matchedBy} permission rule`,
-              };
-
-              if (config.approverRoles && config.approverRoles.length > 0) {
-                result.approverRoles = config.approverRoles;
-              }
-
-              return result;
-            }
-
-            case PermissionLevel.DENIED:
-              return {
-                allowed: false,
-                requiresApproval: false,
-                matchedRule: config,
-                matchedBy: matchResult.matchedBy,
-                reason: `Access denied by ${matchResult.matchedBy} permission rule`,
-              };
-          }
+          return this.createPermissionResult(config, matchResult.matchedBy!);
         }
       }
 
@@ -438,12 +488,56 @@ class PermissionConfigService {
       };
     } catch (error) {
       console.error('Permission check error:', error);
-      throw new ApiError(
+      throw this.createError(
         'CHECKING_PERMISSION',
         StatusCodes.INTERNAL_SERVER_ERROR,
         'PERMISSION_CHECK_FAILED',
         'Failed to check permissions',
       );
+    }
+  }
+
+  /**
+   * Create permission result based on config and match type
+   */
+  private static createPermissionResult(
+    config: IPermissionConfig,
+    matchedBy: string
+  ): PermissionCheckResult {
+    const baseResult: PermissionCheckResult = {
+      allowed: false,
+      requiresApproval: false,
+      matchedRule: config,
+      matchedBy,
+    };
+
+    switch (config.permission) {
+      case PermissionLevel.ALLOWED:
+        return {
+          ...baseResult,
+          allowed: true,
+          reason: `Access granted by ${matchedBy} permission rule`,
+        };
+
+      case PermissionLevel.REQUIRES_APPROVAL:
+        return {
+          ...baseResult,
+          requiresApproval: true,
+          ...(config.approverRoles && { approverRoles: config.approverRoles }),
+          reason: `Approval required by ${matchedBy} permission rule`,
+        };
+
+      case PermissionLevel.DENIED:
+        return {
+          ...baseResult,
+          reason: `Access denied by ${matchedBy} permission rule`,
+        };
+
+      default:
+        return {
+          ...baseResult,
+          reason: `Unknown permission level: ${config.permission}`,
+        };
     }
   }
 
@@ -458,22 +552,30 @@ class PermissionConfigService {
     const actions = Object.values(ActionType);
     const permissions: UserPermissions = {};
 
-    for (const action of actions) {
+    // Use Promise.allSettled to handle individual permission check failures gracefully
+    const permissionPromises = actions.map(async (action) => {
       try {
-        permissions[action] = await this.checkPermission(
-          userId,
+        const result = await this.checkPermission(userId, action, categoryId, machineValue);
+        return { action, result };
+      } catch (error) {
+        return {
           action,
-          categoryId,
-          machineValue,
-        );
-      } catch {
-        permissions[action] = {
-          allowed: false,
-          requiresApproval: false,
-          reason: 'Error checking permission',
+          result: {
+            allowed: false,
+            requiresApproval: false,
+            reason: 'Error checking permission',
+          } as PermissionCheckResult,
         };
       }
-    }
+    });
+
+    const results = await Promise.allSettled(permissionPromises);
+
+    results.forEach((result) => {
+      if (result.status === 'fulfilled') {
+        permissions[result.value.action] = result.value.result;
+      }
+    });
 
     return permissions;
   }
@@ -486,47 +588,69 @@ class PermissionConfigService {
     config: IPermissionConfig,
     categoryId?: string,
     machineValue?: number,
-  ): { matches: boolean; matchedBy?: string } {
-    const conditions = [];
+  ): ConfigMatchResult {
+    const conditions: string[] = [];
 
-    // Check user-specific rules
-    if (config.userIds && config.userIds.length > 0) {
-      const userIdStrings = config.userIds.map((id) => id.toString());
-      if (userIdStrings.includes(user.id.toString())) {
+    // Helper function to safely get ID string from ObjectId or populated object
+    const getSafeIdString = (field: any): string | null => {
+      if (!field) return null;
+      if (typeof field === 'string') return field;
+      if (field._id) return field._id.toString();
+      if (field.toString) return field.toString();
+      return null;
+    };
+
+    // Check user-specific rules (highest priority)
+    if (config.userIds?.length) {
+      const userIdStrings = config.userIds.map(id => id.toString());
+      const userId = getSafeIdString(user._id);
+      if (userId && userIdStrings.includes(userId)) {
         return { matches: true, matchedBy: 'user-specific rule' };
       }
-      conditions.push('user');
+      // If user-specific rule exists but doesn't match, return false
+      return { matches: false };
     }
 
-    // Check role-specific rules - Fixed property access
-    if (config.roleIds && config.roleIds.length > 0 && user.role) {
-      const roleIdStrings = config.roleIds.map((id) => id.toString());
-      if (roleIdStrings.includes(user.role.toString())) {
-        return { matches: true, matchedBy: 'role-based rule' };
+    // Check role-specific rules
+    if (config.roleIds?.length && user.role) {
+      const roleIdStrings = config.roleIds.map(id => id.toString());
+      // Handle both ObjectId and populated object cases
+      let userRoleId: string | null = null;
+      if (typeof user.role === 'object' && user.role._id) {
+        userRoleId = user.role._id.toString();
+      } else if (user.role?.toString) {
+        userRoleId = user.role.toString();
+      }
+      
+      if (!userRoleId || !roleIdStrings.includes(userRoleId)) {
+        return { matches: false };
       }
       conditions.push('role');
     }
 
-    // Check department-specific rules - Fixed property access
-    if (
-      config.departmentIds &&
-      config.departmentIds.length > 0 &&
-      user.department
-    ) {
-      const deptIdStrings = config.departmentIds.map((id) => id.toString());
-      if (deptIdStrings.includes(user.department.toString())) {
-        return { matches: true, matchedBy: 'department-based rule' };
+    // Check department-specific rules
+    if (config.departmentIds?.length && user.department) {
+      const deptIdStrings = config.departmentIds.map(id => id.toString());
+      // Handle both ObjectId and populated object cases
+      let userDeptId: string | null = null;
+      if (typeof user.department === 'object' && user.department._id) {
+        userDeptId = user.department._id.toString();
+      } else if (user.department?.toString) {
+        userDeptId = user.department.toString();
+      }
+      
+      if (!userDeptId || !deptIdStrings.includes(userDeptId)) {
+        return { matches: false };
       }
       conditions.push('department');
     }
 
     // Check category-specific rules
-    if (config.categoryIds && config.categoryIds.length > 0) {
+    if (config.categoryIds?.length) {
       if (!categoryId) {
-        // If config has category restriction but no categoryId provided, no match
         return { matches: false };
       }
-      const categoryIdStrings = config.categoryIds.map((id) => id.toString());
+      const categoryIdStrings = config.categoryIds.map(id => id.toString());
       if (!categoryIdStrings.includes(categoryId)) {
         return { matches: false };
       }
@@ -541,22 +665,29 @@ class PermissionConfigService {
       conditions.push('value');
     }
 
-    // If we have at least one condition and all specified conditions passed, it's a match
+    // If we have conditions and all passed, it's a match
     if (conditions.length > 0) {
-      return { matches: true, matchedBy: conditions.join(' + ') + ' rule' };
+      return { matches: true, matchedBy: `${conditions.join(' + ')} rule` };
     }
 
     // If no conditions are specified, it's a global rule (matches everyone)
-    if (
-      (!config.userIds || config.userIds.length === 0) &&
-      (!config.roleIds || config.roleIds.length === 0) &&
-      (!config.departmentIds || config.departmentIds.length === 0) &&
-      (!config.categoryIds || config.categoryIds.length === 0)
-    ) {
+    if (this.isGlobalRule(config)) {
       return { matches: true, matchedBy: 'global rule' };
     }
 
     return { matches: false };
+  }
+
+  /**
+   * Check if config is a global rule (no specific conditions)
+   */
+  private static isGlobalRule(config: IPermissionConfig): boolean {
+    return (
+      !config.userIds?.length &&
+      !config.roleIds?.length &&
+      !config.departmentIds?.length &&
+      !config.categoryIds?.length
+    );
   }
 }
 

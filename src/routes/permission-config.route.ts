@@ -18,6 +18,7 @@ import PermissionConfigController from '../modules/admin/permissionConfig/permis
 
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
+import { Request, Response } from 'express';
 
 const router = Router();
 
@@ -128,6 +129,14 @@ router.delete(
 
   validateParams(idParamSchema),
   PermissionConfigController.deletePermissionConfig,
+);
+
+// Clear permission cache - Admin only
+router.post(
+  '/clear-cache',
+  verifyJWT,
+  AuthRole('admin'),
+  PermissionConfigController.clearPermissionCache,
 );
 
 export default router;
