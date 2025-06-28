@@ -16,6 +16,7 @@ import { verifyJWT } from '../middlewares/auth.middleware';
 import {
   uploadMachineImages,
   uploadMachineImagesUpdate,
+  handleFileUploadError,
 } from '../middlewares/multer.middleware';
 import { checkPermission } from '../modules/admin/permissionConfig/middlewares/permissionConfig.validation.middleware';
 import { ActionType } from '../models/permissionConfig.model';
@@ -28,6 +29,7 @@ router.post(
   verifyJWT,
   checkPermission([ActionType.CREATE_MACHINE]),
   uploadMachineImages.array('images', 5), // Allow up to 5 images with field name 'images'
+  handleFileUploadError,
   validateRequest(createMachineSchema),
   MachineController.createMachine,
 );
@@ -55,6 +57,7 @@ router.put(
   verifyJWT,
   checkPermission([ActionType.EDIT_MACHINE]),
   uploadMachineImagesUpdate.array('images', 5), // Allow up to 5 new images
+  handleFileUploadError,
   validateParams(machineIdParamSchema),
   validateRequest(updateMachineSchema),
   MachineController.updateMachine,

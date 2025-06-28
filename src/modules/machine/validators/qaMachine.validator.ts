@@ -26,6 +26,17 @@ const qaMachineEntryBaseSchema = Joi.object({
       'string.uri': 'Report link must be a valid URL',
       'any.required': 'Report link is required',
     }),
+  files: Joi.array()
+    .items(
+      Joi.string().messages({
+        'string.base': 'Each file path must be a string',
+      }),
+    )
+    .max(10)
+    .optional()
+    .messages({
+      'array.max': 'Cannot upload more than 10 files',
+    }),
 });
 
 // Create QA Machine entry schema
@@ -39,7 +50,22 @@ export const updateQAMachineEntrySchema = Joi.object({
     .messages({
       'string.uri': 'Report link must be a valid URL',
     }),
-});
+  files: Joi.array()
+    .items(
+      Joi.string().messages({
+        'string.base': 'Each file path must be a string',
+      }),
+    )
+    .max(10)
+    .optional()
+    .messages({
+      'array.max': 'Cannot upload more than 10 files',
+    }),
+})
+  .min(1)
+  .messages({
+    'object.min': 'At least one field must be provided for update',
+  });
 
 // QA Machine entry ID parameter schema
 export const qaMachineEntryIdParamSchema = Joi.object({

@@ -7,6 +7,7 @@ export interface IQAMachineEntry extends Document {
   machine_id: mongoose.Types.ObjectId;
   added_by: mongoose.Types.ObjectId;
   report_link: string;
+  files: string[]; // Array of file URLs/paths for uploaded documents
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -31,6 +32,12 @@ const qaMachineEntrySchema = new Schema<IQAMachineEntry>(
       required: true,
       trim: true,
     },
+    files: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
   },
   {
     timestamps: true,

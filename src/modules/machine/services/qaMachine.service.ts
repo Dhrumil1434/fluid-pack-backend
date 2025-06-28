@@ -9,10 +9,12 @@ export interface CreateQAMachineEntryData {
   machine_id: string;
   added_by: string;
   report_link: string;
+  files?: string[];
 }
 
 export interface UpdateQAMachineEntryData {
   report_link?: string;
+  files?: string[];
 }
 
 export interface QAMachineFilters {
@@ -59,6 +61,7 @@ class QAMachineService {
         machine_id: data.machine_id,
         added_by: data.added_by,
         report_link: data.report_link,
+        files: data.files || [],
       });
 
       await qaEntry.save();

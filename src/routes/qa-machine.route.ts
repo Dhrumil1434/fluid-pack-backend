@@ -12,6 +12,11 @@ import { validateRequest } from '../middlewares/validateRequest';
 import QAMachineController from '../modules/machine/controllers/qaMachine.controller';
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
+import {
+  uploadQAMachineFiles,
+  uploadQAMachineFilesUpdate,
+  handleFileUploadError,
+} from '../middlewares/multer.middleware';
 
 const router = Router();
 
@@ -26,6 +31,8 @@ router.use(verifyJWT);
 router.post(
   '/',
   AuthRole('qa'),
+  uploadQAMachineFiles.array('files', 10), // Allow up to 10 files with field name 'files'
+  handleFileUploadError,
   validateRequest(createQAMachineEntrySchema),
   QAMachineController.createQAMachineEntry,
 );
@@ -50,6 +57,8 @@ router.get(
 router.put(
   '/:id',
   AuthRole('qa'),
+  uploadQAMachineFilesUpdate.array('files', 10), // Allow up to 10 new files
+  handleFileUploadError,
   validateRequest(qaMachineEntryIdParamSchema),
   validateRequest(updateQAMachineEntrySchema),
   QAMachineController.updateQAMachineEntry,

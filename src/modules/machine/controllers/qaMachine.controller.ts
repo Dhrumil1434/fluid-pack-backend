@@ -16,9 +16,15 @@ import QAMachineService, {
   QAMachineFilters,
 } from '../services/qaMachine.service';
 import { ApiResponse } from '../../../utils/ApiResponse';
+import { ApiError } from '../../../utils/ApiError';
 import { asyncHandler } from '../../../utils/asyncHandler';
 import { verifyJWT } from '../../../middlewares/auth.middleware';
 import { AuthRole } from '../../../middlewares/auth-role.middleware';
+import { 
+  moveQAFilesToEntryDirectory, 
+  deleteQAFiles, 
+  cleanupQAEntryDirectory 
+} from '../../../middlewares/multer.middleware';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -39,28 +45,81 @@ class QAMachineController {
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const { error, value } = createQAMachineEntrySchema.validate(req.body);
       if (error) {
-        throw new Error(
-          `Validation error: ${error.details?.[0]?.message || 'Invalid data'}`,
+        // Clean up uploaded files if validation fails
+        if (req.files && Array.isArray(req.files)) {
+          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          deleteQAFiles(filePaths);
+        }
+        throw new ApiError(
+          'CREATE_QA_MACHINE_ENTRY_VALIDATION',
+          StatusCodes.BAD_REQUEST,
+          'VALIDATION_ERROR',
+          error.details?.[0]?.message || 'Invalid data',
         );
       }
 
       if (!req.user) {
-        throw new Error('User authentication required');
+        // Clean up uploaded files if authentication fails
+        if (req.files && Array.isArray(req.files)) {
+          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          deleteQAFiles(filePaths);
+        }
+        throw new ApiError(
+          'CREATE_QA_MACHINE_ENTRY',
+          StatusCodes.UNAUTHORIZED,
+          'USER_NOT_AUTHENTICATED',
+          'User authentication required',
+        );
       }
 
-      const createData: CreateQAMachineEntryData = {
-        ...value,
-        added_by: req.user._id,
-      };
+      let filePaths: string[] = [];
+      
+      try {
+        // Move uploaded files to QA entry directory if files were uploaded
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+          // Create a temporary ID for the QA entry to organize files
+          const tempId = new Date().getTime().toString();
+          filePaths = await moveQAFilesToEntryDirectory(req.files as Express.Multer.File[], tempId);
+        }
 
-      const qaEntry = await QAMachineService.create(createData);
+        const createData: CreateQAMachineEntryData = {
+          ...value,
+          added_by: req.user._id,
+          files: filePaths,
+        };
 
-      const response = new ApiResponse(
-        StatusCodes.CREATED,
-        qaEntry,
-        'QA machine entry created successfully',
-      );
-      res.status(response.statusCode).json(response);
+        const qaEntry = await QAMachineService.create(createData);
+
+        // Move files to the actual QA entry directory after successful creation
+        if (filePaths.length > 0) {
+          const tempId = new Date().getTime().toString();
+          const actualFilePaths = await moveQAFilesToEntryDirectory(
+            req.files as Express.Multer.File[], 
+            (qaEntry as any)._id.toString()
+          );
+          
+          // Update the QA entry with correct file paths
+          await QAMachineService.update((qaEntry as any)._id.toString(), {
+            files: actualFilePaths
+          });
+          
+          // Clean up temp directory
+          cleanupQAEntryDirectory(tempId);
+        }
+
+        const response = new ApiResponse(
+          StatusCodes.CREATED,
+          qaEntry,
+          'QA machine entry created successfully',
+        );
+        res.status(response.statusCode).json(response);
+      } catch (error) {
+        // Clean up uploaded files if creation fails
+        if (filePaths.length > 0) {
+          deleteQAFiles(filePaths);
+        }
+        throw error;
+      }
     },
   );
 
@@ -127,31 +186,68 @@ class QAMachineController {
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const paramsValidation = qaMachineEntryIdParamSchema.validate(req.params);
       if (paramsValidation.error) {
-        throw new Error(
-          `Validation error: ${paramsValidation.error.details?.[0]?.message || 'Invalid ID'}`,
+        // Clean up uploaded files if validation fails
+        if (req.files && Array.isArray(req.files)) {
+          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          deleteQAFiles(filePaths);
+        }
+        throw new ApiError(
+          'UPDATE_QA_MACHINE_ENTRY_VALIDATION',
+          StatusCodes.BAD_REQUEST,
+          'VALIDATION_ERROR',
+          paramsValidation.error.details?.[0]?.message || 'Invalid ID',
         );
       }
 
       const bodyValidation = updateQAMachineEntrySchema.validate(req.body);
       if (bodyValidation.error) {
-        throw new Error(
-          `Validation error: ${bodyValidation.error.details?.[0]?.message || 'Invalid data'}`,
+        // Clean up uploaded files if validation fails
+        if (req.files && Array.isArray(req.files)) {
+          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          deleteQAFiles(filePaths);
+        }
+        throw new ApiError(
+          'UPDATE_QA_MACHINE_ENTRY_VALIDATION',
+          StatusCodes.BAD_REQUEST,
+          'VALIDATION_ERROR',
+          bodyValidation.error.details?.[0]?.message || 'Invalid data',
         );
       }
 
-      const updateData: UpdateQAMachineEntryData = bodyValidation.value;
+      let filePaths: string[] = [];
+      
+      try {
+        // Move uploaded files to QA entry directory if files were uploaded
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+          filePaths = await moveQAFilesToEntryDirectory(
+            req.files as Express.Multer.File[], 
+            paramsValidation.value.id
+          );
+        }
 
-      const qaEntry = await QAMachineService.update(
-        paramsValidation.value.id,
-        updateData,
-      );
+        const updateData: UpdateQAMachineEntryData = {
+          ...bodyValidation.value,
+          files: filePaths.length > 0 ? filePaths : undefined,
+        };
 
-      const response = new ApiResponse(
-        StatusCodes.OK,
-        qaEntry,
-        'QA machine entry updated successfully',
-      );
-      res.status(response.statusCode).json(response);
+        const qaEntry = await QAMachineService.update(
+          paramsValidation.value.id,
+          updateData,
+        );
+
+        const response = new ApiResponse(
+          StatusCodes.OK,
+          qaEntry,
+          'QA machine entry updated successfully',
+        );
+        res.status(response.statusCode).json(response);
+      } catch (error) {
+        // Clean up uploaded files if update fails
+        if (filePaths.length > 0) {
+          deleteQAFiles(filePaths);
+        }
+        throw error;
+      }
     },
   );
 

@@ -30,8 +30,8 @@ export const createMachineSchema = Joi.object({
 
   images: Joi.array()
     .items(
-      Joi.string().uri().messages({
-        'string.uri': 'Each image must be a valid URL',
+      Joi.string().messages({
+        'string.base': 'Each image path must be a string',
       }),
     )
     .max(10)
@@ -71,8 +71,8 @@ export const updateMachineSchema = Joi.object({
 
   images: Joi.array()
     .items(
-      Joi.string().uri().messages({
-        'string.uri': 'Each image must be a valid URL',
+      Joi.string().messages({
+        'string.base': 'Each image path must be a string',
       }),
     )
     .max(10)
