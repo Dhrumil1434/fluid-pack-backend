@@ -11,6 +11,7 @@ import machineRouter from './routes/machine.route';
 import machineApprovalRouter from './routes/machine-approval.route';
 import qaMachineRouter from './routes/qa-machine.route';
 import compression from 'compression';
+import rateLimit from 'express-rate-limit';
 class App {
   public app: Application;
 
@@ -23,6 +24,14 @@ class App {
 
   private setMiddlewares(): void {
     this.app.use(compression());
+    this.app.use(
+      rateLimit({
+        windowMs: 10 * 60 * 1000, // 15 mins
+        max: 30, // Limit each IP to 100 requests per windowMs
+        message:
+          'Too many requests from this IP, please try again after 15 minutes.',
+      }),
+    );
     this.app.use(express.json({ limit: '5mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '5mb' }));
     this.app.use(
