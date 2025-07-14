@@ -7,6 +7,7 @@
     "forceConsistentCasingInFileNames": true /* Ensures consistent file name casing across the project. */,
     "outDir": "./dist",
     /* Type Checking */
+    "types": ["node"],
     "strict": true /* Enables all strict type-checking options. */,
     "noImplicitAny": true /* Raises errors for variables with implicit 'any' type. */,
     "strictNullChecks": true /* Ensures variables cannot be null or undefined unless specified. */,
