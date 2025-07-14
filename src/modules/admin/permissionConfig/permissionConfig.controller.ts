@@ -600,9 +600,8 @@ class PermissionConfigController {
       const { categoryIds } = req.body as CategoryValidationBody;
 
       try {
-        const validationResult = await ValidationService.validateCategoryIds(
-          categoryIds,
-        );
+        const validationResult =
+          await ValidationService.validateCategoryIds(categoryIds);
 
         const response = new ApiResponse(
           StatusCodes.OK,
@@ -641,7 +640,7 @@ class PermissionConfigController {
         );
 
         res.status(StatusCodes.OK).json(response);
-      } catch (error) {
+      } catch {
         throw new ApiError(
           'CLEAR_PERMISSION_CACHE',
           StatusCodes.INTERNAL_SERVER_ERROR,

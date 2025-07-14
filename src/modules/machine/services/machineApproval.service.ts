@@ -123,10 +123,10 @@ class MachineApprovalService {
       const query: Record<string, unknown> = {};
 
       // Apply filters
-      if (filters.status) query.status = filters.status;
-      if (filters.requestedBy) query.requestedBy = filters.requestedBy;
-      if (filters.approvalType) query.approvalType = filters.approvalType;
-      if (filters.machineId) query.machineId = filters.machineId;
+      if (filters.status) query['status'] = filters.status;
+      if (filters.requestedBy) query['requestedBy'] = filters.requestedBy;
+      if (filters.approvalType) query['approvalType'] = filters.approvalType;
+      if (filters.machineId) query['machineId'] = filters.machineId;
 
       const [approvals, total] = await Promise.all([
         MachineApproval.find(query)
