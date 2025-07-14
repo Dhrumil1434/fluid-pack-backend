@@ -96,4 +96,4 @@ router.post(
   QAMachineController.validateQAMachineEntryIds,
 );
 
-export default router; 
+export default router;

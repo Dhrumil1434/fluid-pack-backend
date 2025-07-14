@@ -10,7 +10,7 @@ import categoryRouter from './routes/category.route';
 import machineRouter from './routes/machine.route';
 import machineApprovalRouter from './routes/machine-approval.route';
 import qaMachineRouter from './routes/qa-machine.route';
-
+import compression from 'compression';
 class App {
   public app: Application;
 
@@ -18,11 +18,11 @@ class App {
     this.app = express();
     this.setMiddlewares();
     this.setRoutes();
-
     this.setErrorHandler();
   }
 
   private setMiddlewares(): void {
+    this.app.use(compression());
     this.app.use(express.json({ limit: '5mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '5mb' }));
     this.app.use(
