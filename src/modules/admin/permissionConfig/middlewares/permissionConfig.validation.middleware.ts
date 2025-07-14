@@ -5,7 +5,11 @@ import PermissionConfigService from '../services/permissionConfig.service';
 import { ActionType } from '../../../../models/permissionConfig.model';
 
 export const checkPermission = (actions: ActionType[]) => {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  return async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       // User must be authenticated and attached to req.user
       const user = (req as any).user;
@@ -20,7 +24,8 @@ export const checkPermission = (actions: ActionType[]) => {
 
       // Admin bypass: allow all actions
       // Handle both string role and populated role object
-      const userRole = typeof user.role === 'string' ? user.role : user.role?.name;
+      const userRole =
+        typeof user.role === 'string' ? user.role : user.role?.name;
       if (userRole === 'admin') {
         (req as any).permissionInfo = {
           actions,
@@ -31,8 +36,12 @@ export const checkPermission = (actions: ActionType[]) => {
       }
 
       // Extract context (categoryId, machineValue) from body or query
-      const categoryId = req.body?.['categoryId'] || req.body?.['category_id'] || req.query?.['categoryId'];
-      const machineValue = req.body?.['machineValue'] || req.query?.['machineValue'];
+      const categoryId =
+        req.body?.['categoryId'] ||
+        req.body?.['category_id'] ||
+        req.query?.['categoryId'];
+      const machineValue =
+        req.body?.['machineValue'] || req.query?.['machineValue'];
 
       // Check all actions
       for (const action of actions) {

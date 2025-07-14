@@ -19,13 +19,10 @@ const qaMachineEntryBaseSchema = Joi.object({
       'any.invalid': 'Invalid machine ID format',
       'any.required': 'Machine ID is required',
     }),
-  report_link: Joi.string()
-    .uri()
-    .required()
-    .messages({
-      'string.uri': 'Report link must be a valid URL',
-      'any.required': 'Report link is required',
-    }),
+  report_link: Joi.string().uri().required().messages({
+    'string.uri': 'Report link must be a valid URL',
+    'any.required': 'Report link is required',
+  }),
   files: Joi.array()
     .items(
       Joi.string().messages({
@@ -44,12 +41,9 @@ export const createQAMachineEntrySchema = qaMachineEntryBaseSchema;
 
 // Update QA Machine entry schema
 export const updateQAMachineEntrySchema = Joi.object({
-  report_link: Joi.string()
-    .uri()
-    .optional()
-    .messages({
-      'string.uri': 'Report link must be a valid URL',
-    }),
+  report_link: Joi.string().uri().optional().messages({
+    'string.uri': 'Report link must be a valid URL',
+  }),
   files: Joi.array()
     .items(
       Joi.string().messages({
@@ -163,4 +157,4 @@ export const validateQAMachineEntryIdsSchema = Joi.object({
       'array.max': 'Maximum 100 QA entry IDs allowed',
       'any.required': 'QA entry IDs array is required',
     }),
-}); 
+});

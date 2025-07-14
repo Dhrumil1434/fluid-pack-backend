@@ -20,10 +20,10 @@ import { ApiError } from '../../../utils/ApiError';
 import { asyncHandler } from '../../../utils/asyncHandler';
 import { verifyJWT } from '../../../middlewares/auth.middleware';
 import { AuthRole } from '../../../middlewares/auth-role.middleware';
-import { 
-  moveQAFilesToEntryDirectory, 
-  deleteQAFiles, 
-  cleanupQAEntryDirectory 
+import {
+  moveQAFilesToEntryDirectory,
+  deleteQAFiles,
+  cleanupQAEntryDirectory,
 } from '../../../middlewares/multer.middleware';
 
 export interface AuthenticatedRequest extends Request {
@@ -47,7 +47,9 @@ class QAMachineController {
       if (error) {
         // Clean up uploaded files if validation fails
         if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          const filePaths = (req.files as Express.Multer.File[]).map(
+            (file) => file.path,
+          );
           deleteQAFiles(filePaths);
         }
         throw new ApiError(
@@ -61,7 +63,9 @@ class QAMachineController {
       if (!req.user) {
         // Clean up uploaded files if authentication fails
         if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          const filePaths = (req.files as Express.Multer.File[]).map(
+            (file) => file.path,
+          );
           deleteQAFiles(filePaths);
         }
         throw new ApiError(
@@ -73,13 +77,16 @@ class QAMachineController {
       }
 
       let filePaths: string[] = [];
-      
+
       try {
         // Move uploaded files to QA entry directory if files were uploaded
         if (req.files && Array.isArray(req.files) && req.files.length > 0) {
           // Create a temporary ID for the QA entry to organize files
           const tempId = new Date().getTime().toString();
-          filePaths = await moveQAFilesToEntryDirectory(req.files as Express.Multer.File[], tempId);
+          filePaths = await moveQAFilesToEntryDirectory(
+            req.files as Express.Multer.File[],
+            tempId,
+          );
         }
 
         const createData: CreateQAMachineEntryData = {
@@ -94,15 +101,15 @@ class QAMachineController {
         if (filePaths.length > 0) {
           const tempId = new Date().getTime().toString();
           const actualFilePaths = await moveQAFilesToEntryDirectory(
-            req.files as Express.Multer.File[], 
-            (qaEntry as any)._id.toString()
+            req.files as Express.Multer.File[],
+            (qaEntry as any)._id.toString(),
           );
-          
+
           // Update the QA entry with correct file paths
           await QAMachineService.update((qaEntry as any)._id.toString(), {
-            files: actualFilePaths
+            files: actualFilePaths,
           });
-          
+
           // Clean up temp directory
           cleanupQAEntryDirectory(tempId);
         }
@@ -129,7 +136,9 @@ class QAMachineController {
    */
   static getAllQAMachineEntries = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const { error, value } = qaMachinePaginationQuerySchema.validate(req.query);
+      const { error, value } = qaMachinePaginationQuerySchema.validate(
+        req.query,
+      );
       if (error) {
         throw new Error(
           `Validation error: ${error.details?.[0]?.message || 'Invalid query parameters'}`,
@@ -188,7 +197,9 @@ class QAMachineController {
       if (paramsValidation.error) {
         // Clean up uploaded files if validation fails
         if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          const filePaths = (req.files as Express.Multer.File[]).map(
+            (file) => file.path,
+          );
           deleteQAFiles(filePaths);
         }
         throw new ApiError(
@@ -203,7 +214,9 @@ class QAMachineController {
       if (bodyValidation.error) {
         // Clean up uploaded files if validation fails
         if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          const filePaths = (req.files as Express.Multer.File[]).map(
+            (file) => file.path,
+          );
           deleteQAFiles(filePaths);
         }
         throw new ApiError(
@@ -215,13 +228,13 @@ class QAMachineController {
       }
 
       let filePaths: string[] = [];
-      
+
       try {
         // Move uploaded files to QA entry directory if files were uploaded
         if (req.files && Array.isArray(req.files) && req.files.length > 0) {
           filePaths = await moveQAFilesToEntryDirectory(
-            req.files as Express.Multer.File[], 
-            paramsValidation.value.id
+            req.files as Express.Multer.File[],
+            paramsValidation.value.id,
           );
         }
 
@@ -343,7 +356,9 @@ class QAMachineController {
    */
   static validateQAMachineEntryIds = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const { error, value } = validateQAMachineEntryIdsSchema.validate(req.body);
+      const { error, value } = validateQAMachineEntryIdsSchema.validate(
+        req.body,
+      );
       if (error) {
         throw new Error(
           `Validation error: ${error.details?.[0]?.message || 'Invalid data'}`,
@@ -367,4 +382,4 @@ class QAMachineController {
   );
 }
 
-export default QAMachineController; 
+export default QAMachineController;

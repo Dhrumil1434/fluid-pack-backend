@@ -9,7 +9,10 @@ import MachineApprovalService, {
 import { asyncHandler } from '../../../utils/asyncHandler';
 import { ApiResponse } from '../../../utils/ApiResponse';
 import { ApiError } from '../../../utils/ApiError';
-import { ApprovalType, ApprovalStatus } from '../../../models/machineApproval.model';
+import {
+  ApprovalType,
+  ApprovalStatus,
+} from '../../../models/machineApproval.model';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -37,7 +40,13 @@ class MachineApprovalController {
         );
       }
 
-      const { machineId, approvalType, proposedChanges, originalData, requestNotes } = req.body;
+      const {
+        machineId,
+        approvalType,
+        proposedChanges,
+        originalData,
+        requestNotes,
+      } = req.body;
 
       // Validate required fields
       if (!machineId || !approvalType || !proposedChanges) {
@@ -68,7 +77,8 @@ class MachineApprovalController {
         requestNotes,
       };
 
-      const approvalRequest = await MachineApprovalService.createApprovalRequest(createData);
+      const approvalRequest =
+        await MachineApprovalService.createApprovalRequest(createData);
 
       const response = new ApiResponse(
         StatusCodes.CREATED,
@@ -89,12 +99,20 @@ class MachineApprovalController {
       const limit = parseInt(req.query['limit'] as string) || 10;
 
       const filters: ApprovalFilters = {};
-      if (req.query['status']) filters.status = req.query['status'] as ApprovalStatus;
-      if (req.query['requestedBy']) filters.requestedBy = req.query['requestedBy'] as string;
-      if (req.query['approvalType']) filters.approvalType = req.query['approvalType'] as ApprovalType;
-      if (req.query['machineId']) filters.machineId = req.query['machineId'] as string;
+      if (req.query['status'])
+        filters.status = req.query['status'] as ApprovalStatus;
+      if (req.query['requestedBy'])
+        filters.requestedBy = req.query['requestedBy'] as string;
+      if (req.query['approvalType'])
+        filters.approvalType = req.query['approvalType'] as ApprovalType;
+      if (req.query['machineId'])
+        filters.machineId = req.query['machineId'] as string;
 
-      const result = await MachineApprovalService.getApprovalRequests(page, limit, filters);
+      const result = await MachineApprovalService.getApprovalRequests(
+        page,
+        limit,
+        filters,
+      );
 
       const response = new ApiResponse(
         StatusCodes.OK,
@@ -185,7 +203,8 @@ class MachineApprovalController {
         rejectionReason,
       };
 
-      const updatedApproval = await MachineApprovalService.processApprovalDecision(decisionData);
+      const updatedApproval =
+        await MachineApprovalService.processApprovalDecision(decisionData);
 
       const response = new ApiResponse(
         StatusCodes.OK,
@@ -238,7 +257,10 @@ class MachineApprovalController {
       const page = parseInt(req.query['page'] as string) || 1;
       const limit = parseInt(req.query['limit'] as string) || 10;
 
-      const result = await MachineApprovalService.getPendingApprovals(page, limit);
+      const result = await MachineApprovalService.getPendingApprovals(
+        page,
+        limit,
+      );
 
       const response = new ApiResponse(
         StatusCodes.OK,
@@ -274,10 +296,8 @@ class MachineApprovalController {
         );
       }
 
-      const updatedApproval = await MachineApprovalService.cancelApprovalRequest(
-        id,
-        req.user._id,
-      );
+      const updatedApproval =
+        await MachineApprovalService.cancelApprovalRequest(id, req.user._id);
 
       const response = new ApiResponse(
         StatusCodes.OK,
@@ -289,4 +309,4 @@ class MachineApprovalController {
   );
 }
 
-export default MachineApprovalController; 
+export default MachineApprovalController;

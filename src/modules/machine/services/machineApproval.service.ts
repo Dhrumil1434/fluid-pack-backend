@@ -1,6 +1,11 @@
 import mongoose from 'mongoose';
 import { StatusCodes } from 'http-status-codes';
-import { MachineApproval, IMachineApproval, ApprovalType, ApprovalStatus } from '../../../models/machineApproval.model';
+import {
+  MachineApproval,
+  IMachineApproval,
+  ApprovalType,
+  ApprovalStatus,
+} from '../../../models/machineApproval.model';
 import { Machine, IMachine } from '../../../models/machine.model';
 import { User, IUser } from '../../../models/user.model';
 import { ApiError } from '../../../utils/ApiError';
@@ -40,7 +45,9 @@ class MachineApprovalService {
   /**
    * Create an approval request
    */
-  static async createApprovalRequest(data: CreateApprovalRequestData): Promise<IMachineApproval> {
+  static async createApprovalRequest(
+    data: CreateApprovalRequestData,
+  ): Promise<IMachineApproval> {
     try {
       // Verify machine exists
       const machine = await Machine.findById(data.machineId);
@@ -202,7 +209,9 @@ class MachineApprovalService {
   /**
    * Process approval decision (approve/reject)
    */
-  static async processApprovalDecision(data: ApprovalDecisionData): Promise<IMachineApproval> {
+  static async processApprovalDecision(
+    data: ApprovalDecisionData,
+  ): Promise<IMachineApproval> {
     try {
       const approval = await MachineApproval.findById(data.approvalId);
       if (!approval) {
@@ -236,7 +245,9 @@ class MachineApprovalService {
 
       // Update approval status
       const updateData: any = {
-        status: data.approved ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED,
+        status: data.approved
+          ? ApprovalStatus.APPROVED
+          : ApprovalStatus.REJECTED,
         approverNotes: data.approverNotes,
       };
 
@@ -289,7 +300,9 @@ class MachineApprovalService {
     page: number = 1,
     limit: number = 10,
   ): Promise<ApprovalListResult> {
-    return this.getApprovalRequests(page, limit, { status: ApprovalStatus.PENDING });
+    return this.getApprovalRequests(page, limit, {
+      status: ApprovalStatus.PENDING,
+    });
   }
 
   /**
@@ -350,4 +363,4 @@ class MachineApprovalService {
   }
 }
 
-export default MachineApprovalService; 
+export default MachineApprovalService;

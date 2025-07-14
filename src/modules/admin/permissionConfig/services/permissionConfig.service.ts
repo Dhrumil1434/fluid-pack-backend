@@ -113,7 +113,9 @@ class PermissionConfigService {
   /**
    * Get cached permission configs for an action
    */
-  private static getCachedConfigs(action: ActionType): IPermissionConfig[] | null {
+  private static getCachedConfigs(
+    action: ActionType,
+  ): IPermissionConfig[] | null {
     if (!this.isCacheValid()) {
       this.clearCache();
       return null;
@@ -124,7 +126,10 @@ class PermissionConfigService {
   /**
    * Cache permission configs for an action
    */
-  private static cacheConfigs(action: ActionType, configs: IPermissionConfig[]): void {
+  private static cacheConfigs(
+    action: ActionType,
+    configs: IPermissionConfig[],
+  ): void {
     this.permissionCache.set(action, configs);
     this.lastCacheUpdate = Date.now();
   }
@@ -132,9 +137,11 @@ class PermissionConfigService {
   /**
    * Convert string IDs to ObjectIds safely
    */
-  private static convertToObjectIds(ids?: string[]): mongoose.Types.ObjectId[] | undefined {
+  private static convertToObjectIds(
+    ids?: string[],
+  ): mongoose.Types.ObjectId[] | undefined {
     if (!ids || ids.length === 0) return undefined;
-    return ids.map(id => new mongoose.Types.ObjectId(id));
+    return ids.map((id) => new mongoose.Types.ObjectId(id));
   }
 
   /**
@@ -157,7 +164,7 @@ class PermissionConfigService {
     action: string,
     statusCode: number,
     errorCode: string,
-    message: string
+    message: string,
   ): ApiError {
     return new ApiError(action, statusCode, errorCode, message);
   }
@@ -168,7 +175,7 @@ class PermissionConfigService {
   private static async validatePriority(
     priority: number,
     action?: ActionType,
-    excludeId?: string
+    excludeId?: string,
   ): Promise<void> {
     if (priority <= 0) return;
 
@@ -200,7 +207,9 @@ class PermissionConfigService {
   /**
    * Create a new permission configuration
    */
-  static async create(data: CreatePermissionConfigData): Promise<IPermissionConfig> {
+  static async create(
+    data: CreatePermissionConfigData,
+  ): Promise<IPermissionConfig> {
     try {
       // Validate priority if specified
       if (data.priority) {
@@ -233,7 +242,7 @@ class PermissionConfigService {
       return permissionConfig;
     } catch (error) {
       if (error instanceof ApiError) throw error;
-      
+
       throw this.createError(
         ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.create,
         StatusCodes.INTERNAL_SERVER_ERROR,
@@ -246,7 +255,10 @@ class PermissionConfigService {
   /**
    * Get all permission configurations with pagination
    */
-  static async getAll(page = 1, limit = DEFAULT_PAGE_SIZE): Promise<PaginatedPermissionConfigs> {
+  static async getAll(
+    page = 1,
+    limit = DEFAULT_PAGE_SIZE,
+  ): Promise<PaginatedPermissionConfigs> {
     const skip = (page - 1) * limit;
 
     const [configs, total] = await Promise.all([
@@ -271,7 +283,7 @@ class PermissionConfigService {
   static async getByAction(
     action: ActionType,
     page = 1,
-    limit = DEFAULT_PAGE_SIZE
+    limit = DEFAULT_PAGE_SIZE,
   ): Promise<PaginatedPermissionConfigs> {
     const skip = (page - 1) * limit;
 
@@ -315,36 +327,59 @@ class PermissionConfigService {
   /**
    * Update permission configuration
    */
-  static async update(id: string, data: UpdatePermissionConfigData): Promise<IPermissionConfig> {
+  static async update(
+    id: string,
+    data: UpdatePermissionConfigData,
+  ): Promise<IPermissionConfig> {
     try {
       // Validate priority if being updated
       if (data.priority !== undefined) {
-        await this.validatePriority(data.priority, data.action ?? undefined, id);
+        await this.validatePriority(
+          data.priority,
+          data.action ?? undefined,
+          id,
+        );
       }
 
       // Build update data object
       const updateData: Record<string, unknown> = {};
-      
+
       // Simple field updates
-      const simpleFields = ['name', 'description', 'action', 'permission', 'priority', 'isActive', 'maxValue'];
-      simpleFields.forEach(field => {
+      const simpleFields = [
+        'name',
+        'description',
+        'action',
+        'permission',
+        'priority',
+        'isActive',
+        'maxValue',
+      ];
+      simpleFields.forEach((field) => {
         if (data[field as keyof UpdatePermissionConfigData] !== undefined) {
           updateData[field] = data[field as keyof UpdatePermissionConfigData];
         }
       });
 
       // ID array field updates
-      const idFields = ['roleIds', 'userIds', 'departmentIds', 'categoryIds', 'approverRoles'];
-      idFields.forEach(field => {
+      const idFields = [
+        'roleIds',
+        'userIds',
+        'departmentIds',
+        'categoryIds',
+        'approverRoles',
+      ];
+      idFields.forEach((field) => {
         if (data[field as keyof UpdatePermissionConfigData] !== undefined) {
-          updateData[field] = this.convertToObjectIds(data[field as keyof UpdatePermissionConfigData] as string[]);
+          updateData[field] = this.convertToObjectIds(
+            data[field as keyof UpdatePermissionConfigData] as string[],
+          );
         }
       });
 
       const permissionConfig = await PermissionConfig.findByIdAndUpdate(
         id,
         updateData,
-        { new: true, runValidators: true }
+        { new: true, runValidators: true },
       )
         .populate(POPULATE_OPTIONS.roleIds)
         .populate(POPULATE_OPTIONS.userIds)
@@ -369,7 +404,7 @@ class PermissionConfigService {
       return permissionConfig as IPermissionConfig;
     } catch (error) {
       if (error instanceof ApiError) throw error;
-      
+
       throw this.createError(
         ERROR_MESSAGES.PERMISSION_CONFIG.ACTION.update,
         StatusCodes.INTERNAL_SERVER_ERROR,
@@ -386,7 +421,7 @@ class PermissionConfigService {
     const permissionConfig = await PermissionConfig.findByIdAndUpdate(
       id,
       { isActive: false },
-      { new: true }
+      { new: true },
     );
 
     if (!permissionConfig) {
@@ -436,8 +471,11 @@ class PermissionConfigService {
       // Admin bypass: allow all actions
       // Check if user has admin role by comparing role ID
       const adminRoleId = '685f8b9eabf7c0dbfbb3cb34'; // Admin role ID from your data
-      const userRoleId = typeof user.role === 'string' ? user.role : (user.role as any)?._id?.toString();
-      
+      const userRoleId =
+        typeof user.role === 'string'
+          ? user.role
+          : (user.role as any)?._id?.toString();
+
       if (userRoleId === adminRoleId) {
         return {
           allowed: true,
@@ -473,7 +511,12 @@ class PermissionConfigService {
 
       // Check each config in priority order
       for (const config of permissionConfigs) {
-        const matchResult = this.checkConfigMatch(user, config, categoryId, machineValue);
+        const matchResult = this.checkConfigMatch(
+          user,
+          config,
+          categoryId,
+          machineValue,
+        );
 
         if (matchResult.matches) {
           return this.createPermissionResult(config, matchResult.matchedBy!);
@@ -502,7 +545,7 @@ class PermissionConfigService {
    */
   private static createPermissionResult(
     config: IPermissionConfig,
-    matchedBy: string
+    matchedBy: string,
   ): PermissionCheckResult {
     const baseResult: PermissionCheckResult = {
       allowed: false,
@@ -555,7 +598,12 @@ class PermissionConfigService {
     // Use Promise.allSettled to handle individual permission check failures gracefully
     const permissionPromises = actions.map(async (action) => {
       try {
-        const result = await this.checkPermission(userId, action, categoryId, machineValue);
+        const result = await this.checkPermission(
+          userId,
+          action,
+          categoryId,
+          machineValue,
+        );
         return { action, result };
       } catch (error) {
         return {
@@ -602,7 +650,7 @@ class PermissionConfigService {
 
     // Check user-specific rules (highest priority)
     if (config.userIds?.length) {
-      const userIdStrings = config.userIds.map(id => id.toString());
+      const userIdStrings = config.userIds.map((id) => id.toString());
       const userId = getSafeIdString(user._id);
       if (userId && userIdStrings.includes(userId)) {
         return { matches: true, matchedBy: 'user-specific rule' };
@@ -613,7 +661,7 @@ class PermissionConfigService {
 
     // Check role-specific rules
     if (config.roleIds?.length && user.role) {
-      const roleIdStrings = config.roleIds.map(id => id.toString());
+      const roleIdStrings = config.roleIds.map((id) => id.toString());
       // Handle both ObjectId and populated object cases
       let userRoleId: string | null = null;
       if (typeof user.role === 'object' && user.role._id) {
@@ -621,7 +669,7 @@ class PermissionConfigService {
       } else if (user.role?.toString) {
         userRoleId = user.role.toString();
       }
-      
+
       if (!userRoleId || !roleIdStrings.includes(userRoleId)) {
         return { matches: false };
       }
@@ -630,7 +678,7 @@ class PermissionConfigService {
 
     // Check department-specific rules
     if (config.departmentIds?.length && user.department) {
-      const deptIdStrings = config.departmentIds.map(id => id.toString());
+      const deptIdStrings = config.departmentIds.map((id) => id.toString());
       // Handle both ObjectId and populated object cases
       let userDeptId: string | null = null;
       if (typeof user.department === 'object' && user.department._id) {
@@ -638,7 +686,7 @@ class PermissionConfigService {
       } else if (user.department?.toString) {
         userDeptId = user.department.toString();
       }
-      
+
       if (!userDeptId || !deptIdStrings.includes(userDeptId)) {
         return { matches: false };
       }
@@ -650,7 +698,7 @@ class PermissionConfigService {
       if (!categoryId) {
         return { matches: false };
       }
-      const categoryIdStrings = config.categoryIds.map(id => id.toString());
+      const categoryIdStrings = config.categoryIds.map((id) => id.toString());
       if (!categoryIdStrings.includes(categoryId)) {
         return { matches: false };
       }

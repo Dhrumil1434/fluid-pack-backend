@@ -82,4 +82,4 @@ qaMachineEntrySchema.set('toObject', { virtuals: true });
 export const QAMachineEntry = mongoose.model<IQAMachineEntry>(
   'QAMachineEntry',
   qaMachineEntrySchema,
-); 
+);

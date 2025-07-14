@@ -6,11 +6,7 @@ import MachineApprovalController from '../modules/machine/controllers/machineApp
 const router = Router();
 
 // Create approval request - All authenticated users
-router.post(
-  '/',
-  verifyJWT,
-  MachineApprovalController.createApprovalRequest,
-);
+router.post('/', verifyJWT, MachineApprovalController.createApprovalRequest);
 
 // Get user's own approval requests - All authenticated users
 router.get(
@@ -58,4 +54,4 @@ router.patch(
   MachineApprovalController.cancelApprovalRequest,
 );
 
-export default router; 
+export default router;

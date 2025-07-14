@@ -20,10 +20,10 @@ import {
 import { asyncHandler } from '../../utils/asyncHandler';
 import { ApiResponse } from '../../utils/ApiResponse';
 import { ApiError } from '../../utils/ApiError';
-import { 
-  moveFilesToMachineDirectory, 
-  deleteMachineImages, 
-  cleanupMachineDirectory 
+import {
+  moveFilesToMachineDirectory,
+  deleteMachineImages,
+  cleanupMachineDirectory,
 } from '../../middlewares/multer.middleware';
 
 export interface AuthenticatedRequest extends Request {
@@ -47,7 +47,9 @@ class MachineController {
       if (error) {
         // Clean up uploaded files if validation fails
         if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          const filePaths = (req.files as Express.Multer.File[]).map(
+            (file) => file.path,
+          );
           deleteMachineImages(filePaths);
         }
         throw new ApiError(
@@ -61,7 +63,9 @@ class MachineController {
       if (!req.user) {
         // Clean up uploaded files if authentication fails
         if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          const filePaths = (req.files as Express.Multer.File[]).map(
+            (file) => file.path,
+          );
           deleteMachineImages(filePaths);
         }
         throw new ApiError(
@@ -73,13 +77,16 @@ class MachineController {
       }
 
       let imagePaths: string[] = [];
-      
+
       try {
         // Move uploaded files to machine directory if files were uploaded
         if (req.files && Array.isArray(req.files) && req.files.length > 0) {
           // Create a temporary ID for the machine to organize files
           const tempId = new Date().getTime().toString();
-          imagePaths = await moveFilesToMachineDirectory(req.files as Express.Multer.File[], tempId);
+          imagePaths = await moveFilesToMachineDirectory(
+            req.files as Express.Multer.File[],
+            tempId,
+          );
         }
 
         const createData: CreateMachineData = {
@@ -94,15 +101,15 @@ class MachineController {
         if (imagePaths.length > 0) {
           const tempId = new Date().getTime().toString();
           const actualImagePaths = await moveFilesToMachineDirectory(
-            req.files as Express.Multer.File[], 
-            (machine as any)._id.toString()
+            req.files as Express.Multer.File[],
+            (machine as any)._id.toString(),
           );
-          
+
           // Update the machine with correct image paths
           await MachineService.update((machine as any)._id.toString(), {
-            images: actualImagePaths
+            images: actualImagePaths,
           });
-          
+
           // Clean up temp directory
           cleanupMachineDirectory(tempId);
         }
@@ -196,7 +203,9 @@ class MachineController {
       if (paramsValidation.error) {
         // Clean up uploaded files if validation fails
         if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          const filePaths = (req.files as Express.Multer.File[]).map(
+            (file) => file.path,
+          );
           deleteMachineImages(filePaths);
         }
         throw new ApiError(
@@ -211,7 +220,9 @@ class MachineController {
       if (bodyValidation.error) {
         // Clean up uploaded files if validation fails
         if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          const filePaths = (req.files as Express.Multer.File[]).map(
+            (file) => file.path,
+          );
           deleteMachineImages(filePaths);
         }
         throw new ApiError(
@@ -225,7 +236,9 @@ class MachineController {
       if (!req.user) {
         // Clean up uploaded files if authentication fails
         if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
+          const filePaths = (req.files as Express.Multer.File[]).map(
+            (file) => file.path,
+          );
           deleteMachineImages(filePaths);
         }
         throw new ApiError(
@@ -237,13 +250,13 @@ class MachineController {
       }
 
       let imagePaths: string[] = [];
-      
+
       try {
         // Move uploaded files to machine directory if files were uploaded
         if (req.files && Array.isArray(req.files) && req.files.length > 0) {
           imagePaths = await moveFilesToMachineDirectory(
-            req.files as Express.Multer.File[], 
-            paramsValidation.value.id
+            req.files as Express.Multer.File[],
+            paramsValidation.value.id,
           );
         }
 

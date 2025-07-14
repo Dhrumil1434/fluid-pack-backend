@@ -1,6 +1,9 @@
 import mongoose from 'mongoose';
 import { StatusCodes } from 'http-status-codes';
-import { QAMachineEntry, IQAMachineEntry } from '../../../models/qaMachine.model';
+import {
+  QAMachineEntry,
+  IQAMachineEntry,
+} from '../../../models/qaMachine.model';
 import { Machine, IMachine } from '../../../models/machine.model';
 import { User, IUser } from '../../../models/user.model';
 import { ApiError } from '../../../utils/ApiError';
@@ -33,7 +36,9 @@ class QAMachineService {
   /**
    * Create a new QA machine entry
    */
-  static async create(data: CreateQAMachineEntryData): Promise<IQAMachineEntry> {
+  static async create(
+    data: CreateQAMachineEntryData,
+  ): Promise<IQAMachineEntry> {
     try {
       // Verify machine exists
       const machine = await Machine.findById(data.machine_id);
@@ -184,11 +189,10 @@ class QAMachineService {
         );
       }
 
-      const qaEntry = await QAMachineEntry.findByIdAndUpdate(
-        id,
-        data,
-        { new: true, runValidators: true },
-      ).populate([
+      const qaEntry = await QAMachineEntry.findByIdAndUpdate(id, data, {
+        new: true,
+        runValidators: true,
+      }).populate([
         { path: 'machine_id', select: 'name category_id' },
         { path: 'added_by', select: 'username email' },
       ]);
@@ -361,4 +365,4 @@ class QAMachineService {
   }
 }
 
-export default QAMachineService; 
+export default QAMachineService;

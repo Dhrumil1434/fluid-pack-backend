@@ -317,11 +317,18 @@ const cleanupQAEntryDirectory = (qaEntryId: string): void => {
 };
 
 // Error handling middleware for file uploads
-const handleFileUploadError = (error: any, req: Request, res: Response, next: NextFunction): void => {
+const handleFileUploadError = (
+  error: any,
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void => {
   // Clean up any uploaded files on error
   if (req.files && Array.isArray(req.files)) {
-    const filePaths = (req.files as Express.Multer.File[]).map(file => file.path);
-    
+    const filePaths = (req.files as Express.Multer.File[]).map(
+      (file) => file.path,
+    );
+
     // Determine which cleanup function to use based on the route
     if (req.path.includes('/qa-machines')) {
       deleteQAFiles(filePaths);
@@ -336,29 +343,31 @@ const handleFileUploadError = (error: any, req: Request, res: Response, next: Ne
       case 'LIMIT_FILE_SIZE':
         res.status(400).json({
           success: false,
-          message: 'File too large. Maximum file size is 20MB for QA files and 10MB for machine images.',
-          error: 'FILE_SIZE_LIMIT_EXCEEDED'
+          message:
+            'File too large. Maximum file size is 20MB for QA files and 10MB for machine images.',
+          error: 'FILE_SIZE_LIMIT_EXCEEDED',
         });
         return;
       case 'LIMIT_FILE_COUNT':
         res.status(400).json({
           success: false,
           message: 'Too many files. Maximum 10 files allowed.',
-          error: 'FILE_COUNT_LIMIT_EXCEEDED'
+          error: 'FILE_COUNT_LIMIT_EXCEEDED',
         });
         return;
       case 'LIMIT_UNEXPECTED_FILE':
         res.status(400).json({
           success: false,
-          message: 'Unexpected file field name. Use "images" for machines or "files" for QA entries.',
-          error: 'UNEXPECTED_FILE_FIELD'
+          message:
+            'Unexpected file field name. Use "images" for machines or "files" for QA entries.',
+          error: 'UNEXPECTED_FILE_FIELD',
         });
         return;
       default:
         res.status(400).json({
           success: false,
           message: 'File upload error',
-          error: error.message
+          error: error.message,
         });
         return;
     }
@@ -369,7 +378,7 @@ const handleFileUploadError = (error: any, req: Request, res: Response, next: Ne
     res.status(400).json({
       success: false,
       message: error.message,
-      error: 'INVALID_FILE_TYPE'
+      error: 'INVALID_FILE_TYPE',
     });
     return;
   }
