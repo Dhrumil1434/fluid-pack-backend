@@ -1,4 +1,4 @@
-// routes/machine.routes.ts
+// src/routes/machine.route.ts
 import { Router } from 'express';
 import {
   createMachineSchema,
