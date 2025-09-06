@@ -7,6 +7,8 @@ import {
   ApprovalStatus,
 } from '../../../models/machineApproval.model';
 import { ApiError } from '../../../utils/ApiError';
+import { User } from '../../../models/user.model';
+import { Machine } from '../../../models/machine.model';
 
 export interface CreateApprovalRequestData {
   machineId: string;
@@ -243,11 +245,11 @@ class MachineApprovalService {
       // Update approval status
       const updateData: {
         status: ApprovalStatus;
-        approverNotes?: string;
-        approvedBy?: string;
-        approvalDate?: Date;
-        rejectedBy?: string;
-        rejectionReason?: string;
+        approverNotes?: string | undefined;
+        approvedBy?: string | undefined;
+        approvalDate?: Date | undefined;
+        rejectedBy?: string | undefined;
+        rejectionReason?: string | undefined;
       } = {
         status: data.approved
           ? ApprovalStatus.APPROVED
