@@ -4,8 +4,8 @@ import {
   QAMachineEntry,
   IQAMachineEntry,
 } from '../../../models/qaMachine.model';
-import { Machine, IMachine } from '../../../models/machine.model';
-import { User, IUser } from '../../../models/user.model';
+import { Machine } from '../../../models/machine.model';
+import { User } from '../../../models/user.model';
 import { ApiError } from '../../../utils/ApiError';
 
 export interface CreateQAMachineEntryData {
@@ -122,7 +122,7 @@ class QAMachineService {
         total,
         pages: Math.ceil(total / limit),
       };
-    } catch (error) {
+    } catch {
       throw new ApiError(
         'GET_QA_MACHINE_ENTRIES',
         StatusCodes.INTERNAL_SERVER_ERROR,
@@ -359,7 +359,7 @@ class QAMachineService {
       }
       const qaEntry = await QAMachineEntry.findById(id);
       return !!qaEntry;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
@@ -367,7 +367,12 @@ class QAMachineService {
   /**
    * Get QA statistics
    */
-  static async getQAStatistics(): Promise<any> {
+  static async getQAStatistics(): Promise<{
+    totalQAEntries: number;
+    recentEntries: number;
+    qaEntriesByMachine: Array<{ _id: string; count: number }>;
+    entriesByUser: Array<{ _id: string; count: number }>;
+  }> {
     try {
       const totalQAEntries = await QAMachineEntry.countDocuments();
 
@@ -378,26 +383,26 @@ class QAMachineService {
             from: 'machines',
             localField: 'machine_id',
             foreignField: '_id',
-            as: 'machine'
-          }
+            as: 'machine',
+          },
         },
         {
-          $unwind: '$machine'
+          $unwind: '$machine',
         },
         {
           $group: {
             _id: '$machine.name',
-            count: { $sum: 1 }
-          }
-        }
+            count: { $sum: 1 },
+          },
+        },
       ]);
 
       // Get recent entries (last 30 days)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+
       const recentEntries = await QAMachineEntry.countDocuments({
-        createdAt: { $gte: thirtyDaysAgo }
+        createdAt: { $gte: thirtyDaysAgo },
       });
 
       // Get entries by user
@@ -407,27 +412,27 @@ class QAMachineService {
             from: 'users',
             localField: 'added_by',
             foreignField: '_id',
-            as: 'user'
-          }
+            as: 'user',
+          },
         },
         {
-          $unwind: '$user'
+          $unwind: '$user',
         },
         {
           $group: {
             _id: '$user.username',
-            count: { $sum: 1 }
-          }
-        }
+            count: { $sum: 1 },
+          },
+        },
       ]);
 
       return {
         totalQAEntries,
         recentEntries,
         qaEntriesByMachine,
-        entriesByUser
+        entriesByUser,
       };
-    } catch (error) {
+    } catch {
       throw new ApiError(
         'GET_QA_STATISTICS',
         StatusCodes.INTERNAL_SERVER_ERROR,

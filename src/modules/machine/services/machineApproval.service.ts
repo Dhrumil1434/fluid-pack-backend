@@ -6,10 +6,7 @@ import {
   ApprovalType,
   ApprovalStatus,
 } from '../../../models/machineApproval.model';
-import { Machine, IMachine } from '../../../models/machine.model';
-import { User, IUser } from '../../../models/user.model';
 import { ApiError } from '../../../utils/ApiError';
-import { ERROR_MESSAGES } from '../machine.error.constant';
 
 export interface CreateApprovalRequestData {
   machineId: string;
@@ -154,7 +151,7 @@ class MachineApprovalService {
         total,
         pages: Math.ceil(total / limit),
       };
-    } catch (error) {
+    } catch {
       throw new ApiError(
         'GET_APPROVAL_REQUESTS',
         StatusCodes.INTERNAL_SERVER_ERROR,
@@ -244,7 +241,14 @@ class MachineApprovalService {
       }
 
       // Update approval status
-      const updateData: any = {
+      const updateData: {
+        status: ApprovalStatus;
+        approverNotes?: string;
+        approvedBy?: string;
+        approvalDate?: Date;
+        rejectedBy?: string;
+        rejectionReason?: string;
+      } = {
         status: data.approved
           ? ApprovalStatus.APPROVED
           : ApprovalStatus.REJECTED,
@@ -365,20 +369,30 @@ class MachineApprovalService {
   /**
    * Get approval statistics
    */
-  static async getApprovalStatistics(): Promise<any> {
+  static async getApprovalStatistics(): Promise<{
+    totalPending: number;
+    highPriority: number;
+    mediumPriority: number;
+    lowPriority: number;
+    approvalsByType: Array<{ _id: string; count: number }>;
+    averageProcessingTime: number;
+    overdueApprovals: number;
+  }> {
     try {
-      const totalPending = await MachineApproval.countDocuments({ status: 'pending' });
-      const highPriority = await MachineApproval.countDocuments({ 
-        status: 'pending', 
-        priority: 'high' 
+      const totalPending = await MachineApproval.countDocuments({
+        status: 'pending',
       });
-      const mediumPriority = await MachineApproval.countDocuments({ 
-        status: 'pending', 
-        priority: 'medium' 
+      const highPriority = await MachineApproval.countDocuments({
+        status: 'pending',
+        priority: 'high',
       });
-      const lowPriority = await MachineApproval.countDocuments({ 
-        status: 'pending', 
-        priority: 'low' 
+      const mediumPriority = await MachineApproval.countDocuments({
+        status: 'pending',
+        priority: 'medium',
+      });
+      const lowPriority = await MachineApproval.countDocuments({
+        status: 'pending',
+        priority: 'low',
       });
 
       // Get approvals by type
@@ -386,36 +400,38 @@ class MachineApprovalService {
         {
           $group: {
             _id: '$type',
-            count: { $sum: 1 }
-          }
-        }
+            count: { $sum: 1 },
+          },
+        },
       ]);
 
       // Get average processing time
       const processedApprovals = await MachineApproval.find({
         status: { $in: ['approved', 'rejected'] },
-        approvalDate: { $exists: true }
+        approvalDate: { $exists: true },
       });
 
       let averageProcessingTime = 0;
       if (processedApprovals.length > 0) {
         const totalTime = processedApprovals.reduce((sum, approval) => {
           if (approval.approvalDate && approval.createdAt) {
-            const processingTime = approval.approvalDate.getTime() - approval.createdAt.getTime();
+            const processingTime =
+              approval.approvalDate.getTime() - approval.createdAt.getTime();
             return sum + processingTime;
           }
           return sum;
         }, 0);
-        averageProcessingTime = totalTime / processedApprovals.length / (1000 * 60 * 60); // Convert to hours
+        averageProcessingTime =
+          totalTime / processedApprovals.length / (1000 * 60 * 60); // Convert to hours
       }
 
       // Get overdue approvals (pending for more than 7 days)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
+
       const overdueApprovals = await MachineApproval.countDocuments({
         status: 'pending',
-        createdAt: { $lt: sevenDaysAgo }
+        createdAt: { $lt: sevenDaysAgo },
       });
 
       return {
@@ -425,9 +441,9 @@ class MachineApprovalService {
         lowPriority,
         approvalsByType,
         averageProcessingTime,
-        overdueApprovals
+        overdueApprovals,
       };
-    } catch (error) {
+    } catch {
       throw new ApiError(
         'GET_APPROVAL_STATISTICS',
         StatusCodes.INTERNAL_SERVER_ERROR,

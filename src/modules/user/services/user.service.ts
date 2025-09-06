@@ -152,8 +152,8 @@ class UserService {
     totalUsers: number;
     approvedUsers: number;
     pendingUsers: number;
-    usersByRole: Array<{_id: string, count: number}>;
-    usersByDepartment: Array<{_id: string, count: number}>;
+    usersByRole: Array<{ _id: string; count: number }>;
+    usersByDepartment: Array<{ _id: string; count: number }>;
     recentUsers: number;
   }> {
     try {
@@ -166,9 +166,9 @@ class UserService {
         {
           $group: {
             _id: '$role',
-            count: { $sum: 1 }
-          }
-        }
+            count: { $sum: 1 },
+          },
+        },
       ]);
 
       // Get users by department
@@ -176,17 +176,17 @@ class UserService {
         {
           $group: {
             _id: '$department',
-            count: { $sum: 1 }
-          }
-        }
+            count: { $sum: 1 },
+          },
+        },
       ]);
 
       // Get recent users (last 30 days)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+
       const recentUsers = await User.countDocuments({
-        createdAt: { $gte: thirtyDaysAgo }
+        createdAt: { $gte: thirtyDaysAgo },
       });
 
       return {
@@ -195,9 +195,9 @@ class UserService {
         pendingUsers,
         usersByRole,
         usersByDepartment,
-        recentUsers
+        recentUsers,
       };
-    } catch (error) {
+    } catch {
       throw new ApiError(
         'GET_USER_STATISTICS',
         StatusCodes.INTERNAL_SERVER_ERROR,
@@ -214,7 +214,7 @@ class UserService {
     page: number = 1,
     limit: number = 10,
     sortBy: string = 'createdAt',
-    sortOrder: string = 'desc'
+    sortOrder: string = 'desc',
   ): Promise<{
     users: Array<{
       _id: string;
@@ -233,7 +233,7 @@ class UserService {
   }> {
     try {
       const skip = (page - 1) * limit;
-      
+
       // Build sort object
       const sort: Record<string, 1 | -1> = {};
       sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
@@ -246,17 +246,26 @@ class UserService {
           .sort(sort)
           .skip(skip)
           .limit(limit),
-        User.countDocuments({ deletedAt: null })
+        User.countDocuments({ deletedAt: null }),
       ]);
 
       return {
-        users: users as any,
+        users: users as Array<{
+          _id: string;
+          username: string;
+          email: string;
+          isApproved: boolean;
+          role: { name: string };
+          department: { name: string };
+          createdAt: Date;
+          updatedAt: Date;
+        }>,
         total,
         pages: Math.ceil(total / limit),
         currentPage: page,
-        limit
+        limit,
       };
-    } catch (error) {
+    } catch {
       throw new ApiError(
         'GET_ALL_USERS',
         StatusCodes.INTERNAL_SERVER_ERROR,

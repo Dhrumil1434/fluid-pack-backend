@@ -480,13 +480,27 @@ class MachineService {
   /**
    * Get machine statistics
    */
-  static async getMachineStatistics(): Promise<any> {
+  static async getMachineStatistics(): Promise<{
+    totalMachines: number;
+    activeMachines: number;
+    inactiveMachines: number;
+    pendingMachines: number;
+    approvedMachines: number;
+    machinesByCategory: Array<{ _id: string; count: number }>;
+    recentMachines: number;
+  }> {
     try {
       const totalMachines = await Machine.countDocuments();
       const activeMachines = await Machine.countDocuments({ is_active: true });
-      const inactiveMachines = await Machine.countDocuments({ is_active: false });
-      const pendingMachines = await Machine.countDocuments({ is_approved: false });
-      const approvedMachines = await Machine.countDocuments({ is_approved: true });
+      const inactiveMachines = await Machine.countDocuments({
+        is_active: false,
+      });
+      const pendingMachines = await Machine.countDocuments({
+        is_approved: false,
+      });
+      const approvedMachines = await Machine.countDocuments({
+        is_approved: true,
+      });
 
       // Get machines by category
       const machinesByCategory = await Machine.aggregate([
@@ -495,26 +509,26 @@ class MachineService {
             from: 'categories',
             localField: 'category_id',
             foreignField: '_id',
-            as: 'category'
-          }
+            as: 'category',
+          },
         },
         {
-          $unwind: '$category'
+          $unwind: '$category',
         },
         {
           $group: {
             _id: '$category.name',
-            count: { $sum: 1 }
-          }
-        }
+            count: { $sum: 1 },
+          },
+        },
       ]);
 
       // Get recent machines (last 30 days)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+
       const recentMachines = await Machine.countDocuments({
-        created_at: { $gte: thirtyDaysAgo }
+        created_at: { $gte: thirtyDaysAgo },
       });
 
       return {
@@ -524,9 +538,9 @@ class MachineService {
         pendingMachines,
         approvedMachines,
         machinesByCategory,
-        recentMachines
+        recentMachines,
       };
-    } catch (error) {
+    } catch {
       throw new ApiError(
         ERROR_MESSAGES.MACHINE.ACTION.GET,
         StatusCodes.INTERNAL_SERVER_ERROR,
