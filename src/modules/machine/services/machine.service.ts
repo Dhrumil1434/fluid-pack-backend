@@ -476,6 +476,65 @@ class MachineService {
       );
     }
   }
+
+  /**
+   * Get machine statistics
+   */
+  static async getMachineStatistics(): Promise<any> {
+    try {
+      const totalMachines = await Machine.countDocuments();
+      const activeMachines = await Machine.countDocuments({ is_active: true });
+      const inactiveMachines = await Machine.countDocuments({ is_active: false });
+      const pendingMachines = await Machine.countDocuments({ is_approved: false });
+      const approvedMachines = await Machine.countDocuments({ is_approved: true });
+
+      // Get machines by category
+      const machinesByCategory = await Machine.aggregate([
+        {
+          $lookup: {
+            from: 'categories',
+            localField: 'category_id',
+            foreignField: '_id',
+            as: 'category'
+          }
+        },
+        {
+          $unwind: '$category'
+        },
+        {
+          $group: {
+            _id: '$category.name',
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      // Get recent machines (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const recentMachines = await Machine.countDocuments({
+        created_at: { $gte: thirtyDaysAgo }
+      });
+
+      return {
+        totalMachines,
+        activeMachines,
+        inactiveMachines,
+        pendingMachines,
+        approvedMachines,
+        machinesByCategory,
+        recentMachines
+      };
+    } catch (error) {
+      throw new ApiError(
+        ERROR_MESSAGES.MACHINE.ACTION.GET,
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'GET_MACHINE_STATISTICS_ERROR',
+        'Failed to retrieve machine statistics',
+      );
+    }
+  }
 }
 
 export default MachineService;

@@ -361,6 +361,81 @@ class MachineApprovalService {
       );
     }
   }
+
+  /**
+   * Get approval statistics
+   */
+  static async getApprovalStatistics(): Promise<any> {
+    try {
+      const totalPending = await MachineApproval.countDocuments({ status: 'pending' });
+      const highPriority = await MachineApproval.countDocuments({ 
+        status: 'pending', 
+        priority: 'high' 
+      });
+      const mediumPriority = await MachineApproval.countDocuments({ 
+        status: 'pending', 
+        priority: 'medium' 
+      });
+      const lowPriority = await MachineApproval.countDocuments({ 
+        status: 'pending', 
+        priority: 'low' 
+      });
+
+      // Get approvals by type
+      const approvalsByType = await MachineApproval.aggregate([
+        {
+          $group: {
+            _id: '$type',
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      // Get average processing time
+      const processedApprovals = await MachineApproval.find({
+        status: { $in: ['approved', 'rejected'] },
+        approvalDate: { $exists: true }
+      });
+
+      let averageProcessingTime = 0;
+      if (processedApprovals.length > 0) {
+        const totalTime = processedApprovals.reduce((sum, approval) => {
+          if (approval.approvalDate && approval.createdAt) {
+            const processingTime = approval.approvalDate.getTime() - approval.createdAt.getTime();
+            return sum + processingTime;
+          }
+          return sum;
+        }, 0);
+        averageProcessingTime = totalTime / processedApprovals.length / (1000 * 60 * 60); // Convert to hours
+      }
+
+      // Get overdue approvals (pending for more than 7 days)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      const overdueApprovals = await MachineApproval.countDocuments({
+        status: 'pending',
+        createdAt: { $lt: sevenDaysAgo }
+      });
+
+      return {
+        totalPending,
+        highPriority,
+        mediumPriority,
+        lowPriority,
+        approvalsByType,
+        averageProcessingTime,
+        overdueApprovals
+      };
+    } catch (error) {
+      throw new ApiError(
+        'GET_APPROVAL_STATISTICS',
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'GET_APPROVAL_STATISTICS_ERROR',
+        'Failed to retrieve approval statistics',
+      );
+    }
+  }
 }
 
 export default MachineApprovalService;

@@ -93,7 +93,7 @@ class UserController {
   });
 
   static logoutUser = asyncHandler(
-    async (req: AuthenticatedRequest, res: Response) => {
+    async (_req: AuthenticatedRequest, res: Response) => {
       const response = new ApiResponse(
         StatusCodes.OK,
         {},
@@ -104,6 +104,50 @@ class UserController {
         .clearCookie('refreshToken', { httpOnly: true, secure: true })
         .status(StatusCodes.OK)
         .json(response);
+    },
+  );
+
+  /**
+   * Get user statistics
+   * GET /api/user/statistics
+   */
+  static getUserStatistics = asyncHandler(
+    async (_req: Request, res: Response): Promise<void> => {
+      const statistics = await UserService.getUserStatistics();
+
+      const response = new ApiResponse(
+        StatusCodes.OK,
+        statistics,
+        'User statistics retrieved successfully',
+      );
+      res.status(response.statusCode).json(response);
+    },
+  );
+
+  /**
+   * Get all users with pagination
+   * GET /api/user
+   */
+  static getAllUsers = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const page = parseInt(req.query['page'] as string) || 1;
+      const limit = parseInt(req.query['limit'] as string) || 10;
+      const sortBy = (req.query['sortBy'] as string) || 'createdAt';
+      const sortOrder = (req.query['sortOrder'] as string) || 'desc';
+
+      const result = await UserService.getAllUsers(
+        page,
+        limit,
+        sortBy,
+        sortOrder,
+      );
+
+      const response = new ApiResponse(
+        StatusCodes.OK,
+        result,
+        'Users retrieved successfully',
+      );
+      res.status(response.statusCode).json(response);
     },
   );
 }

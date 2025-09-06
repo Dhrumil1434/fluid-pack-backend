@@ -31,6 +31,14 @@ router.get(
   MachineApprovalController.getApprovalRequests,
 );
 
+// Get approval statistics - Admin/Manager only
+router.get(
+  '/statistics',
+  verifyJWT,
+  AuthRole(['admin', 'manager']),
+  MachineApprovalController.getApprovalStatistics,
+);
+
 // Get approval request by ID - Admin/Manager only
 router.get(
   '/:id',

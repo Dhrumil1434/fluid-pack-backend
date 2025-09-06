@@ -144,6 +144,127 @@ class UserService {
     // Stub: you can integrate nodemailer/sendgrid/mailgun etc.
     console.log(`Send reset link to ${email} (simulate sending email here)`);
   }
+
+  /**
+   * Get user statistics
+   */
+  static async getUserStatistics(): Promise<{
+    totalUsers: number;
+    approvedUsers: number;
+    pendingUsers: number;
+    usersByRole: Array<{_id: string, count: number}>;
+    usersByDepartment: Array<{_id: string, count: number}>;
+    recentUsers: number;
+  }> {
+    try {
+      const totalUsers = await User.countDocuments();
+      const approvedUsers = await User.countDocuments({ isApproved: true });
+      const pendingUsers = await User.countDocuments({ isApproved: false });
+
+      // Get users by role
+      const usersByRole = await User.aggregate([
+        {
+          $group: {
+            _id: '$role',
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      // Get users by department
+      const usersByDepartment = await User.aggregate([
+        {
+          $group: {
+            _id: '$department',
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      // Get recent users (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const recentUsers = await User.countDocuments({
+        createdAt: { $gte: thirtyDaysAgo }
+      });
+
+      return {
+        totalUsers,
+        approvedUsers,
+        pendingUsers,
+        usersByRole,
+        usersByDepartment,
+        recentUsers
+      };
+    } catch (error) {
+      throw new ApiError(
+        'GET_USER_STATISTICS',
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'GET_USER_STATISTICS_ERROR',
+        'Failed to retrieve user statistics',
+      );
+    }
+  }
+
+  /**
+   * Get all users with pagination and sorting
+   */
+  static async getAllUsers(
+    page: number = 1,
+    limit: number = 10,
+    sortBy: string = 'createdAt',
+    sortOrder: string = 'desc'
+  ): Promise<{
+    users: Array<{
+      _id: string;
+      username: string;
+      email: string;
+      isApproved: boolean;
+      role: { name: string };
+      department: { name: string };
+      createdAt: Date;
+      updatedAt: Date;
+    }>;
+    total: number;
+    pages: number;
+    currentPage: number;
+    limit: number;
+  }> {
+    try {
+      const skip = (page - 1) * limit;
+      
+      // Build sort object
+      const sort: Record<string, 1 | -1> = {};
+      sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+      const [users, total] = await Promise.all([
+        User.find({ deletedAt: null })
+          .select('-password -refreshToken') // Exclude sensitive fields
+          .populate('role', 'name')
+          .populate('department', 'name')
+          .sort(sort)
+          .skip(skip)
+          .limit(limit),
+        User.countDocuments({ deletedAt: null })
+      ]);
+
+      return {
+        users: users as any,
+        total,
+        pages: Math.ceil(total / limit),
+        currentPage: page,
+        limit
+      };
+    } catch (error) {
+      throw new ApiError(
+        'GET_ALL_USERS',
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'GET_ALL_USERS_ERROR',
+        'Failed to retrieve users',
+      );
+    }
+  }
 }
 
 export default UserService;

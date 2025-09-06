@@ -13,6 +13,7 @@ import { validateParams } from '../middlewares/validateRequest';
 import { validateQuery } from '../middlewares/validateRequest';
 import MachineController from '../modules/machine/machine.controller';
 import { verifyJWT } from '../middlewares/auth.middleware';
+import { AuthRole } from '../middlewares/auth-role.middleware';
 import {
   uploadMachineImages,
   uploadMachineImagesUpdate,
@@ -43,6 +44,14 @@ router.get(
 
 // Get approved machines - Public access
 router.get('/approved', MachineController.getApprovedMachines);
+
+// Get machine statistics - Admin/Manager only
+router.get(
+  '/statistics',
+  verifyJWT,
+  AuthRole(['admin', 'manager']),
+  MachineController.getMachineStatistics,
+);
 
 // Get machine by ID - Public access
 router.get(

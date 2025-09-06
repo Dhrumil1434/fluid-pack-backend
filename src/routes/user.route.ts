@@ -29,4 +29,21 @@ router.patch(
 
   UserController.approveUser,
 );
+
+// Get user statistics - Admin/Manager only
+router.get(
+  '/statistics',
+  verifyJWT,
+  AuthRole(['admin', 'manager']),
+  UserController.getUserStatistics,
+);
+
+// Get all users with pagination - Admin/Manager only
+router.get(
+  '/',
+  verifyJWT,
+  AuthRole(['admin', 'manager']),
+  UserController.getAllUsers,
+);
+
 export default router;

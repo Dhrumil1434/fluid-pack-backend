@@ -15,7 +15,6 @@ import { ERROR_MESSAGES } from '../permissionCongif.error.constants';
 // Constants
 const DEFAULT_PAGE_SIZE = 10;
 const DEFAULT_PRIORITY = 0;
-const CACHE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
 // Populate options for consistent data fetching
 const POPULATE_OPTIONS = {
@@ -179,7 +178,12 @@ class PermissionConfigService {
   ): Promise<void> {
     if (priority <= 0) return;
 
-    const query: any = {
+    const query: {
+      priority: number;
+      isActive: boolean;
+      action?: ActionType;
+      _id?: { $ne: string };
+    } = {
       priority,
       isActive: true,
     };
@@ -474,7 +478,7 @@ class PermissionConfigService {
       const userRoleId =
         typeof user.role === 'string'
           ? user.role
-          : (user.role as any)?._id?.toString();
+          : (user.role as { _id?: { toString(): string } })?._id?.toString();
 
       if (userRoleId === adminRoleId) {
         return {
@@ -605,7 +609,7 @@ class PermissionConfigService {
           machineValue,
         );
         return { action, result };
-      } catch (error) {
+      } catch {
         return {
           action,
           result: {
@@ -640,11 +644,17 @@ class PermissionConfigService {
     const conditions: string[] = [];
 
     // Helper function to safely get ID string from ObjectId or populated object
-    const getSafeIdString = (field: any): string | null => {
+    const getSafeIdString = (field: unknown): string | null => {
       if (!field) return null;
       if (typeof field === 'string') return field;
-      if (field._id) return field._id.toString();
-      if (field.toString) return field.toString();
+      if (typeof field === 'object' && field !== null && '_id' in field) {
+        const objWithId = field as { _id: { toString(): string } };
+        return objWithId._id.toString();
+      }
+      if (typeof field === 'object' && field !== null && 'toString' in field) {
+        const objWithToString = field as { toString(): string };
+        return objWithToString.toString();
+      }
       return null;
     };
 

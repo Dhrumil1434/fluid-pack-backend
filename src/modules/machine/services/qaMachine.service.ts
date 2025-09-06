@@ -363,6 +363,79 @@ class QAMachineService {
       return false;
     }
   }
+
+  /**
+   * Get QA statistics
+   */
+  static async getQAStatistics(): Promise<any> {
+    try {
+      const totalQAEntries = await QAMachineEntry.countDocuments();
+
+      // Get QA entries by machine
+      const qaEntriesByMachine = await QAMachineEntry.aggregate([
+        {
+          $lookup: {
+            from: 'machines',
+            localField: 'machine_id',
+            foreignField: '_id',
+            as: 'machine'
+          }
+        },
+        {
+          $unwind: '$machine'
+        },
+        {
+          $group: {
+            _id: '$machine.name',
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      // Get recent entries (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const recentEntries = await QAMachineEntry.countDocuments({
+        createdAt: { $gte: thirtyDaysAgo }
+      });
+
+      // Get entries by user
+      const entriesByUser = await QAMachineEntry.aggregate([
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'added_by',
+            foreignField: '_id',
+            as: 'user'
+          }
+        },
+        {
+          $unwind: '$user'
+        },
+        {
+          $group: {
+            _id: '$user.username',
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      return {
+        totalQAEntries,
+        recentEntries,
+        qaEntriesByMachine,
+        entriesByUser
+      };
+    } catch (error) {
+      throw new ApiError(
+        'GET_QA_STATISTICS',
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'GET_QA_STATISTICS_ERROR',
+        'Failed to retrieve QA statistics',
+      );
+    }
+  }
 }
 
 export default QAMachineService;

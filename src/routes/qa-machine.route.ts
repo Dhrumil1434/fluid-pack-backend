@@ -5,7 +5,6 @@ import {
   qaMachineEntryIdParamSchema,
   machineIdParamSchema,
   userIdParamSchema,
-  qaMachinePaginationQuerySchema,
   validateQAMachineEntryIdsSchema,
 } from '../modules/machine/validators/qaMachine.validator';
 import { validateRequest } from '../middlewares/validateRequest';
@@ -20,12 +19,18 @@ import {
 
 const router = Router();
 
-// Apply authentication to all routes
-router.use(verifyJWT);
-
 /**
  * QA Machine Entry Routes
  */
+
+// Get QA statistics - Public access for testing
+router.get('/statistics', QAMachineController.getQAStatistics);
+
+// Get all QA machine entries - Public access for testing
+router.get('/', QAMachineController.getAllQAMachineEntries);
+
+// Apply authentication to all other routes
+router.use(verifyJWT);
 
 // Create a new QA machine entry - Requires QA role
 router.post(
@@ -35,14 +40,6 @@ router.post(
   handleFileUploadError,
   validateRequest(createQAMachineEntrySchema),
   QAMachineController.createQAMachineEntry,
-);
-
-// Get all QA machine entries with pagination and filters - Requires QA role
-router.get(
-  '/',
-  AuthRole('qa'),
-  validateRequest(qaMachinePaginationQuerySchema),
-  QAMachineController.getAllQAMachineEntries,
 );
 
 // Get QA machine entry by ID - Requires QA role

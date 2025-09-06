@@ -307,6 +307,23 @@ class MachineApprovalController {
       res.status(response.statusCode).json(response);
     },
   );
+
+  /**
+   * Get approval statistics
+   * GET /api/machine-approvals/statistics
+   */
+  static getApprovalStatistics = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const statistics = await MachineApprovalService.getApprovalStatistics();
+
+      const response = new ApiResponse(
+        StatusCodes.OK,
+        statistics,
+        'Approval statistics retrieved successfully',
+      );
+      res.status(response.statusCode).json(response);
+    },
+  );
 }
 
 export default MachineApprovalController;

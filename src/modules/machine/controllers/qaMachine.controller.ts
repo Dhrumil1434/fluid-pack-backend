@@ -380,6 +380,23 @@ class QAMachineController {
       res.status(response.statusCode).json(response);
     },
   );
+
+  /**
+   * Get QA statistics
+   * GET /api/qa-machines/statistics
+   */
+  static getQAStatistics = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const statistics = await QAMachineService.getQAStatistics();
+
+      const response = new ApiResponse(
+        StatusCodes.OK,
+        statistics,
+        'QA statistics retrieved successfully',
+      );
+      res.status(response.statusCode).json(response);
+    },
+  );
 }
 
 export default QAMachineController;

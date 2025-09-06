@@ -439,6 +439,23 @@ class MachineController {
       res.status(response.statusCode).json(response);
     },
   );
+
+  /**
+   * Get machine statistics
+   * GET /api/machines/statistics
+   */
+  static getMachineStatistics = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const statistics = await MachineService.getMachineStatistics();
+
+      const response = new ApiResponse(
+        StatusCodes.OK,
+        statistics,
+        'Machine statistics retrieved successfully',
+      );
+      res.status(response.statusCode).json(response);
+    },
+  );
 }
 
 export default MachineController;
