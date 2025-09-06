@@ -250,7 +250,7 @@ class UserService {
       ]);
 
       return {
-        users: users as Array<{
+        users: users as unknown as Array<{
           _id: string;
           username: string;
           email: string;
