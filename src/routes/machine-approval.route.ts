@@ -1,3 +1,5 @@
+// src/routes/machine-approval.route.ts
+
 import { Router } from 'express';
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
