@@ -150,6 +150,21 @@ class UserController {
       res.status(response.statusCode).json(response);
     },
   );
+
+  /**
+   * Get user by id
+   * GET /api/user/:id
+   */
+  static getUserById = asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    const user = await UserService.getById(id);
+    const response = new ApiResponse(
+      StatusCodes.OK,
+      user,
+      'User fetched',
+    );
+    res.status(response.statusCode).json(response);
+  });
 }
 
 export default UserController;

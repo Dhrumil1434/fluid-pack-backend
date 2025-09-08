@@ -2,8 +2,9 @@ import { Router } from 'express';
 import {
   loginUserSchema,
   registerUserSchema,
+  userIdParamSchema,
 } from '../modules/user/user.validator';
-import { validateRequest } from '../middlewares/validateRequest';
+import { validateParams, validateRequest } from '../middlewares/validateRequest';
 import UserController from '../modules/user/user.controller';
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
@@ -36,6 +37,15 @@ router.get(
   verifyJWT,
   AuthRole(['admin', 'manager']),
   UserController.getUserStatistics,
+);
+
+// Get single user - Admin/Manager only
+router.get(
+  '/:id',
+  verifyJWT,
+  AuthRole(['admin', 'manager']),
+  validateParams(userIdParamSchema),
+  UserController.getUserById,
 );
 
 // Get all users with pagination - Admin/Manager only

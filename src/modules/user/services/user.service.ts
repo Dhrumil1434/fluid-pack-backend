@@ -146,6 +146,45 @@ class UserService {
   }
 
   /**
+   * Get single user by id
+   */
+  static async getById(id: string): Promise<{
+    _id: string;
+    username: string;
+    email: string;
+    isApproved: boolean;
+    role: { _id: string; name: string } | null;
+    department: { _id: string; name: string } | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }> {
+    const user = await User.findById(id)
+      .select('-password -refreshToken')
+      .populate('role', 'name')
+      .populate('department', 'name');
+
+    if (!user) {
+      throw new ApiError(
+        'GET_USER_BY_ID',
+        StatusCodes.NOT_FOUND,
+        'USER_NOT_FOUND',
+        'User not found',
+      );
+    }
+
+    return user as unknown as {
+      _id: string;
+      username: string;
+      email: string;
+      isApproved: boolean;
+      role: { _id: string; name: string } | null;
+      department: { _id: string; name: string } | null;
+      createdAt: Date;
+      updatedAt: Date;
+    };
+  }
+
+  /**
    * Get user statistics
    */
   static async getUserStatistics(): Promise<{

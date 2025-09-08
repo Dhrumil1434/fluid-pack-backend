@@ -27,7 +27,7 @@ class App {
     this.app.use(
       rateLimit({
         windowMs: 10 * 60 * 1000, // 15 mins
-        max: 130, // Limit each IP to 100 requests per windowMs
+        max: 350, // Limit each IP to 100 requests per windowMs
         message:
           'Too many requests from this IP, please try again after 15 minutes.',
       }),
