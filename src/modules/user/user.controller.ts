@@ -165,6 +165,46 @@ class UserController {
     );
     res.status(response.statusCode).json(response);
   });
+
+  /**
+   * Update user
+   * PUT /api/user/:id
+   */
+  static updateUser = asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    const { username, email, role, department, isApproved } = req.body;
+
+    const user = await UserService.updateUser(id, {
+      username,
+      email,
+      role,
+      department,
+      isApproved,
+    });
+
+    const response = new ApiResponse(
+      StatusCodes.OK,
+      user,
+      'User updated successfully',
+    );
+    res.status(response.statusCode).json(response);
+  });
+
+  /**
+   * Delete user
+   * DELETE /api/user/:id
+   */
+  static deleteUser = asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    await UserService.deleteUser(id);
+
+    const response = new ApiResponse(
+      StatusCodes.OK,
+      null,
+      'User deleted successfully',
+    );
+    res.status(response.statusCode).json(response);
+  });
 }
 
 export default UserController;

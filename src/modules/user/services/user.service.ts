@@ -313,6 +313,85 @@ class UserService {
       );
     }
   }
+
+  /**
+   * Update user by id
+   * @param id - User ID
+   * @param updateData - Data to update
+   * @returns Updated user
+   */
+  static async updateUser(
+    id: string,
+    updateData: {
+      username?: string;
+      email?: string;
+      role?: string;
+      department?: string;
+      isApproved?: boolean;
+    },
+  ) {
+    try {
+      const user = await User.findById(id);
+      if (!user) {
+        throw new ApiError(
+          'UPDATE_USER',
+          StatusCodes.NOT_FOUND,
+          'USER_NOT_FOUND',
+          'User not found',
+        );
+      }
+
+      // Update fields if provided
+      if (updateData.username) user.username = updateData.username;
+      if (updateData.email) user.email = updateData.email;
+      if (updateData.role) user.role = updateData.role as any;
+      if (updateData.department) user.department = updateData.department as any;
+      if (typeof updateData.isApproved === 'boolean') user.isApproved = updateData.isApproved;
+
+      await user.save();
+
+      // Populate role and department
+      await user.populate('role department');
+
+      return user;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(
+        'UPDATE_USER',
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'UPDATE_USER_ERROR',
+        'Failed to update user',
+      );
+    }
+  }
+
+  /**
+   * Delete user by id
+   * @param id - User ID
+   */
+  static async deleteUser(id: string) {
+    try {
+      const user = await User.findById(id);
+      if (!user) {
+        throw new ApiError(
+          'DELETE_USER',
+          StatusCodes.NOT_FOUND,
+          'USER_NOT_FOUND',
+          'User not found',
+        );
+      }
+
+      await User.findByIdAndDelete(id);
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(
+        'DELETE_USER',
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'DELETE_USER_ERROR',
+        'Failed to delete user',
+      );
+    }
+  }
 }
 
 export default UserService;

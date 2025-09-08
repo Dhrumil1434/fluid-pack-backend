@@ -3,6 +3,7 @@ import {
   loginUserSchema,
   registerUserSchema,
   userIdParamSchema,
+  updateUserSchema,
 } from '../modules/user/user.validator';
 import { validateParams, validateRequest } from '../middlewares/validateRequest';
 import UserController from '../modules/user/user.controller';
@@ -54,6 +55,25 @@ router.get(
   verifyJWT,
   AuthRole(['admin', 'manager']),
   UserController.getAllUsers,
+);
+
+// Update user - Admin/Manager only
+router.put(
+  '/:id',
+  verifyJWT,
+  AuthRole(['admin', 'manager']),
+  validateParams(userIdParamSchema),
+  validateRequest(updateUserSchema),
+  UserController.updateUser,
+);
+
+// Delete user - Admin only
+router.delete(
+  '/:id',
+  verifyJWT,
+  AuthRole('admin'),
+  validateParams(userIdParamSchema),
+  UserController.deleteUser,
 );
 
 export default router;
