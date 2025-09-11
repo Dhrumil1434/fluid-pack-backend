@@ -5,11 +5,23 @@ import {
   userIdParamSchema,
   updateUserSchema,
 } from '../modules/user/user.validator';
-import { validateParams, validateRequest } from '../middlewares/validateRequest';
+import {
+  validateParams,
+  validateRequest,
+} from '../middlewares/validateRequest';
 import UserController from '../modules/user/user.controller';
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
 const router = Router();
+
+// Create user - Admin only (used by Admin UI)
+router.post(
+  '/',
+  verifyJWT,
+  AuthRole('admin'),
+  validateRequest(registerUserSchema),
+  UserController.registerUser,
+);
 
 router.post(
   '/register',

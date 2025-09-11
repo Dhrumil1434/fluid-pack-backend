@@ -5,6 +5,7 @@ import { ApiError } from '../../../utils/ApiError';
 import { StatusCodes } from 'http-status-codes';
 import jwt from 'jsonwebtoken';
 import { ERROR_MESSAGES } from '../user.error.codes';
+import { Types } from 'mongoose';
 
 interface RegisterData {
   username: string;
@@ -344,9 +345,11 @@ class UserService {
       // Update fields if provided
       if (updateData.username) user.username = updateData.username;
       if (updateData.email) user.email = updateData.email;
-      if (updateData.role) user.role = updateData.role as any;
-      if (updateData.department) user.department = updateData.department as any;
-      if (typeof updateData.isApproved === 'boolean') user.isApproved = updateData.isApproved;
+      if (updateData.role) user.role = new Types.ObjectId(updateData.role);
+      if (updateData.department)
+        user.department = new Types.ObjectId(updateData.department);
+      if (typeof updateData.isApproved === 'boolean')
+        user.isApproved = updateData.isApproved;
 
       await user.save();
 
