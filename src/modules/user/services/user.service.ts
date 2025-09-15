@@ -255,6 +255,14 @@ class UserService {
     limit: number = 10,
     sortBy: string = 'createdAt',
     sortOrder: string = 'desc',
+    filters?: {
+      search?: string;
+      role?: string;
+      department?: string;
+      isApproved?: boolean;
+      dateFrom?: string;
+      dateTo?: string;
+    },
   ): Promise<{
     users: Array<{
       _id: string;
@@ -278,15 +286,63 @@ class UserService {
       const sort: Record<string, 1 | -1> = {};
       sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
+      // Build filter query
+      const query: Record<string, unknown> = { deletedAt: null };
+
+      if (filters) {
+        // Text search on username or email
+        if (filters.search && filters.search.trim().length > 0) {
+          const regex = new RegExp(filters.search.trim(), 'i');
+          query['$or'] = [{ username: regex }, { email: regex }];
+        }
+
+        // Role filter
+        if (filters.role) {
+          try {
+            query['role'] = new Types.ObjectId(filters.role);
+          } catch {
+            // ignore invalid ids
+          }
+        }
+
+        // Department filter
+        if (filters.department) {
+          try {
+            query['department'] = new Types.ObjectId(filters.department);
+          } catch {
+            // ignore invalid ids
+          }
+        }
+
+        // Approval status
+        if (typeof filters.isApproved === 'boolean') {
+          query['isApproved'] = filters.isApproved;
+        }
+
+        // Date range on createdAt
+        const createdAt: Record<string, Date> = {};
+        if (filters.dateFrom) {
+          const from = new Date(filters.dateFrom);
+          if (!isNaN(from.getTime())) createdAt['$gte'] = from;
+        }
+        if (filters.dateTo) {
+          const to = new Date(filters.dateTo);
+          if (!isNaN(to.getTime())) createdAt['$lte'] = to;
+        }
+        if (Object.keys(createdAt).length > 0) {
+          query['createdAt'] = createdAt;
+        }
+      }
+
       const [users, total] = await Promise.all([
-        User.find({ deletedAt: null })
+        User.find(query)
           .select('-password -refreshToken') // Exclude sensitive fields
           .populate('role', 'name')
           .populate('department', 'name')
           .sort(sort)
           .skip(skip)
           .limit(limit),
-        User.countDocuments({ deletedAt: null }),
+        User.countDocuments(query),
       ]);
 
       return {

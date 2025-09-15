@@ -134,12 +134,40 @@ class UserController {
       const limit = parseInt(req.query['limit'] as string) || 10;
       const sortBy = (req.query['sortBy'] as string) || 'createdAt';
       const sortOrder = (req.query['sortOrder'] as string) || 'desc';
+      const search = (req.query['search'] as string) || undefined;
+      const role = (req.query['role'] as string) || undefined;
+      const department = (req.query['department'] as string) || undefined;
+      // isApproved can be 'true' | 'false'
+      const isApprovedParam = req.query['isApproved'] as string | undefined;
+      const isApproved =
+        typeof isApprovedParam === 'string'
+          ? isApprovedParam === 'true'
+          : undefined;
+      const dateFrom = (req.query['dateFrom'] as string) || undefined;
+      const dateTo = (req.query['dateTo'] as string) || undefined;
+
+      const filters: {
+        search?: string;
+        role?: string;
+        department?: string;
+        isApproved?: boolean;
+        dateFrom?: string;
+        dateTo?: string;
+      } = {
+        ...(search ? { search } : {}),
+        ...(role ? { role } : {}),
+        ...(department ? { department } : {}),
+        ...(typeof isApproved === 'boolean' ? { isApproved } : {}),
+        ...(dateFrom ? { dateFrom } : {}),
+        ...(dateTo ? { dateTo } : {}),
+      };
 
       const result = await UserService.getAllUsers(
         page,
         limit,
         sortBy,
         sortOrder,
+        filters,
       );
 
       const response = new ApiResponse(
@@ -158,11 +186,7 @@ class UserController {
   static getUserById = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
     const user = await UserService.getById(id);
-    const response = new ApiResponse(
-      StatusCodes.OK,
-      user,
-      'User fetched',
-    );
+    const response = new ApiResponse(StatusCodes.OK, user, 'User fetched');
     res.status(response.statusCode).json(response);
   });
 
