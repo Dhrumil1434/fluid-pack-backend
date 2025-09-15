@@ -8,6 +8,7 @@ import {
   PermissionLevel,
 } from '../../../../models/permissionConfig.model';
 import { IUser, User } from '../../../../models/user.model';
+import { Role } from '../../../../models/role.model';
 
 import { ApiError } from '../../../../utils/ApiError';
 import { ERROR_MESSAGES } from '../permissionCongif.error.constants';
@@ -86,6 +87,9 @@ class PermissionConfigService {
   private static permissionCache = new Map<string, IPermissionConfig[]>();
   private static cacheTimeout = 5 * 60 * 1000; // 5 minutes
   private static lastCacheUpdate = 0;
+  private static adminRoleIdCache: string | null = null;
+  private static rolesCacheUpdatedAt = 0;
+  private static rolesCacheTtlMs = 5 * 60 * 1000; // 5 minutes
 
   /**
    * Clear permission cache
@@ -107,6 +111,20 @@ class PermissionConfigService {
    */
   private static isCacheValid(): boolean {
     return Date.now() - this.lastCacheUpdate < this.cacheTimeout;
+  }
+
+  private static async getAdminRoleId(): Promise<string | null> {
+    const now = Date.now();
+    if (
+      this.adminRoleIdCache &&
+      now - this.rolesCacheUpdatedAt < this.rolesCacheTtlMs
+    ) {
+      return this.adminRoleIdCache;
+    }
+    const admin = await Role.findOne({ name: 'admin' }).lean();
+    this.adminRoleIdCache = admin?._id?.toString?.() || null;
+    this.rolesCacheUpdatedAt = now;
+    return this.adminRoleIdCache;
   }
 
   /**
@@ -472,15 +490,14 @@ class PermissionConfigService {
           reason: 'User not found',
         };
       }
-      // Admin bypass: allow all actions
-      // Check if user has admin role by comparing role ID
-      const adminRoleId = '685f8b9eabf7c0dbfbb3cb34'; // Admin role ID from your data
+      // Admin bypass: allow all actions via dynamic role lookup
+      const adminRoleId = await this.getAdminRoleId();
       const userRoleId =
         typeof user.role === 'string'
           ? user.role
           : (user.role as { _id?: { toString(): string } })?._id?.toString();
 
-      if (userRoleId === adminRoleId) {
+      if (adminRoleId && userRoleId === adminRoleId) {
         return {
           allowed: true,
           requiresApproval: false,
