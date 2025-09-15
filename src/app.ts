@@ -62,6 +62,7 @@ class App {
     this.app.use('/api/qa-machines', qaMachineRouter);
     this.app.use('/api/admin/category', categoryRouter);
     this.app.use('/api/permission', permissionRouter);
+    this.app.use('/api/machine', machineRouter);
   }
 
   private setErrorHandler(): void {
