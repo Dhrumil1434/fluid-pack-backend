@@ -81,7 +81,7 @@ const checkFileType = (
 const uploadMachineImages = multer({
   storage: machineStorage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB per file
+    fileSize: 50 * 1024 * 1024, // 50MB per file
     files: 5, // Maximum 5 files
   },
   fileFilter: (req, file, cb) => {
@@ -93,7 +93,7 @@ const uploadMachineImages = multer({
 const uploadMachineImagesUpdate = multer({
   storage: machineUpdateStorage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB per file
+    fileSize: 50 * 1024 * 1024, // 50MB per file
     files: 5, // Maximum 5 files
   },
   fileFilter: (req, file, cb) => {
@@ -318,11 +318,12 @@ const cleanupQAEntryDirectory = (qaEntryId: string): void => {
 
 // Error handling middleware for file uploads
 const handleFileUploadError = (
-  error: any,
+  error: unknown,
   req: Request,
   res: Response,
   next: NextFunction,
 ): void => {
+  const err = error as multer.MulterError & { message?: string };
   // Clean up any uploaded files on error
   if (req.files && Array.isArray(req.files)) {
     const filePaths = (req.files as Express.Multer.File[]).map(
@@ -338,13 +339,13 @@ const handleFileUploadError = (
   }
 
   // Handle multer-specific errors
-  if (error instanceof multer.MulterError) {
-    switch (error.code) {
+  if (err instanceof multer.MulterError) {
+    switch (err.code) {
       case 'LIMIT_FILE_SIZE':
         res.status(400).json({
           success: false,
           message:
-            'File too large. Maximum file size is 20MB for QA files and 10MB for machine images.',
+            'File too large. Maximum file size is 20MB for QA files and 50MB for machine images.',
           error: 'FILE_SIZE_LIMIT_EXCEEDED',
         });
         return;
@@ -367,7 +368,7 @@ const handleFileUploadError = (
         res.status(400).json({
           success: false,
           message: 'File upload error',
-          error: error.message,
+          error: err.message,
         });
         return;
     }

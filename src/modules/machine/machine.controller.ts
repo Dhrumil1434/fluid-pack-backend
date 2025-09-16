@@ -23,8 +23,9 @@ import { ApiError } from '../../utils/ApiError';
 import {
   moveFilesToMachineDirectory,
   deleteMachineImages,
-  cleanupMachineDirectory,
 } from '../../middlewares/multer.middleware';
+import MachineApprovalService from './services/machineApproval.service';
+import { ApprovalType } from '../../models/machineApproval.model';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -107,60 +108,77 @@ class MachineController {
         );
       }
 
-      let imagePaths: string[] = [];
+      // imagePaths kept for previous logic; not used in new flow
 
-      try {
-        // Move uploaded files to machine directory if files were uploaded
-        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-          // Create a temporary ID for the machine to organize files
-          const tempId = new Date().getTime().toString();
-          imagePaths = await moveFilesToMachineDirectory(
-            req.files as Express.Multer.File[],
-            tempId,
-          );
-        }
+      // First create the machine record (images will be set after we move files)
+      const createData: CreateMachineData = {
+        ...value,
+        created_by: req.user._id,
+        images: [],
+      };
 
-        const createData: CreateMachineData = {
-          ...value,
-          created_by: req.user._id,
-          images: imagePaths,
-        };
+      const machine = await MachineService.create(createData);
 
-        const machine = await MachineService.create(createData);
+      // Move uploaded files directly from temp to the machine directory (single move)
+      if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+        const actualImagePaths = await moveFilesToMachineDirectory(
+          req.files as Express.Multer.File[],
+          (machine as { _id: { toString(): string } })._id.toString(),
+        );
 
-        // Move files to the actual machine directory after successful creation
-        if (imagePaths.length > 0) {
-          const tempId = new Date().getTime().toString();
-          const actualImagePaths = await moveFilesToMachineDirectory(
-            req.files as Express.Multer.File[],
-            (machine as { _id: { toString(): string } })._id.toString(),
-          );
-
-          // Update the machine with correct image paths
+        if (actualImagePaths.length > 0) {
           await MachineService.update(
             (machine as { _id: { toString(): string } })._id.toString(),
             {
               images: actualImagePaths,
             },
           );
-
-          // Clean up temp directory
-          cleanupMachineDirectory(tempId);
         }
-
-        const response = new ApiResponse(
-          StatusCodes.CREATED,
-          machine,
-          'Machine created successfully. Awaiting approval.',
-        );
-        res.status(response.statusCode).json(response);
-      } catch (error) {
-        // Clean up uploaded files if creation fails
-        if (imagePaths.length > 0) {
-          deleteMachineImages(imagePaths);
-        }
-        throw error;
       }
+
+      // If approval is required, create an approval request entry
+      const perm = (
+        req as unknown as {
+          permissionInfo?: {
+            requiresApproval?: boolean;
+            approverRoles?: Array<string | { toString?: () => string }>;
+          };
+        }
+      ).permissionInfo;
+      if (perm?.requiresApproval) {
+        const approverRolesResolved = Array.isArray(perm?.approverRoles)
+          ? perm.approverRoles
+              .map((r) => (typeof r === 'string' ? r : r?.toString?.()))
+              .filter((v): v is string => Boolean(v))
+          : undefined;
+        const approvalPayload: {
+          machineId: string;
+          requestedBy: string;
+          approvalType: ApprovalType;
+          proposedChanges: { action: string };
+          requestNotes: string;
+          approverRoles?: string[];
+        } = {
+          machineId: (
+            machine as { _id: { toString(): string } }
+          )._id.toString(),
+          requestedBy: req.user._id,
+          approvalType: ApprovalType.MACHINE_CREATION,
+          proposedChanges: { action: 'CREATE_MACHINE' },
+          requestNotes: 'Technician machine creation request',
+        };
+        if (approverRolesResolved) {
+          approvalPayload.approverRoles = approverRolesResolved;
+        }
+        await MachineApprovalService.createApprovalRequest(approvalPayload);
+      }
+
+      // Include permission context if available (e.g., requiresApproval)
+      const message = perm?.requiresApproval
+        ? 'Machine created successfully. Awaiting approval.'
+        : 'Machine created successfully.';
+      const response = new ApiResponse(StatusCodes.CREATED, machine, message);
+      res.status(response.statusCode).json(response);
     },
   );
 

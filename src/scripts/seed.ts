@@ -1,6 +1,7 @@
 import connectDB from '../db/index';
 import { Role } from '../models/role.model';
 import { Department } from '../models/department.model';
+import { Category } from '../models/category.model';
 import {
   PermissionConfig,
   PermissionLevel,
@@ -193,10 +194,32 @@ async function main() {
     ]),
   );
 
-  // Pick a createdBy user: prefer an existing admin user; otherwise fallback to any user or a new ObjectId
-  const anyUser = await User.findOne().lean();
-  const createdByUserId =
-    anyUser?._id?.toString?.() || new Types.ObjectId().toString();
+  // Resolve createdBy user: prefer an approved admin user; then any admin; then any user; finally a new ObjectId
+  async function resolveAdminCreatedBy(): Promise<string> {
+    const adminRole = await Role.findOne({ name: 'admin' })
+      .select('_id')
+      .lean();
+    if (adminRole?._id) {
+      const approvedAdmin = await User.findOne({
+        role: adminRole._id,
+        isApproved: true,
+      })
+        .select('_id')
+        .lean();
+      if (approvedAdmin?._id) return approvedAdmin._id.toString();
+
+      const anyAdmin = await User.findOne({ role: adminRole._id })
+        .select('_id')
+        .lean();
+      if (anyAdmin?._id) return anyAdmin._id.toString();
+    }
+
+    const anyUser = await User.findOne().select('_id').lean();
+    if (anyUser?._id) return anyUser._id.toString();
+    return new Types.ObjectId().toString();
+  }
+
+  const createdByUserId = await resolveAdminCreatedBy();
 
   // Build approver role map
   const approverRoleNames = Array.from(
@@ -258,6 +281,71 @@ async function main() {
   }
 
   console.log('Policy-based permission rules ensured.');
+
+  // Seed machine categories (tableting machine types)
+  const machineTypes: Array<{ name: string; description: string }> = [
+    {
+      name: 'high-speed single sided/double rotary tablet press',
+      description:
+        'High-speed rotary tablet presses designed for large-scale production with robust cGMP features.',
+    },
+    {
+      name: 'double rotary tablet press (accura act-v)',
+      description:
+        'ACCURA ACT-V double rotary press enabling enhanced throughput and consistent tablet quality.',
+    },
+    {
+      name: 'b4-double sided / d4-single sided rotary tablet press',
+      description:
+        'Versatile rotary tablet press platform supporting double-sided and single-sided configurations.',
+    },
+    {
+      name: 'single sided tablet slugging (bolus) machine',
+      description:
+        'Specialized press for large-format tablets/boluses, often used in veterinary applications.',
+    },
+    {
+      name: 'single & double layer mini tablet press',
+      description:
+        'Laboratory/pilot-scale mini press capable of producing single or double-layer tablets.',
+    },
+    {
+      name: 'roller compactor (plain & water jacketed)',
+      description:
+        'Roll compactors for dry granulation; available in plain and water-jacketed, cGMP-compliant designs.',
+    },
+    {
+      name: 'tablet de-burring & de-dusting machine',
+      description:
+        'Post-compression equipment to remove burrs and dust, ensuring cleaner tablets.',
+    },
+    {
+      name: 'tablet coating machine',
+      description:
+        'Automatic coating systems for functional or aesthetic tablet coating requirements.',
+    },
+  ];
+
+  if (machineTypes.length) {
+    const ops = machineTypes.map((m) => ({
+      updateOne: {
+        filter: { name: m.name.toLowerCase().trim() },
+        update: {
+          $setOnInsert: {
+            name: m.name.toLowerCase().trim(),
+            createdBy: new Types.ObjectId(createdByUserId),
+            isActive: true,
+          },
+          $set: {
+            description: m.description,
+          },
+        },
+        upsert: true,
+      },
+    }));
+    await Category.bulkWrite(ops, { ordered: false });
+    console.log('Seeded/updated machine categories:', machineTypes.length);
+  }
   process.exit(0);
 }
 

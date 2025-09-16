@@ -178,7 +178,7 @@ class MachineService {
 
       const machine = await Machine.findOne({
         _id: id,
-        isActive: true,
+        deletedAt: null,
       }).populate([
         { path: 'category_id', select: 'name description' },
         { path: 'created_by', select: 'username email' },
@@ -223,7 +223,7 @@ class MachineService {
       // Check if machine exists
       const existingMachine = await Machine.findOne({
         _id: id,
-        isActive: true,
+        deletedAt: null,
       });
 
       if (!existingMachine) {
@@ -259,7 +259,7 @@ class MachineService {
           name: { $regex: new RegExp(`^${data.name}$`, 'i') },
           category_id: categoryId,
           _id: { $ne: id },
-          isActive: true,
+          deletedAt: null,
         });
 
         if (duplicateMachine) {
@@ -347,7 +347,7 @@ class MachineService {
   static async getApprovedMachines(): Promise<IMachine[]> {
     try {
       return await Machine.find({
-        isActive: true,
+        deletedAt: null,
         is_approved: true,
       })
         .populate([
@@ -385,7 +385,7 @@ class MachineService {
 
       const machine = await Machine.findOne({
         _id: id,
-        isActive: true,
+        deletedAt: null,
       });
 
       if (!machine) {
@@ -433,7 +433,7 @@ class MachineService {
 
       const machine = await Machine.findOne({
         _id: id,
-        isActive: true,
+        deletedAt: null,
       });
 
       return !!machine;

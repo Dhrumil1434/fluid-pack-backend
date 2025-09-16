@@ -4,6 +4,18 @@ import { ApiError } from '../../../../utils/ApiError';
 import PermissionConfigService from '../services/permissionConfig.service';
 import { ActionType } from '../../../../models/permissionConfig.model';
 
+type RoleType = string | { name?: string; _id?: string };
+interface RequestWithAuth extends Request {
+  user?: { _id: string; role: RoleType };
+  permissionInfo?: {
+    actions?: ActionType[];
+    adminOverride?: boolean;
+    requiresApproval?: boolean;
+    approverRoles?: string[];
+    reason?: string | undefined;
+  };
+}
+
 export const checkPermission = (actions: ActionType[]) => {
   return async (
     req: Request,
@@ -12,7 +24,7 @@ export const checkPermission = (actions: ActionType[]) => {
   ): Promise<void> => {
     try {
       // User must be authenticated and attached to req.user
-      const user = (req as any).user;
+      const user = (req as RequestWithAuth).user;
       if (!user) {
         throw new ApiError(
           'PERMISSION_CHECK',
@@ -25,9 +37,11 @@ export const checkPermission = (actions: ActionType[]) => {
       // Admin bypass: allow all actions
       // Handle both string role and populated role object
       const userRole =
-        typeof user.role === 'string' ? user.role : user.role?.name;
+        user && typeof user.role === 'string'
+          ? user.role
+          : (user?.role as { name?: string })?.name;
       if (userRole === 'admin') {
-        (req as any).permissionInfo = {
+        (req as RequestWithAuth).permissionInfo = {
           actions,
           adminOverride: true,
           reason: 'Admin role override - full access granted',
@@ -36,12 +50,15 @@ export const checkPermission = (actions: ActionType[]) => {
       }
 
       // Extract context (categoryId, machineValue) from body or query
+      const body = (req as Request & { body: Record<string, unknown> }).body;
+      const query = (req as Request & { query: Record<string, unknown> }).query;
       const categoryId =
-        req.body?.['categoryId'] ||
-        req.body?.['category_id'] ||
-        req.query?.['categoryId'];
-      const machineValue =
-        req.body?.['machineValue'] || req.query?.['machineValue'];
+        (body?.['categoryId'] as string | undefined) ||
+        (body?.['category_id'] as string | undefined) ||
+        (query?.['categoryId'] as string | undefined);
+      const machineValueRaw =
+        (body?.['machineValue'] as string | number | undefined) ||
+        (query?.['machineValue'] as string | number | undefined);
 
       // Check all actions
       for (const action of actions) {
@@ -49,31 +66,41 @@ export const checkPermission = (actions: ActionType[]) => {
           user._id,
           action,
           categoryId,
-          machineValue !== undefined ? parseFloat(machineValue) : undefined,
+          machineValueRaw !== undefined
+            ? parseFloat(String(machineValueRaw))
+            : undefined,
         );
         if (!result.allowed) {
           if (result.requiresApproval) {
-            throw new ApiError(
-              'PERMISSION_CHECK',
-              StatusCodes.FORBIDDEN,
-              'APPROVAL_REQUIRED',
-              `Action '${action}' requires approval. ${result.reason}`,
-            );
-          } else {
-            throw new ApiError(
-              'PERMISSION_CHECK',
-              StatusCodes.FORBIDDEN,
-              'PERMISSION_DENIED',
-              `Action '${action}' denied. ${result.reason}`,
-            );
+            // Allow request to proceed but mark that approval is required
+            const existingInfo: RequestWithAuth['permissionInfo'] =
+              (req as RequestWithAuth).permissionInfo || {};
+            (req as RequestWithAuth).permissionInfo = {
+              ...existingInfo,
+              actions,
+              adminOverride: false,
+              requiresApproval: true,
+              approverRoles: (result.approverRoles || []).map(String),
+              reason: result.reason,
+            };
+            continue; // do not block
           }
+          // Explicitly denied
+          throw new ApiError(
+            'PERMISSION_CHECK',
+            StatusCodes.FORBIDDEN,
+            'PERMISSION_DENIED',
+            `Action '${action}' denied. ${result.reason}`,
+          );
         }
       }
 
-      // Attach permission info for downstream use
-      (req as any).permissionInfo = {
+      // Attach/merge permission info for downstream use without overwriting earlier flags
+      const existing = (req as RequestWithAuth).permissionInfo || {};
+      (req as RequestWithAuth).permissionInfo = {
+        ...existing,
         actions,
-        adminOverride: false,
+        adminOverride: existing.adminOverride ?? false,
       };
       next();
     } catch (error) {

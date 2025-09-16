@@ -1,5 +1,5 @@
 import express, { Application } from 'express';
-import cors from 'cors';
+import cors, { CorsOptions } from 'cors';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import { errorHandler } from './middlewares/errorhandler';
@@ -33,21 +33,22 @@ class App {
       }),
     );
     this.app.use(express.json({ limit: '5mb' }));
-    this.app.use(express.urlencoded({ extended: true, limit: '5mb' }));
-    this.app.use(
-      cors({
-        origin: ['http://localhost:4200', 'http://127.0.0.1:4200'], // Allow both localhost and 127.0.0.1
-        credentials: true, // <-- allow credentials
-        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        allowedHeaders: [
-          'Content-Type',
-          'Authorization',
-          'X-Requested-With',
-          'Accept',
-        ],
-        optionsSuccessStatus: 200, // Some legacy browsers choke on 204
-      }),
-    );
+    this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+    const corsOptions: CorsOptions = {
+      origin: ['http://localhost:4200', 'http://127.0.0.1:4200'],
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Requested-With',
+        'Accept',
+      ],
+      optionsSuccessStatus: 200,
+    };
+    this.app.use(cors(corsOptions));
+    // Explicitly handle preflight for all routes
+    this.app.options('*', cors(corsOptions));
     this.app.use(express.static('public'));
     this.app.set('view engine', 'ejs');
     this.app.use(cookieParser());

@@ -257,9 +257,19 @@ class MachineApprovalController {
       const page = parseInt(req.query['page'] as string) || 1;
       const limit = parseInt(req.query['limit'] as string) || 10;
 
+      // Scope pending approvals to the current user's role if available
+      let approverRoleId: string | undefined;
+      const user = req.user as unknown as { role?: string | { _id?: string } };
+      if (user?.role && typeof user.role === 'string') {
+        approverRoleId = user.role;
+      } else if ((user?.role as { _id?: string })?._id) {
+        approverRoleId = (user.role as { _id?: string })?._id?.toString();
+      }
+
       const result = await MachineApprovalService.getPendingApprovals(
         page,
         limit,
+        approverRoleId,
       );
 
       const response = new ApiResponse(

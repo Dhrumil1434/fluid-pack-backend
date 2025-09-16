@@ -17,6 +17,7 @@ export interface CreateApprovalRequestData {
   proposedChanges: Record<string, unknown>;
   originalData?: Record<string, unknown>;
   requestNotes?: string;
+  approverRoles?: string[]; // optional scoping to approver role ids
 }
 
 export interface ApprovalDecisionData {
@@ -94,6 +95,9 @@ class MachineApprovalService {
         proposedChanges: data.proposedChanges,
         requestNotes: data.requestNotes,
         status: ApprovalStatus.PENDING,
+        approverRoles: (data.approverRoles || []).map(
+          (id) => new mongoose.Types.ObjectId(id),
+        ),
       });
 
       await approvalRequest.save();
@@ -305,10 +309,19 @@ class MachineApprovalService {
   static async getPendingApprovals(
     page: number = 1,
     limit: number = 10,
+    approverRoleId?: string,
   ): Promise<ApprovalListResult> {
-    return this.getApprovalRequests(page, limit, {
+    const base: ApprovalFilters & { approverRoles?: string } = {
       status: ApprovalStatus.PENDING,
-    });
+    };
+    // Filter to approvals scoped to the approver's role if provided
+    const filters: ApprovalFilters & { approverRoles?: string } = { ...base };
+    if (approverRoleId) filters.approverRoles = approverRoleId;
+    return this.getApprovalRequests(
+      page,
+      limit,
+      filters as unknown as ApprovalFilters,
+    );
   }
 
   /**

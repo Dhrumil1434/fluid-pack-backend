@@ -27,6 +27,7 @@ export interface IMachineApproval extends Document {
   requestedBy: mongoose.Types.ObjectId;
   approvalType: ApprovalType;
   status: ApprovalStatus;
+  approverRoles?: mongoose.Types.ObjectId[];
 
   // Original data vs proposed changes
   originalData?: Record<string, unknown>;
@@ -71,6 +72,12 @@ const machineApprovalSchema = new Schema<IMachineApproval>(
       enum: Object.values(ApprovalStatus),
       default: ApprovalStatus.PENDING,
     },
+    approverRoles: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Role',
+      },
+    ],
     originalData: {
       type: Schema.Types.Mixed,
     },
@@ -113,6 +120,7 @@ const machineApprovalSchema = new Schema<IMachineApproval>(
 machineApprovalSchema.index({ status: 1, createdAt: -1 });
 machineApprovalSchema.index({ requestedBy: 1, status: 1 });
 machineApprovalSchema.index({ machineId: 1, approvalType: 1 });
+machineApprovalSchema.index({ approverRoles: 1, status: 1, createdAt: -1 });
 
 export const MachineApproval = mongoose.model<IMachineApproval>(
   'MachineApproval',
