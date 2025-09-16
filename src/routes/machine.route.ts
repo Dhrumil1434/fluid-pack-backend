@@ -24,6 +24,9 @@ import { ActionType } from '../models/permissionConfig.model';
 
 const router = Router();
 
+// Get my recent machines (default last 5) - Requires authentication
+router.get('/my/recent', verifyJWT, MachineController.getMyRecentMachines);
+
 // Create machine with images - Requires authentication
 router.post(
   '/',

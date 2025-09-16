@@ -38,6 +38,37 @@ export interface AuthenticatedRequest extends Request {
 
 class MachineController {
   /**
+   * Get current user's recent machines (default last 5)
+   * GET /api/machines/my/recent?limit=5
+   */
+  static getMyRecentMachines = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      if (!req.user) {
+        throw new ApiError(
+          'GET_MY_RECENT_MACHINES',
+          StatusCodes.UNAUTHORIZED,
+          'USER_NOT_AUTHENTICATED',
+          'User authentication required',
+        );
+      }
+
+      const limitParam = (req.query['limit'] as string) || '5';
+      const limit = Number.parseInt(limitParam, 10) || 5;
+
+      const result = await MachineService.getAll(1, limit, {
+        created_by: req.user._id,
+      });
+
+      const response = new ApiResponse(
+        StatusCodes.OK,
+        result,
+        'My recent machines retrieved successfully',
+      );
+      res.status(response.statusCode).json(response);
+    },
+  );
+
+  /**
    * Create a new machine
    * POST /api/machines
    */
@@ -102,13 +133,16 @@ class MachineController {
           const tempId = new Date().getTime().toString();
           const actualImagePaths = await moveFilesToMachineDirectory(
             req.files as Express.Multer.File[],
-            (machine as any)._id.toString(),
+            (machine as { _id: { toString(): string } })._id.toString(),
           );
 
           // Update the machine with correct image paths
-          await MachineService.update((machine as any)._id.toString(), {
-            images: actualImagePaths,
-          });
+          await MachineService.update(
+            (machine as { _id: { toString(): string } })._id.toString(),
+            {
+              images: actualImagePaths,
+            },
+          );
 
           // Clean up temp directory
           cleanupMachineDirectory(tempId);
