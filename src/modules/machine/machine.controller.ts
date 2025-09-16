@@ -75,7 +75,25 @@ class MachineController {
    */
   static createMachine = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      const { error, value } = createMachineSchema.validate(req.body);
+      // Parse metadata if it arrived as a JSON string from multipart/form-data
+      const rawBody = req.body as Record<string, unknown>;
+      const bodyForValidation: Record<string, unknown> = { ...rawBody };
+      if (typeof rawBody['metadata'] === 'string') {
+        try {
+          bodyForValidation['metadata'] = JSON.parse(
+            rawBody['metadata'] as string,
+          );
+        } catch {
+          throw new ApiError(
+            'CREATE_MACHINE_VALIDATION',
+            StatusCodes.BAD_REQUEST,
+            'VALIDATION_ERROR',
+            'Metadata must be valid JSON',
+          );
+        }
+      }
+
+      const { error, value } = createMachineSchema.validate(bodyForValidation);
       if (error) {
         // Clean up uploaded files if validation fails
         if (req.files && Array.isArray(req.files)) {

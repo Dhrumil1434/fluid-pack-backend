@@ -8,7 +8,10 @@ import {
   machineApprovalSchema,
   validateMachineIdsSchema,
 } from '../modules/machine/validators/machine.joi.validator';
-import { validateRequest } from '../middlewares/validateRequest';
+import {
+  validateRequest,
+  parseJsonFields,
+} from '../middlewares/validateRequest';
 import { validateParams } from '../middlewares/validateRequest';
 import { validateQuery } from '../middlewares/validateRequest';
 import MachineController from '../modules/machine/machine.controller';
@@ -34,6 +37,7 @@ router.post(
   checkPermission([ActionType.CREATE_MACHINE]),
   uploadMachineImages.array('images', 5), // Allow up to 5 images with field name 'images'
   handleFileUploadError,
+  parseJsonFields(['metadata']),
   validateRequest(createMachineSchema),
   MachineController.createMachine,
 );

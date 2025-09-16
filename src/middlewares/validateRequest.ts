@@ -70,3 +70,23 @@ export const validateQuery = (schema: Joi.ObjectSchema) => {
     next();
   };
 };
+
+/**
+ * Middleware to JSON.parse specific fields if they arrive as strings (e.g., multipart/form-data)
+ */
+export const parseJsonFields = (fields: string[]) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const body = (req as Request & { body: Record<string, unknown> }).body;
+    for (const field of fields) {
+      const value = body?.[field];
+      if (typeof value === 'string') {
+        try {
+          body[field] = JSON.parse(value as string);
+        } catch {
+          // leave as-is; Joi will produce a proper validation error downstream
+        }
+      }
+    }
+    next();
+  };
+};
