@@ -128,11 +128,27 @@ class MachineController {
 
       // imagePaths kept for previous logic; not used in new flow
 
+      // Determine if approval is required from permission context
+      const perm = (
+        req as unknown as {
+          permissionInfo?: {
+            requiresApproval?: boolean;
+            approverRoles?: Array<string | { toString?: () => string }>;
+          };
+        }
+      ).permissionInfo;
+
+      const isAdmin =
+        (req.user.role || '').toString().toLowerCase() === 'admin';
+      const shouldAutoApprove = isAdmin || perm?.requiresApproval === false;
+
       // First create the machine record (images will be set after we move files)
       const createData: CreateMachineData = {
         ...value,
         created_by: req.user._id,
         images: [],
+        // Auto-approve if admin or approval not required per permission policy
+        is_approved: shouldAutoApprove ? true : undefined,
       };
 
       const machine = await MachineService.create(createData);
@@ -155,14 +171,6 @@ class MachineController {
       }
 
       // If approval is required, create an approval request entry
-      const perm = (
-        req as unknown as {
-          permissionInfo?: {
-            requiresApproval?: boolean;
-            approverRoles?: Array<string | { toString?: () => string }>;
-          };
-        }
-      ).permissionInfo;
       if (perm?.requiresApproval) {
         const approverRolesResolved = Array.isArray(perm?.approverRoles)
           ? perm.approverRoles
@@ -218,8 +226,8 @@ class MachineController {
 
       const filters: MachineFilters = {};
       if (value.category_id) filters.category_id = value.category_id;
-      if (value.is_approved !== undefined)
-        filters.is_approved = value.is_approved === 'true';
+      if (typeof value.is_approved === 'boolean')
+        filters.is_approved = value.is_approved;
       if (value.created_by) filters.created_by = value.created_by;
       if (value.search) filters.search = value.search;
 

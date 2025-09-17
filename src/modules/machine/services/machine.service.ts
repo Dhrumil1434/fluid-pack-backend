@@ -16,6 +16,7 @@ export interface CreateMachineData {
   created_by: string;
   images?: string[];
   metadata?: Record<string, unknown>;
+  is_approved?: boolean;
 }
 
 export interface UpdateMachineData {
@@ -48,7 +49,7 @@ class MachineService {
       // Verify category exists and is active
       const category = await Category.findOne({
         _id: data.category_id,
-        isActive: true,
+        deletedAt: null,
       });
 
       if (!category) {
@@ -64,7 +65,7 @@ class MachineService {
       const existingMachine = await Machine.findOne({
         name: { $regex: new RegExp(`^${data.name}$`, 'i') },
         category_id: data.category_id,
-        isActive: true,
+        deletedAt: null,
       });
 
       if (existingMachine) {
@@ -82,7 +83,8 @@ class MachineService {
         created_by: data.created_by,
         images: data.images || [],
         metadata: data.metadata || {},
-        is_approved: false, // Default to false, requires approval
+        is_approved:
+          typeof data.is_approved === 'boolean' ? data.is_approved : false,
       });
 
       await machine.save();
@@ -239,7 +241,7 @@ class MachineService {
       if (data.category_id) {
         const category = await Category.findOne({
           _id: data.category_id,
-          isActive: true,
+          deletedAt: null,
         });
 
         if (!category) {
@@ -314,7 +316,7 @@ class MachineService {
 
       const machine = await Machine.findOne({
         _id: id,
-        isActive: true,
+        deletedAt: null,
       });
 
       if (!machine) {
@@ -327,7 +329,6 @@ class MachineService {
       }
 
       await Machine.findByIdAndUpdate(id, {
-        isActive: false,
         deletedAt: new Date(),
       });
     } catch (error) {
@@ -458,7 +459,7 @@ class MachineService {
 
       return await Machine.find({
         category_id: categoryId,
-        isActive: true,
+        deletedAt: null,
         is_approved: true,
       })
         .populate([
