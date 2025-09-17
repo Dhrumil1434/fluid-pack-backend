@@ -186,6 +186,7 @@ class MachineApprovalService {
         { path: 'requestedBy', select: 'username email' },
         { path: 'approvedBy', select: 'username email' },
         { path: 'rejectedBy', select: 'username email' },
+        { path: 'approverRoles', select: 'name' },
       ]);
 
       if (!approval) {
@@ -205,6 +206,82 @@ class MachineApprovalService {
         StatusCodes.INTERNAL_SERVER_ERROR,
         'GET_APPROVAL_ERROR',
         'Failed to retrieve approval request',
+      );
+    }
+  }
+  /**
+   * Update approval request fields while pending
+   */
+  static async updateApprovalRequest(
+    id: string,
+    updates: {
+      approverRoles?: string[];
+      approvalType?: ApprovalType;
+      requestNotes?: string;
+      proposedChanges?: Record<string, unknown>;
+    },
+  ): Promise<IMachineApproval> {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new ApiError(
+          'UPDATE_APPROVAL',
+          StatusCodes.BAD_REQUEST,
+          'INVALID_APPROVAL_ID',
+          'Invalid approval ID format',
+        );
+      }
+
+      const approval = await MachineApproval.findById(id);
+      if (!approval) {
+        throw new ApiError(
+          'UPDATE_APPROVAL',
+          StatusCodes.NOT_FOUND,
+          'APPROVAL_NOT_FOUND',
+          'Approval request not found',
+        );
+      }
+      // Allow editing for PENDING and REJECTED (e.g., adjust approver roles for a resubmission loop)
+      if (
+        approval.status === ApprovalStatus.APPROVED ||
+        approval.status === ApprovalStatus.CANCELLED
+      ) {
+        throw new ApiError(
+          'UPDATE_APPROVAL',
+          StatusCodes.BAD_REQUEST,
+          'APPROVAL_ALREADY_PROCESSED',
+          'Only pending or rejected approvals can be updated',
+        );
+      }
+
+      const updateData: Partial<IMachineApproval> =
+        {} as Partial<IMachineApproval>;
+      if (updates.approverRoles !== undefined) {
+        updateData.approverRoles = (updates.approverRoles || []).map(
+          (r) => new mongoose.Types.ObjectId(r),
+        );
+      }
+      if (updates.approvalType !== undefined)
+        updateData.approvalType = updates.approvalType;
+      if (updates.requestNotes !== undefined)
+        updateData.requestNotes = updates.requestNotes;
+      if (updates.proposedChanges !== undefined)
+        updateData.proposedChanges = updates.proposedChanges;
+
+      // Use $set explicitly to avoid merge semantics with arrays
+      await MachineApproval.updateOne({ _id: id }, { $set: updateData });
+      const updated = await MachineApproval.findById(id).populate([
+        { path: 'machineId', select: 'name category_id' },
+        { path: 'requestedBy', select: 'username email' },
+        { path: 'approverRoles', select: 'name' },
+      ]);
+      return updated!;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(
+        'UPDATE_APPROVAL',
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'UPDATE_APPROVAL_ERROR',
+        'Failed to update approval request',
       );
     }
   }
@@ -279,6 +356,27 @@ class MachineApprovalService {
         { path: 'approvedBy', select: 'username email' },
         { path: 'rejectedBy', select: 'username email' },
       ]);
+
+      // When an approval is accepted, reflect it on the machine document
+      if (data.approved) {
+        try {
+          await Machine.findByIdAndUpdate(
+            approval.machineId,
+            { is_approved: true, updatedAt: new Date() },
+            { new: true },
+          );
+        } catch {
+          // Do not fail the approval process if machine update fails; log and continue
+          // You may replace with a proper logger
+
+          throw new ApiError(
+            'PROCESS_APPROVAL',
+            StatusCodes.INTERNAL_SERVER_ERROR,
+            'PROCESS_APPROVAL_ERROR',
+            'Failed to update machine is_approved flag',
+          );
+        }
+      }
 
       return updatedApproval!;
     } catch (error) {

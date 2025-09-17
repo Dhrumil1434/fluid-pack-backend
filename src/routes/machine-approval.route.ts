@@ -55,6 +55,14 @@ router.patch(
   MachineApprovalController.processApprovalDecision,
 );
 
+// Update approval request - Admin/Manager only
+router.patch(
+  '/:id',
+  verifyJWT,
+  AuthRole(['admin', 'manager']),
+  MachineApprovalController.updateApprovalRequest,
+);
+
 // Cancel approval request (only by requester) - All authenticated users
 router.patch(
   '/:id/cancel',

@@ -216,6 +216,50 @@ class MachineApprovalController {
   );
 
   /**
+   * Update approval request (only while pending)
+   * PATCH /api/machine-approvals/:id
+   */
+  static updateApprovalRequest = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      if (!req.user) {
+        throw new ApiError(
+          'UPDATE_APPROVAL',
+          StatusCodes.UNAUTHORIZED,
+          'USER_NOT_AUTHENTICATED',
+          'User authentication required',
+        );
+      }
+
+      const { id } = req.params;
+      if (!id) {
+        throw new ApiError(
+          'UPDATE_APPROVAL',
+          StatusCodes.BAD_REQUEST,
+          'MISSING_APPROVAL_ID',
+          'Approval ID is required',
+        );
+      }
+
+      const { approverRoles, approvalType, requestNotes, proposedChanges } =
+        req.body || {};
+
+      const updated = await MachineApprovalService.updateApprovalRequest(id, {
+        approverRoles,
+        approvalType,
+        requestNotes,
+        proposedChanges,
+      });
+
+      const response = new ApiResponse(
+        StatusCodes.OK,
+        updated,
+        'Approval request updated successfully',
+      );
+      res.status(response.statusCode).json(response);
+    },
+  );
+
+  /**
    * Get user's approval requests
    * GET /api/machine-approvals/my-requests
    */
@@ -233,10 +277,21 @@ class MachineApprovalController {
       const page = parseInt(req.query['page'] as string) || 1;
       const limit = parseInt(req.query['limit'] as string) || 10;
 
-      const result = await MachineApprovalService.getUserApprovalRequests(
-        req.user._id,
+      // Allow filtering by machine and status for requester's own approvals
+      const filters: ApprovalFilters = {
+        requestedBy: req.user._id as unknown as string,
+      };
+      if (req.query['status'])
+        filters.status = req.query['status'] as ApprovalStatus;
+      if (req.query['approvalType'])
+        filters.approvalType = req.query['approvalType'] as ApprovalType;
+      if (req.query['machineId'])
+        filters.machineId = req.query['machineId'] as string;
+
+      const result = await MachineApprovalService.getApprovalRequests(
         page,
         limit,
+        filters,
       );
 
       const response = new ApiResponse(
