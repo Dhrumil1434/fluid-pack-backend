@@ -35,7 +35,7 @@ class App {
     this.app.use(express.json({ limit: '5mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
     const corsOptions: CorsOptions = {
-      origin: ['http://localhost:4200', 'http://127.0.0.1:4200'],
+      origin: ['http://localhost:4200', 'http://192.168.3.108:4200'],
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowedHeaders: [
