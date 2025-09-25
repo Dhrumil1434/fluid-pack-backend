@@ -34,8 +34,21 @@ class App {
     );
     this.app.use(express.json({ limit: '5mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+    const frontendOriginFromEnv = process.env['FRONTEND_ORIGIN'];
+    const lanIp = process.env['LAN_IP'];
+    const frontendPort = process.env['FRONTEND_PORT'] || '4200';
+    const computedLanOrigin = lanIp
+      ? `http://${lanIp}:${frontendPort}`
+      : undefined;
+    const allowedOrigins = [
+      ...(frontendOriginFromEnv ? [frontendOriginFromEnv] : []),
+      ...(computedLanOrigin ? [computedLanOrigin] : []),
+    ];
     const corsOptions: CorsOptions = {
-      origin: ['http://localhost:4200', 'http://192.168.3.108:4200'],
+      origin:
+        allowedOrigins.length > 0
+          ? allowedOrigins
+          : [/^http:\/\/\d+\.\d+\.\d+\.\d+(:\d+)?$/],
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowedHeaders: [

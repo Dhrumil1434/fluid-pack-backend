@@ -1,6 +1,8 @@
 const axios = require('axios');
 
-const BASE_URL = 'http://localhost:5000/api';
+const LAN_IP = process.env.LAN_IP || 'localhost';
+const API_PORT = process.env.API_PORT || process.env.PORT || '5000';
+const BASE_URL = `http://${LAN_IP}:${API_PORT}/api`;
 
 // Test data from your database
 const testData = {
