@@ -61,9 +61,11 @@ class MachineService {
         );
       }
 
-      // Check if machine with same name already exists in the same category
+      // Check if machine with same name already exists in the same category (use nameHash for encrypted names)
+      const { hmacDeterministic } = await import('../../../utils/crypto.util');
+      const nameHash = hmacDeterministic(data.name.trim().toLowerCase());
       const existingMachine = await Machine.findOne({
-        name: { $regex: new RegExp(`^${data.name}$`, 'i') },
+        nameHash,
         category_id: data.category_id,
         deletedAt: null,
       });
@@ -133,7 +135,12 @@ class MachineService {
       }
 
       if (filters.search) {
-        query['$or'] = [{ name: { $regex: filters.search, $options: 'i' } }];
+        // Support search by exact name via name hash, and fallback (non-indexed) regex decrypt may be heavy; prefer hash
+        const { hmacDeterministic } = await import(
+          '../../../utils/crypto.util'
+        );
+        const hash = hmacDeterministic(filters.search.trim().toLowerCase());
+        query['nameHash'] = hash;
       }
 
       const [machines, total] = await Promise.all([
@@ -257,8 +264,12 @@ class MachineService {
       // Check for duplicate name in the same category
       if (data.name) {
         const categoryId = data.category_id || existingMachine.category_id;
+        const { hmacDeterministic } = await import(
+          '../../../utils/crypto.util'
+        );
+        const nameHash = hmacDeterministic(data.name.trim().toLowerCase());
         const duplicateMachine = await Machine.findOne({
-          name: { $regex: new RegExp(`^${data.name}$`, 'i') },
+          nameHash,
           category_id: categoryId,
           _id: { $ne: id },
           deletedAt: null,

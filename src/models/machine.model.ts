@@ -1,4 +1,11 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import {
+  decryptObject,
+  decryptString,
+  encryptObject,
+  encryptString,
+  hmacDeterministic,
+} from '../utils/crypto.util';
 
 /**
  * IMachine interface defines the structure of a Machine document
@@ -19,12 +26,20 @@ export interface IMachine extends Document {
 /**
  * Machine Schema
  */
-const machineSchema = new Schema<IMachine>(
+const machineSchema = new Schema<
+  IMachine & { nameHash?: string; _isDecrypted?: boolean }
+>(
   {
     name: {
       type: String,
       required: true,
       trim: true,
+    },
+    // Deterministic hash of name for uniqueness and search without exposing plaintext
+    nameHash: {
+      type: String,
+      index: true,
+      select: false,
     },
     category_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -89,6 +104,12 @@ machineSchema.index({ created_by: 1 });
  */
 machineSchema.index({ category_id: 1, is_approved: 1, deletedAt: 1 });
 
+// Enforce uniqueness of name within category even while name is encrypted
+machineSchema.index(
+  { category_id: 1, nameHash: 1, deletedAt: 1 },
+  { unique: true, partialFilterExpression: { deletedAt: null } },
+);
+
 /**
  * Virtual to check if machine is deleted
  */
@@ -114,6 +135,76 @@ machineSchema.pre(/^find/, function (this: mongoose.Query<unknown, IMachine>) {
   }
 });
 
+// Encrypt fields before save
+machineSchema.pre('save', function (this: IMachine & Document, next) {
+  try {
+    if (this.isModified('name')) {
+      const plain = this.name;
+      (this as unknown as { nameHash?: string }).nameHash = hmacDeterministic(
+        String(plain).trim().toLowerCase(),
+      );
+      this.name = String(encryptString(String(plain)));
+    }
+    if (this.isModified('metadata')) {
+      const meta = (this.metadata as Record<string, unknown>) || {};
+      (this as unknown as { metadata: string }).metadata = encryptObject(meta);
+    }
+    next();
+  } catch (e) {
+    next(e as Error);
+  }
+});
+
+// Decrypt fields after find queries (lean=false)
+type DecryptableMachine = IMachine & {
+  _isDecrypted?: boolean;
+  name?: unknown;
+  metadata?: unknown;
+};
+
+function decryptDoc<T extends DecryptableMachine | null | undefined>(
+  doc: T,
+): T {
+  if (!doc || (doc as DecryptableMachine)._isDecrypted) return doc;
+  try {
+    if (typeof (doc as DecryptableMachine).name === 'string') {
+      (doc as DecryptableMachine).name =
+        decryptString((doc as DecryptableMachine).name as string) ?? '';
+    }
+    if (
+      (doc as DecryptableMachine).metadata &&
+      typeof (doc as DecryptableMachine).metadata === 'string'
+    ) {
+      (doc as DecryptableMachine).metadata = decryptObject(
+        (doc as DecryptableMachine).metadata as unknown as string,
+      );
+    }
+    Object.defineProperty(doc as object, '_isDecrypted', {
+      value: true,
+      enumerable: false,
+    });
+  } catch {
+    // ignore decrypt errors to avoid crashing reads
+  }
+  return doc;
+}
+
+machineSchema.post('init', function (doc: DecryptableMachine) {
+  decryptDoc(doc);
+});
+
+machineSchema.post('save', function (doc: DecryptableMachine) {
+  decryptDoc(doc);
+});
+
+machineSchema.post('find', function (docs: DecryptableMachine[]) {
+  docs.forEach(decryptDoc);
+});
+
+machineSchema.post('findOne', function (doc: DecryptableMachine | null) {
+  decryptDoc(doc ?? undefined);
+});
+
 /**
  * Instance method to soft delete machine
  */
@@ -121,11 +212,12 @@ machineSchema.pre(/^find/, function (this: mongoose.Query<unknown, IMachine>) {
  * Instance method to soft delete machine
  */
 machineSchema.methods['softDelete'] = function (
+  this: IMachine & Document,
   deletedBy: mongoose.Types.ObjectId,
 ) {
-  this['deletedAt'] = new Date();
-  this['updatedBy'] = deletedBy;
-  return this['save']();
+  this.deletedAt = new Date();
+  this.updatedBy = deletedBy;
+  return this.save();
 };
 
 /**
