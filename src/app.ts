@@ -10,6 +10,7 @@ import categoryRouter from './routes/category.route';
 import machineRouter from './routes/machine.route';
 import machineApprovalRouter from './routes/machine-approval.route';
 import qaMachineRouter from './routes/qa-machine.route';
+import qcApprovalRouter from './routes/qc-approval.route';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 class App {
@@ -60,7 +61,8 @@ class App {
     this.app.use('/api/admin', departmentAndRoleRouter);
     this.app.use('/api/machines', machineRouter);
     this.app.use('/api/machine-approvals', machineApprovalRouter);
-    this.app.use('/api/qa-machines', qaMachineRouter);
+    this.app.use('/api/qc-machines', qaMachineRouter);
+    this.app.use('/api/qc-approvals', qcApprovalRouter);
     this.app.use('/api/admin/category', categoryRouter);
     this.app.use('/api/permission', permissionRouter);
   }

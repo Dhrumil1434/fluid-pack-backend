@@ -3,7 +3,7 @@ import { StatusCodes } from 'http-status-codes';
 import {
   QAMachineEntry,
   IQAMachineEntry,
-} from '../../../models/qaMachine.model';
+} from '../../../models/qcMachine.model';
 import { Machine } from '../../../models/machine.model';
 import { User } from '../../../models/user.model';
 import { ApiError } from '../../../utils/ApiError';
@@ -11,19 +11,30 @@ import { ApiError } from '../../../utils/ApiError';
 export interface CreateQAMachineEntryData {
   machine_id: string;
   added_by: string;
-  report_link: string;
+  report_link?: string;
   files?: string[];
+  metadata?: Record<string, unknown>;
+  is_active?: boolean;
+  approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejection_reason?: string;
 }
 
 export interface UpdateQAMachineEntryData {
   report_link?: string;
   files?: string[];
+  metadata?: Record<string, unknown>;
+  is_active?: boolean;
+  approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejection_reason?: string;
 }
 
 export interface QAMachineFilters {
   machine_id?: string;
   added_by?: string;
   search?: string;
+  is_active?: boolean;
+  created_from?: string;
+  created_to?: string;
 }
 
 export interface QAMachineListResult {
@@ -32,7 +43,7 @@ export interface QAMachineListResult {
   pages: number;
 }
 
-class QAMachineService {
+class QCMachineService {
   /**
    * Create a new QA machine entry
    */
@@ -67,6 +78,10 @@ class QAMachineService {
         added_by: data.added_by,
         report_link: data.report_link,
         files: data.files || [],
+        metadata: data.metadata || {},
+        is_active: data.is_active ?? false,
+        approval_status: data.approval_status || 'PENDING',
+        rejection_reason: data.rejection_reason,
       });
 
       await qaEntry.save();
@@ -81,10 +96,10 @@ class QAMachineService {
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw new ApiError(
-        'CREATE_QA_MACHINE_ENTRY',
+        'CREATE_QC_MACHINE_ENTRY',
         StatusCodes.INTERNAL_SERVER_ERROR,
-        'CREATE_QA_ENTRY_ERROR',
-        'Failed to create QA machine entry',
+        'CREATE_QC_ENTRY_ERROR',
+        'Failed to create QC machine entry',
       );
     }
   }
@@ -104,18 +119,71 @@ class QAMachineService {
       // Apply filters
       if (filters.machine_id) query['machine_id'] = filters.machine_id;
       if (filters.added_by) query['added_by'] = filters.added_by;
+      if (typeof filters.is_active === 'boolean')
+        query['is_active'] = filters.is_active;
 
-      const [entries, total] = await Promise.all([
-        QAMachineEntry.find(query)
-          .populate([
-            { path: 'machine_id', select: 'name category_id' },
-            { path: 'added_by', select: 'username email' },
-          ])
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(limit),
-        QAMachineEntry.countDocuments(query),
+      if (filters.created_from || filters.created_to) {
+        const createdAt: { $gte?: Date; $lte?: Date } = {};
+        if (filters.created_from)
+          createdAt.$gte = new Date(filters.created_from);
+        if (filters.created_to) createdAt.$lte = new Date(filters.created_to);
+        query['createdAt'] = createdAt;
+      }
+
+      // Free-text search across machine name, user, and report_link
+      const pipeline: mongoose.PipelineStage[] = [
+        { $match: query },
+        {
+          $lookup: {
+            from: 'machines',
+            localField: 'machine_id',
+            foreignField: '_id',
+            as: 'machine_id',
+          },
+        },
+        { $unwind: '$machine_id' },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'added_by',
+            foreignField: '_id',
+            as: 'added_by',
+          },
+        },
+        { $unwind: '$added_by' },
+      ];
+
+      if (filters.search) {
+        pipeline.push({
+          $match: {
+            $or: [
+              { 'machine_id.name': { $regex: filters.search, $options: 'i' } },
+              {
+                'added_by.username': { $regex: filters.search, $options: 'i' },
+              },
+              { report_link: { $regex: filters.search, $options: 'i' } },
+            ],
+          },
+        } as mongoose.PipelineStage);
+      }
+
+      pipeline.push(
+        { $sort: { createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+      );
+
+      const [entries, countAgg] = await Promise.all([
+        QAMachineEntry.aggregate(pipeline),
+        QAMachineEntry.aggregate([
+          ...pipeline.filter(
+            (st) => !('$skip' in st) && !('$limit' in st) && !('$sort' in st),
+          ),
+          { $count: 'total' },
+        ] as mongoose.PipelineStage[]),
       ]);
+
+      const total = countAgg.length ? countAgg[0].total : 0;
 
       return {
         entries,
@@ -443,4 +511,4 @@ class QAMachineService {
   }
 }
 
-export default QAMachineService;
+export default QCMachineService;

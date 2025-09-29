@@ -2,10 +2,10 @@ import Joi from 'joi';
 import mongoose from 'mongoose';
 
 /**
- * Validation schemas for QA Machine operations
+ * Validation schemas for QC Machine operations
  */
 
-// Base QA Machine entry schema
+// Base QC Machine entry schema
 const qaMachineEntryBaseSchema = Joi.object({
   machine_id: Joi.string()
     .custom((value, helpers) => {
@@ -19,9 +19,8 @@ const qaMachineEntryBaseSchema = Joi.object({
       'any.invalid': 'Invalid machine ID format',
       'any.required': 'Machine ID is required',
     }),
-  report_link: Joi.string().uri().required().messages({
+  report_link: Joi.string().uri().optional().messages({
     'string.uri': 'Report link must be a valid URL',
-    'any.required': 'Report link is required',
   }),
   files: Joi.array()
     .items(
@@ -34,12 +33,14 @@ const qaMachineEntryBaseSchema = Joi.object({
     .messages({
       'array.max': 'Cannot upload more than 10 files',
     }),
+  metadata: Joi.object().unknown(true).optional(),
+  is_active: Joi.boolean().optional(),
 });
 
-// Create QA Machine entry schema
+// Create QC Machine entry schema
 export const createQAMachineEntrySchema = qaMachineEntryBaseSchema;
 
-// Update QA Machine entry schema
+// Update QC Machine entry schema
 export const updateQAMachineEntrySchema = Joi.object({
   report_link: Joi.string().uri().optional().messages({
     'string.uri': 'Report link must be a valid URL',
@@ -55,13 +56,15 @@ export const updateQAMachineEntrySchema = Joi.object({
     .messages({
       'array.max': 'Cannot upload more than 10 files',
     }),
+  metadata: Joi.object().unknown(true).optional(),
+  is_active: Joi.boolean().optional(),
 })
   .min(1)
   .messages({
     'object.min': 'At least one field must be provided for update',
   });
 
-// QA Machine entry ID parameter schema
+// QC Machine entry ID parameter schema
 export const qaMachineEntryIdParamSchema = Joi.object({
   id: Joi.string()
     .custom((value, helpers) => {
@@ -72,12 +75,12 @@ export const qaMachineEntryIdParamSchema = Joi.object({
     })
     .required()
     .messages({
-      'any.invalid': 'Invalid QA entry ID format',
-      'any.required': 'QA entry ID is required',
+      'any.invalid': 'Invalid QC entry ID format',
+      'any.required': 'QC entry ID is required',
     }),
 });
 
-// Machine ID parameter schema for getting QA entries by machine
+// Machine ID parameter schema for getting QC entries by machine
 export const machineIdParamSchema = Joi.object({
   machineId: Joi.string()
     .custom((value, helpers) => {
@@ -93,7 +96,7 @@ export const machineIdParamSchema = Joi.object({
     }),
 });
 
-// User ID parameter schema for getting QA entries by user
+// User ID parameter schema for getting QC entries by user
 export const userIdParamSchema = Joi.object({
   userId: Joi.string()
     .custom((value, helpers) => {
@@ -109,7 +112,7 @@ export const userIdParamSchema = Joi.object({
     }),
 });
 
-// Pagination query schema for QA Machine entries
+// Pagination query schema for QC Machine entries
 export const qaMachinePaginationQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional().default(1),
   limit: Joi.number().integer().min(1).max(100).optional().default(10),
@@ -136,9 +139,12 @@ export const qaMachinePaginationQuerySchema = Joi.object({
       'any.invalid': 'Invalid user ID format',
     }),
   search: Joi.string().trim().optional(),
+  is_active: Joi.boolean().optional(),
+  created_from: Joi.date().iso().optional(),
+  created_to: Joi.date().iso().optional(),
 });
 
-// Validate multiple QA entry IDs schema
+// Validate multiple QC entry IDs schema
 export const validateQAMachineEntryIdsSchema = Joi.object({
   qaEntryIds: Joi.array()
     .items(
@@ -153,8 +159,8 @@ export const validateQAMachineEntryIdsSchema = Joi.object({
     .max(100)
     .required()
     .messages({
-      'array.min': 'At least one QA entry ID is required',
-      'array.max': 'Maximum 100 QA entry IDs allowed',
-      'any.required': 'QA entry IDs array is required',
+      'array.min': 'At least one QC entry ID is required',
+      'array.max': 'Maximum 100 QC entry IDs allowed',
+      'any.required': 'QC entry IDs array is required',
     }),
 });
