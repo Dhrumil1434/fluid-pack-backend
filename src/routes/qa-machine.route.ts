@@ -6,11 +6,16 @@ import {
   machineIdParamSchema,
   userIdParamSchema,
   validateQAMachineEntryIdsSchema,
-} from '../modules/machine/validators/qaMachine.validator';
-import { validateRequest } from '../middlewares/validateRequest';
-import QAMachineController from '../modules/machine/controllers/qaMachine.controller';
+} from '../modules/machine/validators/qcMachine.validator';
+import {
+  validateRequest,
+  parseJsonFields,
+} from '../middlewares/validateRequest';
+import QAMachineController from '../modules/machine/controllers/qcMachine.controller';
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
+import { checkPermission } from '../modules/admin/permissionConfig/middlewares/permissionConfig.validation.middleware';
+import { ActionType } from '../models/permissionConfig.model';
 import {
   uploadQAMachineFiles,
   uploadQAMachineFilesUpdate,
@@ -20,75 +25,85 @@ import {
 const router = Router();
 
 /**
- * QA Machine Entry Routes
+ * QC Machine Entry Routes
  */
 
-// Get QA statistics - Public access for testing
+// Get QC statistics - Public access for testing
 router.get('/statistics', QAMachineController.getQAStatistics);
 
-// Get all QA machine entries - Public access for testing
+// Get all QC machine entries - allow admin, manager1, qc
 router.get('/', QAMachineController.getAllQAMachineEntries);
 
 // Apply authentication to all other routes
 router.use(verifyJWT);
 
-// Create a new QA machine entry - Requires QA role
+// Create a new QC machine entry - allow admin, manager1, qc
 router.post(
   '/',
-  AuthRole('qa'),
+  AuthRole(['admin', 'manager1', 'qc']),
   uploadQAMachineFiles.array('files', 10), // Allow up to 10 files with field name 'files'
   handleFileUploadError,
+  // Permission: create QC entry
+  checkPermission([ActionType.CREATE_QC_ENTRY]),
+  // Parse JSON string fields from multipart/form-data
+  parseJsonFields(['metadata']),
   validateRequest(createQAMachineEntrySchema),
   QAMachineController.createQAMachineEntry,
 );
 
-// Get QA machine entry by ID - Requires QA role
+// Get QC machine entry by ID - allow admin, manager1, qc
 router.get(
   '/:id',
-  AuthRole('qa'),
+  AuthRole(['admin', 'manager1', 'qc']),
+  checkPermission([ActionType.VIEW_QC_ENTRY]),
   validateRequest(qaMachineEntryIdParamSchema),
   QAMachineController.getQAMachineEntryById,
 );
 
-// Update QA machine entry - Requires QA role
+// Update QC machine entry - restrict to admin only
 router.put(
   '/:id',
-  AuthRole('qa'),
+  AuthRole('admin'),
   uploadQAMachineFilesUpdate.array('files', 10), // Allow up to 10 new files
   handleFileUploadError,
+  checkPermission([ActionType.EDIT_QC_ENTRY]),
   validateRequest(qaMachineEntryIdParamSchema),
   validateRequest(updateQAMachineEntrySchema),
   QAMachineController.updateQAMachineEntry,
 );
 
-// Delete QA machine entry - Requires QA role
+// Delete QC machine entry - restrict to admin only
 router.delete(
   '/:id',
-  AuthRole('qa'),
+  AuthRole('admin'),
+  checkPermission([ActionType.DELETE_QC_ENTRY]),
   validateRequest(qaMachineEntryIdParamSchema),
   QAMachineController.deleteQAMachineEntry,
 );
 
-// Get QA entries by machine ID - Requires QA role
+// Get QC entries by machine ID - allow admin, manager1, qc
 router.get(
   '/machine/:machineId',
-  AuthRole('qa'),
+  AuthRole(['admin', 'manager1', 'qc']),
+  checkPermission([ActionType.VIEW_QC_ENTRY]),
   validateRequest(machineIdParamSchema),
   QAMachineController.getQAMachineEntriesByMachine,
 );
 
-// Get QA entries by user ID - Requires QA role
+// Get QC entries by user ID - allow admin, manager1, qc
 router.get(
   '/user/:userId',
-  AuthRole('qa'),
+  AuthRole(['admin', 'manager1', 'qc']),
+  checkPermission([ActionType.VIEW_QC_ENTRY]),
   validateRequest(userIdParamSchema),
   QAMachineController.getQAMachineEntriesByUser,
 );
 
-// Validate multiple QA entry IDs - Requires QA role
+// Validate multiple QC entry IDs - allow admin, manager1, qc
 router.post(
   '/validate-ids',
-  AuthRole('qa'),
+  AuthRole(['admin', 'manager1', 'qc']),
+  checkPermission([ActionType.VIEW_QC_ENTRY]),
   validateRequest(validateQAMachineEntryIdsSchema),
   QAMachineController.validateQAMachineEntryIds,
 );

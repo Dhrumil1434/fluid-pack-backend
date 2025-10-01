@@ -8,22 +8,19 @@ import {
   userIdParamSchema,
   qaMachinePaginationQuerySchema,
   validateQAMachineEntryIdsSchema,
-} from '../validators/qaMachine.validator';
-import { validateRequest } from '../../../middlewares/validateRequest';
-import QAMachineService, {
+} from '../validators/qcMachine.validator';
+import QCMachineService, {
   CreateQAMachineEntryData,
   UpdateQAMachineEntryData,
   QAMachineFilters,
 } from '../services/qaMachine.service';
+import { createQCApprovalForEntry } from './qcApproval.controller';
 import { ApiResponse } from '../../../utils/ApiResponse';
 import { ApiError } from '../../../utils/ApiError';
 import { asyncHandler } from '../../../utils/asyncHandler';
-import { verifyJWT } from '../../../middlewares/auth.middleware';
-import { AuthRole } from '../../../middlewares/auth-role.middleware';
 import {
   moveQAFilesToEntryDirectory,
   deleteQAFiles,
-  cleanupQAEntryDirectory,
 } from '../../../middlewares/multer.middleware';
 
 export interface AuthenticatedRequest extends Request {
@@ -36,16 +33,11 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-class QAMachineController {
-  /**
-   * Create a new QA machine entry
-   * POST /api/qa-machines
-   */
+class QCMachineController {
   static createQAMachineEntry = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const { error, value } = createQAMachineEntrySchema.validate(req.body);
       if (error) {
-        // Clean up uploaded files if validation fails
         if (req.files && Array.isArray(req.files)) {
           const filePaths = (req.files as Express.Multer.File[]).map(
             (file) => file.path,
@@ -61,7 +53,6 @@ class QAMachineController {
       }
 
       if (!req.user) {
-        // Clean up uploaded files if authentication fails
         if (req.files && Array.isArray(req.files)) {
           const filePaths = (req.files as Express.Multer.File[]).map(
             (file) => file.path,
@@ -76,64 +67,89 @@ class QAMachineController {
         );
       }
 
-      let filePaths: string[] = [];
+      const createData: CreateQAMachineEntryData = {
+        ...value,
+        added_by: req.user._id,
+        files: [],
+        is_active: false,
+        approval_status: 'PENDING',
+      };
 
-      try {
-        // Move uploaded files to QA entry directory if files were uploaded
-        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-          // Create a temporary ID for the QA entry to organize files
-          const tempId = new Date().getTime().toString();
-          filePaths = await moveQAFilesToEntryDirectory(
-            req.files as Express.Multer.File[],
-            tempId,
-          );
-        }
+      const qaEntry = await QCMachineService.create(createData);
 
-        const createData: CreateQAMachineEntryData = {
-          ...value,
-          added_by: req.user._id,
-          files: filePaths,
-        };
-
-        const qaEntry = await QAMachineService.create(createData);
-
-        // Move files to the actual QA entry directory after successful creation
-        if (filePaths.length > 0) {
-          const tempId = new Date().getTime().toString();
-          const actualFilePaths = await moveQAFilesToEntryDirectory(
-            req.files as Express.Multer.File[],
-            (qaEntry as any)._id.toString(),
-          );
-
-          // Update the QA entry with correct file paths
-          await QAMachineService.update((qaEntry as any)._id.toString(), {
-            files: actualFilePaths,
-          });
-
-          // Clean up temp directory
-          cleanupQAEntryDirectory(tempId);
-        }
-
-        const response = new ApiResponse(
-          StatusCodes.CREATED,
-          qaEntry,
-          'QA machine entry created successfully',
+      // Move uploaded files directly into the QC entry directory using the newly created ID
+      if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+        const actualFilePaths = await moveQAFilesToEntryDirectory(
+          req.files as Express.Multer.File[],
+          String(
+            (
+              qaEntry as unknown as { _id: { toString(): string } }
+            )._id.toString(),
+          ),
         );
-        res.status(response.statusCode).json(response);
-      } catch (error) {
-        // Clean up uploaded files if creation fails
-        if (filePaths.length > 0) {
-          deleteQAFiles(filePaths);
+
+        if (actualFilePaths.length > 0) {
+          await QCMachineService.update(
+            String(
+              (
+                qaEntry as unknown as { _id: { toString(): string } }
+              )._id.toString(),
+            ),
+            {
+              files: actualFilePaths,
+            },
+          );
         }
-        throw error;
       }
+
+      const response = new ApiResponse(
+        StatusCodes.CREATED,
+        qaEntry,
+        'QC machine entry created successfully',
+      );
+      res.status(response.statusCode).json(response);
+
+      // Auto-create a QCApproval linked to this entry (non-blocking)
+      void (async () => {
+        try {
+          await createQCApprovalForEntry(
+            {
+              machineId: String(
+                (
+                  qaEntry as unknown as {
+                    machine_id: {
+                      _id?: { toString(): string };
+                      toString?: () => string;
+                    };
+                  }
+                ).machine_id?._id?.toString?.() ||
+                  (
+                    qaEntry as unknown as {
+                      machine_id: {
+                        _id?: { toString(): string };
+                        toString?: () => string;
+                      };
+                    }
+                  ).machine_id?.toString?.() ||
+                  '',
+              ),
+              qcEntryId: String(
+                (
+                  qaEntry as unknown as { _id?: { toString(): string } }
+                )._id?.toString?.() || '',
+              ),
+              approvalType: 'MACHINE_QC_ENTRY',
+              requestNotes: 'Auto-created from QC entry creation',
+            },
+            req.user!._id,
+          );
+        } catch {
+          // ignore
+        }
+      })();
     },
   );
 
-  /**
-   * Get all QA machine entries with pagination
-   * GET /api/qa-machines
-   */
   static getAllQAMachineEntries = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const { error, value } = qaMachinePaginationQuerySchema.validate(
@@ -149,11 +165,16 @@ class QAMachineController {
       if (value.machine_id) filters.machine_id = value.machine_id;
       if (value.added_by) filters.added_by = value.added_by;
       if (value.search) filters.search = value.search;
+      if (typeof value.is_active === 'boolean')
+        filters.is_active = value.is_active;
+      if (value.created_from)
+        filters.created_from = value.created_from as string;
+      if (value.created_to) filters.created_to = value.created_to as string;
 
       const page = parseInt(value.page as string) || 1;
       const limit = parseInt(value.limit as string) || 10;
 
-      const result = await QAMachineService.getAll(page, limit, filters);
+      const result = await QCMachineService.getAll(page, limit, filters);
       const response = new ApiResponse(
         StatusCodes.OK,
         result,
@@ -163,10 +184,6 @@ class QAMachineController {
     },
   );
 
-  /**
-   * Get QA machine entry by ID
-   * GET /api/qa-machines/:id
-   */
   static getQAMachineEntryById = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const { error, value } = qaMachineEntryIdParamSchema.validate(req.params);
@@ -176,7 +193,7 @@ class QAMachineController {
         );
       }
 
-      const qaEntry = await QAMachineService.getById(value.id);
+      const qaEntry = await QCMachineService.getById(value.id);
 
       const response = new ApiResponse(
         StatusCodes.OK,
@@ -187,15 +204,10 @@ class QAMachineController {
     },
   );
 
-  /**
-   * Update QA machine entry
-   * PUT /api/qa-machines/:id
-   */
   static updateQAMachineEntry = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const paramsValidation = qaMachineEntryIdParamSchema.validate(req.params);
       if (paramsValidation.error) {
-        // Clean up uploaded files if validation fails
         if (req.files && Array.isArray(req.files)) {
           const filePaths = (req.files as Express.Multer.File[]).map(
             (file) => file.path,
@@ -212,7 +224,6 @@ class QAMachineController {
 
       const bodyValidation = updateQAMachineEntrySchema.validate(req.body);
       if (bodyValidation.error) {
-        // Clean up uploaded files if validation fails
         if (req.files && Array.isArray(req.files)) {
           const filePaths = (req.files as Express.Multer.File[]).map(
             (file) => file.path,
@@ -230,7 +241,6 @@ class QAMachineController {
       let filePaths: string[] = [];
 
       try {
-        // Move uploaded files to QA entry directory if files were uploaded
         if (req.files && Array.isArray(req.files) && req.files.length > 0) {
           filePaths = await moveQAFilesToEntryDirectory(
             req.files as Express.Multer.File[],
@@ -243,7 +253,7 @@ class QAMachineController {
           files: filePaths.length > 0 ? filePaths : undefined,
         };
 
-        const qaEntry = await QAMachineService.update(
+        const qaEntry = await QCMachineService.update(
           paramsValidation.value.id,
           updateData,
         );
@@ -255,7 +265,6 @@ class QAMachineController {
         );
         res.status(response.statusCode).json(response);
       } catch (error) {
-        // Clean up uploaded files if update fails
         if (filePaths.length > 0) {
           deleteQAFiles(filePaths);
         }
@@ -264,10 +273,6 @@ class QAMachineController {
     },
   );
 
-  /**
-   * Delete QA machine entry
-   * DELETE /api/qa-machines/:id
-   */
   static deleteQAMachineEntry = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const { error, value } = qaMachineEntryIdParamSchema.validate(req.params);
@@ -277,7 +282,7 @@ class QAMachineController {
         );
       }
 
-      await QAMachineService.delete(value.id);
+      await QCMachineService.delete(value.id);
 
       const response = new ApiResponse(
         StatusCodes.OK,
@@ -288,10 +293,6 @@ class QAMachineController {
     },
   );
 
-  /**
-   * Get QA entries by machine ID
-   * GET /api/qa-machines/machine/:machineId
-   */
   static getQAMachineEntriesByMachine = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const { error, value } = machineIdParamSchema.validate(req.params);
@@ -304,7 +305,7 @@ class QAMachineController {
       const page = parseInt(req.query['page'] as string) || 1;
       const limit = parseInt(req.query['limit'] as string) || 10;
 
-      const result = await QAMachineService.getByMachineId(
+      const result = await QCMachineService.getByMachineId(
         value.machineId,
         page,
         limit,
@@ -319,10 +320,6 @@ class QAMachineController {
     },
   );
 
-  /**
-   * Get QA entries by user ID
-   * GET /api/qa-machines/user/:userId
-   */
   static getQAMachineEntriesByUser = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const { error, value } = userIdParamSchema.validate(req.params);
@@ -335,7 +332,7 @@ class QAMachineController {
       const page = parseInt(req.query['page'] as string) || 1;
       const limit = parseInt(req.query['limit'] as string) || 10;
 
-      const result = await QAMachineService.getByUserId(
+      const result = await QCMachineService.getByUserId(
         value.userId,
         page,
         limit,
@@ -350,10 +347,6 @@ class QAMachineController {
     },
   );
 
-  /**
-   * Validate multiple QA entry IDs
-   * POST /api/qa-machines/validate-ids
-   */
   static validateQAMachineEntryIds = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const { error, value } = validateQAMachineEntryIdsSchema.validate(
@@ -368,7 +361,7 @@ class QAMachineController {
       const validationResults = await Promise.all(
         value.qaEntryIds.map(async (id: string) => ({
           id,
-          isValid: await QAMachineService.exists(id),
+          isValid: await QCMachineService.exists(id),
         })),
       );
 
@@ -381,13 +374,9 @@ class QAMachineController {
     },
   );
 
-  /**
-   * Get QA statistics
-   * GET /api/qa-machines/statistics
-   */
   static getQAStatistics = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
-      const statistics = await QAMachineService.getQAStatistics();
+    async (_req: Request, res: Response): Promise<void> => {
+      const statistics = await QCMachineService.getQAStatistics();
 
       const response = new ApiResponse(
         StatusCodes.OK,
@@ -399,4 +388,4 @@ class QAMachineController {
   );
 }
 
-export default QAMachineController;
+export default QCMachineController;

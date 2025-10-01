@@ -8,6 +8,10 @@ export interface IQAMachineEntry extends Document {
   added_by: mongoose.Types.ObjectId;
   report_link: string;
   files: string[]; // Array of file URLs/paths for uploaded documents
+  metadata?: Record<string, unknown>;
+  is_active?: boolean;
+  approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejection_reason?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -29,7 +33,7 @@ const qaMachineEntrySchema = new Schema<IQAMachineEntry>(
     },
     report_link: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
     },
     files: [
@@ -38,6 +42,25 @@ const qaMachineEntrySchema = new Schema<IQAMachineEntry>(
         trim: true,
       },
     ],
+    metadata: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
+    is_active: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    approval_status: {
+      type: String,
+      enum: ['PENDING', 'APPROVED', 'REJECTED'],
+      default: 'PENDING',
+      index: true,
+    },
+    rejection_reason: {
+      type: String,
+      trim: true,
+    },
   },
   {
     timestamps: true,
@@ -49,6 +72,8 @@ const qaMachineEntrySchema = new Schema<IQAMachineEntry>(
  */
 qaMachineEntrySchema.index({ machine_id: 1, createdAt: -1 });
 qaMachineEntrySchema.index({ added_by: 1, createdAt: -1 });
+qaMachineEntrySchema.index({ is_active: 1, createdAt: -1 });
+qaMachineEntrySchema.index({ approval_status: 1, createdAt: -1 });
 
 /**
  * Virtual to populate machine details

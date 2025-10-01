@@ -31,6 +31,18 @@ function mapAction(a: Policy['rules'][number]['action']): ActionType {
     DELETE_MACHINE: ActionType.DELETE_MACHINE,
     APPROVE_MACHINE: ActionType.APPROVE_MACHINE,
     VIEW_MACHINE: ActionType.VIEW_MACHINE,
+    // QC Entry actions
+    CREATE_QC_ENTRY: ActionType.CREATE_QC_ENTRY,
+    EDIT_QC_ENTRY: ActionType.EDIT_QC_ENTRY,
+    DELETE_QC_ENTRY: ActionType.DELETE_QC_ENTRY,
+    VIEW_QC_ENTRY: ActionType.VIEW_QC_ENTRY,
+    // QC Approval actions
+    CREATE_QC_APPROVAL: ActionType.CREATE_QC_APPROVAL,
+    EDIT_QC_APPROVAL: ActionType.EDIT_QC_APPROVAL,
+    DELETE_QC_APPROVAL: ActionType.DELETE_QC_APPROVAL,
+    VIEW_QC_APPROVAL: ActionType.VIEW_QC_APPROVAL,
+    APPROVE_QC_APPROVAL: ActionType.APPROVE_QC_APPROVAL,
+    ACTIVATE_MACHINE: ActionType.ACTIVATE_MACHINE,
   };
   return allowed[a] ?? ActionType.VIEW_MACHINE;
 }
