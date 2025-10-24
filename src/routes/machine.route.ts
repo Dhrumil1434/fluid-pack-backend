@@ -18,8 +18,8 @@ import MachineController from '../modules/machine/machine.controller';
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
 import {
-  uploadMachineImages,
   uploadMachineImagesUpdate,
+  uploadMachineFiles,
   handleFileUploadError,
 } from '../middlewares/multer.middleware';
 import { checkPermission } from '../modules/admin/permissionConfig/middlewares/permissionConfig.validation.middleware';
@@ -30,12 +30,15 @@ const router = Router();
 // Get my recent machines (default last 5) - Requires authentication
 router.get('/my/recent', verifyJWT, MachineController.getMyRecentMachines);
 
-// Create machine with images - Requires authentication
+// Create machine with images and documents - Requires authentication
 router.post(
   '/',
   verifyJWT,
   checkPermission([ActionType.CREATE_MACHINE]),
-  uploadMachineImages.array('images', 5), // Allow up to 5 images with field name 'images'
+  uploadMachineFiles.fields([
+    { name: 'images', maxCount: 5 },
+    { name: 'documents', maxCount: 10 },
+  ]),
   handleFileUploadError,
   parseJsonFields(['metadata']),
   validateRequest(createMachineSchema),

@@ -1,14 +1,29 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 /**
+ * Document interface for machine documentation
+ */
+export interface IDocument {
+  name: string;
+  file_path: string;
+  document_type?: string;
+  uploaded_at: Date;
+}
+
+/**
  * IMachine interface defines the structure of a Machine document
  */
 export interface IMachine extends Document {
   name: string;
+  nameHash?: string | null;
   category_id: mongoose.Types.ObjectId;
   created_by: mongoose.Types.ObjectId;
   is_approved: boolean;
   images: string[]; // Array of image URLs/paths
+  documents: IDocument[]; // Array of document objects with names and paths
+  party_name: string; // Party/Company name
+  location: string; // City-Country or location
+  mobile_number: string; // Contact mobile number
   updatedBy?: mongoose.Types.ObjectId;
   deletedAt?: Date | null;
   metadata: Record<string, unknown>;
@@ -25,6 +40,10 @@ const machineSchema = new Schema<IMachine>(
       type: String,
       required: true,
       trim: true,
+    },
+    nameHash: {
+      type: String,
+      default: null,
     },
     category_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -46,6 +65,46 @@ const machineSchema = new Schema<IMachine>(
         trim: true,
       },
     ],
+    documents: [
+      {
+        name: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        file_path: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        document_type: {
+          type: String,
+          trim: true,
+        },
+        uploaded_at: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    party_name: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 100,
+    },
+    location: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 100,
+    },
+    mobile_number: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 20,
+    },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -88,6 +147,21 @@ machineSchema.index({ created_by: 1 });
  * Compound index for active approved machines by category
  */
 machineSchema.index({ category_id: 1, is_approved: 1, deletedAt: 1 });
+
+/**
+ * Index for party name queries
+ */
+machineSchema.index({ party_name: 1 });
+
+/**
+ * Index for location-based queries
+ */
+machineSchema.index({ location: 1 });
+
+/**
+ * Index for mobile number queries
+ */
+machineSchema.index({ mobile_number: 1 });
 
 /**
  * Virtual to check if machine is deleted

@@ -96,10 +96,16 @@ class MachineController {
       const { error, value } = createMachineSchema.validate(bodyForValidation);
       if (error) {
         // Clean up uploaded files if validation fails
-        if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(
-            (file) => file.path,
-          );
+        if (req.files) {
+          const files = req.files as {
+            [fieldname: string]: Express.Multer.File[];
+          };
+          const allFiles: Express.Multer.File[] = [];
+
+          if (files['images']) allFiles.push(...files['images']);
+          if (files['documents']) allFiles.push(...files['documents']);
+
+          const filePaths = allFiles.map((file) => file.path);
           deleteMachineImages(filePaths);
         }
         throw new ApiError(
@@ -112,10 +118,16 @@ class MachineController {
 
       if (!req.user) {
         // Clean up uploaded files if authentication fails
-        if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(
-            (file) => file.path,
-          );
+        if (req.files) {
+          const files = req.files as {
+            [fieldname: string]: Express.Multer.File[];
+          };
+          const allFiles: Express.Multer.File[] = [];
+
+          if (files['images']) allFiles.push(...files['images']);
+          if (files['documents']) allFiles.push(...files['documents']);
+
+          const filePaths = allFiles.map((file) => file.path);
           deleteMachineImages(filePaths);
         }
         throw new ApiError(
@@ -153,10 +165,30 @@ class MachineController {
 
       const machine = await MachineService.create(createData);
 
-      // Move uploaded files directly from temp to the machine directory (single move)
-      if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      // Process uploaded files (images and documents)
+      const imageFiles: Express.Multer.File[] = [];
+      const documentFiles: Express.Multer.File[] = [];
+
+      if (req.files) {
+        const files = req.files as {
+          [fieldname: string]: Express.Multer.File[];
+        };
+
+        // Get image files
+        if (files['images'] && Array.isArray(files['images'])) {
+          imageFiles.push(...files['images']);
+        }
+
+        // Get document files
+        if (files['documents'] && Array.isArray(files['documents'])) {
+          documentFiles.push(...files['documents']);
+        }
+      }
+
+      // Move image files to machine directory
+      if (imageFiles.length > 0) {
         const actualImagePaths = await moveFilesToMachineDirectory(
-          req.files as Express.Multer.File[],
+          imageFiles,
           (machine as { _id: { toString(): string } })._id.toString(),
         );
 
@@ -168,6 +200,22 @@ class MachineController {
             },
           );
         }
+      }
+
+      // Process document files
+      if (documentFiles.length > 0) {
+        const documents = documentFiles.map((file) => ({
+          name: file.originalname,
+          file_path: file.path,
+          document_type: file.mimetype,
+        }));
+
+        await MachineService.update(
+          (machine as { _id: { toString(): string } })._id.toString(),
+          {
+            documents: documents,
+          },
+        );
       }
 
       // If approval is required, create an approval request entry

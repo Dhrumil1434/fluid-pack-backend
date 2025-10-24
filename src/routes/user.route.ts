@@ -35,6 +35,8 @@ router.post(
   validateRequest(loginUserSchema),
   UserController.loginUser,
 );
+// Token refresh endpoint expected by frontend
+router.post('/refresh', UserController.getAccessToken);
 router.post('/logout', UserController.logoutUser);
 router.patch(
   '/:id/approve',

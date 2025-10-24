@@ -182,7 +182,7 @@ class CategoryController {
    * Get active categories (for dropdown/selection purposes)
    */
   static getActiveCategories = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
+    async (_req: Request, res: Response): Promise<void> => {
       const categories = await CategoryService.getActiveCategories();
 
       const response = new ApiResponse(

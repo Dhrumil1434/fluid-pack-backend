@@ -31,6 +31,25 @@ const machineStorage = multer.diskStorage({
   },
 });
 
+// Set storage engine for machine documents
+const machineDocumentStorage = multer.diskStorage({
+  destination: function (_req: Request, _file, cb) {
+    // Create document-specific directory structure
+    const baseDir = './public/uploads/machines/documents';
+    const tempDir = path.join(baseDir, 'temp');
+
+    ensureDirectoryExists(tempDir);
+    cb(null, tempDir);
+  },
+  filename: function (_req: Request, file, cb) {
+    // Generate unique filename with timestamp and UUID
+    const uniqueSuffix = `${Date.now()}-${uuidv4()}`;
+    const extension = path.extname(file.originalname);
+    const filename = `document-${uniqueSuffix}${extension}`;
+    cb(null, filename);
+  },
+});
+
 // Set storage engine for updating machine images (when machine ID is known)
 const machineUpdateStorage = multer.diskStorage({
   destination: function (req: Request, _file, cb) {
@@ -77,6 +96,40 @@ const checkFileType = (
   }
 };
 
+// Check document file type
+const checkDocumentType = (
+  file: Express.Multer.File,
+  cb: FileFilterCallback,
+): void => {
+  // Allowed file extensions for documents
+  const filetypes = /pdf|doc|docx|xls|xlsx|txt|zip|rar/;
+
+  // Check file extension
+  const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+
+  // Check MIME type (simplified check as MIME types can vary)
+  const allowedMimeTypes = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+    'application/zip',
+    'application/x-rar-compressed',
+  ];
+
+  if (extname && allowedMimeTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error(
+        'Error: Only document files (PDF, DOC, DOCX, XLS, XLSX, TXT, ZIP, RAR) are allowed!',
+      ),
+    );
+  }
+};
+
 // Upload configuration for creating new machines
 const uploadMachineImages = multer({
   storage: machineStorage,
@@ -86,6 +139,37 @@ const uploadMachineImages = multer({
   },
   fileFilter: (_req, file, cb) => {
     checkFileType(file, cb);
+  },
+});
+
+// Upload configuration for machine documents
+const uploadMachineDocuments = multer({
+  storage: machineDocumentStorage,
+  limits: {
+    fileSize: 20 * 1024 * 1024, // 20MB max file size for documents
+    files: 10, // Maximum 10 document files
+  },
+  fileFilter: (_req, file, cb) => {
+    checkDocumentType(file, cb);
+  },
+});
+
+// Combined upload configuration for machine creation (images + documents)
+const uploadMachineFiles = multer({
+  storage: machineStorage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB per file
+    files: 15, // Maximum 15 files total (5 images + 10 documents)
+  },
+  fileFilter: (_req, file, cb) => {
+    // Check if it's an image or document based on fieldname
+    if (file.fieldname === 'images') {
+      checkFileType(file, cb);
+    } else if (file.fieldname === 'documents') {
+      checkDocumentType(file, cb);
+    } else {
+      cb(null, false);
+    }
   },
 });
 
@@ -433,6 +517,8 @@ const upload = multer({
 export {
   uploadMachineImages,
   uploadMachineImagesUpdate,
+  uploadMachineDocuments,
+  uploadMachineFiles,
   uploadQAMachineFiles,
   uploadQAMachineFilesUpdate,
   moveFilesToMachineDirectory,

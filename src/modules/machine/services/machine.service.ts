@@ -15,6 +15,14 @@ export interface CreateMachineData {
   category_id: string;
   created_by: string;
   images?: string[];
+  documents?: Array<{
+    name: string;
+    file_path: string;
+    document_type?: string;
+  }>;
+  party_name: string;
+  location: string;
+  mobile_number: string;
   metadata?: Record<string, unknown>;
   is_approved?: boolean;
 }
@@ -23,6 +31,14 @@ export interface UpdateMachineData {
   name?: string;
   category_id?: mongoose.Types.ObjectId;
   images?: string[];
+  documents?: Array<{
+    name: string;
+    file_path: string;
+    document_type?: string;
+  }>;
+  party_name?: string;
+  location?: string;
+  mobile_number?: string;
   metadata?: Record<string, unknown>;
   updatedBy?: string;
 }
@@ -62,8 +78,9 @@ class MachineService {
       }
 
       // Check if machine with same name already exists in the same category
+      const nameHash = data.name.trim().toLowerCase();
       const existingMachine = await Machine.findOne({
-        name: { $regex: new RegExp(`^${data.name}$`, 'i') },
+        nameHash: nameHash,
         category_id: data.category_id,
         deletedAt: null,
       });
@@ -79,9 +96,14 @@ class MachineService {
 
       const machine = new Machine({
         name: data.name.trim(),
+        nameHash: nameHash,
         category_id: data.category_id,
         created_by: data.created_by,
         images: data.images || [],
+        documents: data.documents || [],
+        party_name: data.party_name.trim(),
+        location: data.location.trim(),
+        mobile_number: data.mobile_number.trim(),
         metadata: data.metadata || {},
         is_approved:
           typeof data.is_approved === 'boolean' ? data.is_approved : false,
@@ -277,6 +299,15 @@ class MachineService {
       const updateData: UpdateMachineData = { ...data };
       if (data.name) {
         updateData.name = data.name.trim();
+      }
+      if (data.party_name) {
+        updateData.party_name = data.party_name.trim();
+      }
+      if (data.location) {
+        updateData.location = data.location.trim();
+      }
+      if (data.mobile_number) {
+        updateData.mobile_number = data.mobile_number.trim();
       }
 
       const machine = await Machine.findByIdAndUpdate(id, updateData, {
