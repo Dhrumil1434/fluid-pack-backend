@@ -1,28 +1,45 @@
 // ts-node script: Backfill-encrypt existing machine records
 import mongoose from 'mongoose';
-import { Machine } from '../models/machine.model';
-import { encryptObject, encryptString, hmacDeterministic } from '../utils/crypto.util';
+import { Machine, IMachine } from '../models/machine.model';
+import {
+  encryptObject,
+  encryptString,
+  hmacDeterministic,
+} from '../utils/crypto.util.js';
+
+interface EncryptedMachine extends Omit<IMachine, 'metadata'> {
+  metadata: string | Record<string, unknown>;
+}
 
 async function run() {
-  const MONGO_URI = process.env['MONGO_URI'] || 'mongodb://localhost:27017/fluid-pack';
+  const MONGO_URI =
+    process.env['MONGO_URI'] || 'mongodb://localhost:27017/fluid-pack';
   await mongoose.connect(MONGO_URI);
   const cursor = Machine.find({}).cursor();
   let count = 0;
   for await (const doc of cursor) {
-    const anyDoc: any = doc as any;
+    const machineDoc = doc as EncryptedMachine & mongoose.Document;
     let changed = false;
-    if (anyDoc.name && typeof anyDoc.name === 'string' && !anyDoc.name.includes(':')) {
+    if (
+      machineDoc.name &&
+      typeof machineDoc.name === 'string' &&
+      !machineDoc.name.includes(':')
+    ) {
       // looks like plaintext name; encrypt
-      anyDoc.nameHash = hmacDeterministic(String(anyDoc.name).trim().toLowerCase());
-      anyDoc.name = encryptString(String(anyDoc.name));
+      machineDoc.nameHash = hmacDeterministic(
+        String(machineDoc.name).trim().toLowerCase(),
+      );
+      machineDoc.name = encryptString(String(machineDoc.name));
       changed = true;
     }
-    if (anyDoc.metadata && typeof anyDoc.metadata !== 'string') {
-      anyDoc.metadata = encryptObject(anyDoc.metadata || {});
+    if (machineDoc.metadata && typeof machineDoc.metadata === 'object') {
+      machineDoc.metadata = encryptObject(
+        machineDoc.metadata as Record<string, unknown>,
+      );
       changed = true;
     }
     if (changed) {
-      await anyDoc.save();
+      await machineDoc.save();
       count += 1;
     }
   }
@@ -30,9 +47,7 @@ async function run() {
   await mongoose.disconnect();
 }
 
-run().catch(err => {
+run().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-
-
