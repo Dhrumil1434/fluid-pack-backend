@@ -219,6 +219,40 @@ const moveFilesToMachineDirectory = async (
   return imagePaths;
 };
 
+// Utility function to move document files from temp to machine-specific directory
+const moveDocumentFilesToMachineDirectory = async (
+  files: Express.Multer.File[],
+  machineId: string,
+): Promise<string[]> => {
+  const baseDir = './public/uploads/machines';
+  const machineDir = path.join(baseDir, machineId);
+  const documentPaths: string[] = [];
+
+  ensureDirectoryExists(machineDir);
+
+  for (const file of files) {
+    const oldPath = file.path;
+    const newPath = path.join(machineDir, file.filename);
+
+    try {
+      // Move file from temp to machine directory
+      fs.renameSync(oldPath, newPath);
+
+      // Store relative path for database
+      const relativePath = `/uploads/machines/${machineId}/${file.filename}`;
+      documentPaths.push(relativePath);
+    } catch (error) {
+      console.error(`Error moving document file ${file.filename}:`, error);
+      // Clean up file if move failed
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+  }
+
+  return documentPaths;
+};
+
 // Utility function to delete machine images
 const deleteMachineImages = (imagePaths: string[]): void => {
   imagePaths.forEach((imagePath) => {
@@ -522,6 +556,7 @@ export {
   uploadQAMachineFiles,
   uploadQAMachineFilesUpdate,
   moveFilesToMachineDirectory,
+  moveDocumentFilesToMachineDirectory,
   moveQAFilesToEntryDirectory,
   deleteMachineImages,
   deleteQAFiles,

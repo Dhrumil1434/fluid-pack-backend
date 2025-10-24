@@ -22,6 +22,7 @@ import { ApiResponse } from '../../utils/ApiResponse';
 import { ApiError } from '../../utils/ApiError';
 import {
   moveFilesToMachineDirectory,
+  moveDocumentFilesToMachineDirectory,
   deleteMachineImages,
 } from '../../middlewares/multer.middleware';
 import MachineApprovalService from './services/machineApproval.service';
@@ -204,18 +205,26 @@ class MachineController {
 
       // Process document files
       if (documentFiles.length > 0) {
-        const documents = documentFiles.map((file) => ({
-          name: file.originalname,
-          file_path: file.path,
-          document_type: file.mimetype,
-        }));
-
-        await MachineService.update(
+        // Move document files to machine directory
+        const actualDocumentPaths = await moveDocumentFilesToMachineDirectory(
+          documentFiles,
           (machine as { _id: { toString(): string } })._id.toString(),
-          {
-            documents: documents,
-          },
         );
+
+        if (actualDocumentPaths.length > 0) {
+          const documents = documentFiles.map((file, index) => ({
+            name: file.originalname,
+            file_path: actualDocumentPaths[index] || file.path,
+            document_type: file.mimetype,
+          }));
+
+          await MachineService.update(
+            (machine as { _id: { toString(): string } })._id.toString(),
+            {
+              documents: documents,
+            },
+          );
+        }
       }
 
       // If approval is required, create an approval request entry
