@@ -11,7 +11,6 @@ import MachineService, {
 } from './services/machine.service';
 import {
   createMachineSchema,
-  updateMachineSchema,
   machineIdParamSchema,
   machinePaginationQuerySchema,
   machineApprovalSchema,
@@ -351,22 +350,7 @@ class MachineController {
         );
       }
 
-      const bodyValidation = updateMachineSchema.validate(req.body);
-      if (bodyValidation.error) {
-        // Clean up uploaded files if validation fails
-        if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(
-            (file) => file.path,
-          );
-          deleteMachineImages(filePaths);
-        }
-        throw new ApiError(
-          'UPDATE_MACHINE_VALIDATION',
-          StatusCodes.BAD_REQUEST,
-          'VALIDATION_ERROR',
-          bodyValidation.error?.details?.[0]?.message || 'Validation error',
-        );
-      }
+      // Validation is already handled by validateRequest middleware
 
       if (!req.user) {
         // Clean up uploaded files if authentication fails
@@ -396,7 +380,7 @@ class MachineController {
         }
 
         const updateData: UpdateMachineData = {
-          ...bodyValidation.value,
+          ...req.body,
           updatedBy: req.user._id,
           images: imagePaths.length > 0 ? imagePaths : undefined,
         };
@@ -454,7 +438,7 @@ class MachineController {
    * GET /api/machines/approved
    */
   static getApprovedMachines = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
+    async (_req: Request, res: Response): Promise<void> => {
       const machines = await MachineService.getApprovedMachines();
 
       const response = new ApiResponse(

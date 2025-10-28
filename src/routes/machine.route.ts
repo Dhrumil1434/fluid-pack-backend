@@ -78,6 +78,7 @@ router.put(
   uploadMachineImagesUpdate.array('images', 5), // Allow up to 5 new images
   handleFileUploadError,
   validateParams(machineIdParamSchema),
+  parseJsonFields(['metadata']), // Parse metadata JSON string to object
   validateRequest(updateMachineSchema),
   MachineController.updateMachine,
 );
