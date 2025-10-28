@@ -122,6 +122,20 @@ export const updateMachineSchema = Joi.object({
     'object.base': 'Metadata must be a valid object',
   }),
 
+  removedDocuments: Joi.array()
+    .items(
+      Joi.object({
+        _id: Joi.string().optional(),
+        name: Joi.string().optional(),
+        file_path: Joi.string().optional(),
+        document_type: Joi.string().optional(),
+      }),
+    )
+    .optional()
+    .messages({
+      'array.base': 'Removed documents must be an array',
+    }),
+
   party_name: Joi.string()
     .trim()
     .min(2)

@@ -40,6 +40,12 @@ export interface UpdateMachineData {
   location?: string;
   mobile_number?: string;
   metadata?: Record<string, unknown>;
+  removedDocuments?: Array<{
+    _id?: string;
+    name?: string;
+    file_path?: string;
+    document_type?: string;
+  }>;
   updatedBy?: string;
 }
 
@@ -308,6 +314,24 @@ class MachineService {
       }
       if (data.mobile_number) {
         updateData.mobile_number = data.mobile_number.trim();
+      }
+
+      // Handle document removal
+      if (data.removedDocuments && data.removedDocuments.length > 0) {
+        const currentDocuments = existingMachine.documents || [];
+        const removedFilePaths = data.removedDocuments
+          .map((doc) => doc.file_path)
+          .filter(Boolean);
+
+        // Filter out removed documents from current documents
+        const updatedDocuments = currentDocuments.filter(
+          (doc) => !removedFilePaths.includes(doc.file_path),
+        );
+
+        updateData.documents = updatedDocuments;
+
+        // Remove the removedDocuments field from updateData as it's not a database field
+        delete updateData.removedDocuments;
       }
 
       const machine = await Machine.findByIdAndUpdate(id, updateData, {
