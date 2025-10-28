@@ -564,7 +564,7 @@ class MachineController {
    * GET /api/machines/statistics
    */
   static getMachineStatistics = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
+    async (_req: Request, res: Response): Promise<void> => {
       const statistics = await MachineService.getMachineStatistics();
 
       const response = new ApiResponse(
