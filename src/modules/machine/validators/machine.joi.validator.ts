@@ -28,6 +28,18 @@ export const createMachineSchema = Joi.object({
       'any.required': 'Category ID is required',
     }),
 
+  subcategory_id: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .optional()
+    .allow('')
+    .messages({
+      'string.pattern.base': 'Invalid subcategory ID format',
+    }),
+
+  machine_sequence: Joi.string().trim().max(50).optional().allow('').messages({
+    'string.max': 'Machine sequence cannot exceed 50 characters',
+  }),
+
   images: Joi.array()
     .items(
       Joi.string().messages({
@@ -106,6 +118,18 @@ export const updateMachineSchema = Joi.object({
       'string.pattern.base': 'Invalid category ID format',
     }),
 
+  subcategory_id: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .optional()
+    .allow('')
+    .messages({
+      'string.pattern.base': 'Invalid subcategory ID format',
+    }),
+
+  machine_sequence: Joi.string().trim().max(50).optional().allow('').messages({
+    'string.max': 'Machine sequence cannot exceed 50 characters',
+  }),
+
   images: Joi.array()
     .items(
       Joi.string().messages({
@@ -167,7 +191,24 @@ export const updateMachineSchema = Joi.object({
         'Mobile number can only contain numbers, spaces, hyphens, parentheses, and optional + prefix',
     }),
 })
-  .min(1)
+  .custom((value, helpers) => {
+    // Check if at least one field is provided (including empty string for machine_sequence)
+    const fields = Object.keys(value).filter((key) => {
+      // Count machine_sequence even if it's empty string (to allow clearing)
+      if (key === 'machine_sequence') {
+        return value[key] !== undefined;
+      }
+      // For other fields, only count if they have a value
+      return (
+        value[key] !== undefined && value[key] !== null && value[key] !== ''
+      );
+    });
+
+    if (fields.length === 0) {
+      return helpers.error('object.min');
+    }
+    return value;
+  })
   .messages({
     'object.min': 'At least one field must be provided for update',
   });
@@ -216,6 +257,10 @@ export const machinePaginationQuerySchema = Joi.object({
 
   is_approved: Joi.boolean().optional().messages({
     'boolean.base': 'Approval status must be a boolean',
+  }),
+
+  has_sequence: Joi.boolean().optional().messages({
+    'boolean.base': 'Sequence filter must be a boolean',
   }),
 
   created_by: Joi.string()

@@ -286,6 +286,8 @@ class MachineController {
         filters.is_approved = value.is_approved;
       if (value.created_by) filters.created_by = value.created_by;
       if (value.search) filters.search = value.search;
+      if (typeof value.has_sequence === 'boolean')
+        filters.has_sequence = value.has_sequence;
 
       const page = parseInt(value.page as string) || 1;
       const limit = parseInt(value.limit as string) || 10;

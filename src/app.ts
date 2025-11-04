@@ -63,7 +63,7 @@ class App {
     this.app.use('/api/machine-approvals', machineApprovalRouter);
     this.app.use('/api/qc-machines', qaMachineRouter);
     this.app.use('/api/qc-approvals', qcApprovalRouter);
-    this.app.use('/api/admin/category', categoryRouter);
+    this.app.use('/api/categories', categoryRouter);
     this.app.use('/api/permission', permissionRouter);
   }
 

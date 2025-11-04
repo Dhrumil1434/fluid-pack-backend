@@ -17,6 +17,8 @@ export interface IMachine extends Document {
   name: string;
   nameHash?: string | null;
   category_id: mongoose.Types.ObjectId;
+  subcategory_id?: mongoose.Types.ObjectId; // New field for subcategory
+  machine_sequence?: string; // New field for generated sequence
   created_by: mongoose.Types.ObjectId;
   is_approved: boolean;
   images: string[]; // Array of image URLs/paths
@@ -49,6 +51,16 @@ const machineSchema = new Schema<IMachine>(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Category',
       required: true,
+    },
+    subcategory_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
+      default: null,
+    },
+    machine_sequence: {
+      type: String,
+      trim: true,
+      default: null,
     },
     created_by: {
       type: mongoose.Schema.Types.ObjectId,
@@ -134,6 +146,16 @@ machineSchema.index({ deletedAt: 1 });
 machineSchema.index({ category_id: 1 });
 
 /**
+ * Index for subcategory-based queries
+ */
+machineSchema.index({ subcategory_id: 1 });
+
+/**
+ * Index for machine sequence queries
+ */
+machineSchema.index({ machine_sequence: 1 });
+
+/**
  * Index for approval status queries
  */
 machineSchema.index({ is_approved: 1 });
@@ -147,6 +169,16 @@ machineSchema.index({ created_by: 1 });
  * Compound index for active approved machines by category
  */
 machineSchema.index({ category_id: 1, is_approved: 1, deletedAt: 1 });
+
+/**
+ * Compound index for machines by category and subcategory
+ */
+machineSchema.index({
+  category_id: 1,
+  subcategory_id: 1,
+  is_approved: 1,
+  deletedAt: 1,
+});
 
 /**
  * Index for party name queries

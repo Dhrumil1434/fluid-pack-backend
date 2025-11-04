@@ -13,6 +13,7 @@ import { ERROR_MESSAGES } from '../machine.error.constant';
 export interface CreateMachineData {
   name: string;
   category_id: string;
+  subcategory_id?: string;
   created_by: string;
   images?: string[];
   documents?: Array<{
@@ -23,6 +24,7 @@ export interface CreateMachineData {
   party_name: string;
   location: string;
   mobile_number: string;
+  machine_sequence?: string;
   metadata?: Record<string, unknown>;
   is_approved?: boolean;
 }
@@ -30,6 +32,7 @@ export interface CreateMachineData {
 export interface UpdateMachineData {
   name?: string;
   category_id?: mongoose.Types.ObjectId;
+  subcategory_id?: mongoose.Types.ObjectId;
   images?: string[];
   documents?: Array<{
     name: string;
@@ -39,6 +42,7 @@ export interface UpdateMachineData {
   party_name?: string;
   location?: string;
   mobile_number?: string;
+  machine_sequence?: string;
   metadata?: Record<string, unknown>;
   removedDocuments?: Array<{
     _id?: string;
@@ -60,6 +64,7 @@ export interface MachineFilters {
   is_approved?: boolean;
   created_by?: string;
   search?: string;
+  has_sequence?: boolean;
 }
 
 class MachineService {
@@ -83,6 +88,40 @@ class MachineService {
         );
       }
 
+      // Validate subcategory if provided
+      if (data.subcategory_id) {
+        const subcategory = await Category.findOne({
+          _id: data.subcategory_id,
+          deletedAt: null,
+        });
+
+        if (!subcategory) {
+          throw new ApiError(
+            ERROR_MESSAGES.MACHINE.ACTION.CREATE,
+            StatusCodes.BAD_REQUEST,
+            'SUBCATEGORY_NOT_FOUND',
+            'Subcategory not found',
+          );
+        }
+
+        // Verify subcategory belongs to the selected category
+        const subcategoryParentId = subcategory.parent_id
+          ? subcategory.parent_id.toString()
+          : null;
+        const categoryIdStr = (
+          category._id as mongoose.Types.ObjectId
+        ).toString();
+
+        if (subcategoryParentId !== categoryIdStr) {
+          throw new ApiError(
+            ERROR_MESSAGES.MACHINE.ACTION.CREATE,
+            StatusCodes.BAD_REQUEST,
+            'INVALID_SUBCATEGORY',
+            'Subcategory does not belong to the selected category',
+          );
+        }
+      }
+
       // Check if machine with same name already exists in the same category
       const nameHash = data.name.trim().toLowerCase();
       const existingMachine = await Machine.findOne({
@@ -100,16 +139,39 @@ class MachineService {
         );
       }
 
+      // Check for duplicate sequence number if provided
+      if (
+        data.machine_sequence !== undefined &&
+        data.machine_sequence !== null &&
+        data.machine_sequence.trim() !== ''
+      ) {
+        const duplicateSequenceMachine = await Machine.findOne({
+          machine_sequence: data.machine_sequence.trim(),
+          deletedAt: null,
+        });
+
+        if (duplicateSequenceMachine) {
+          throw new ApiError(
+            ERROR_MESSAGES.MACHINE.ACTION.CREATE,
+            StatusCodes.CONFLICT,
+            'DUPLICATE_SEQUENCE',
+            `Machine sequence "${data.machine_sequence}" is already assigned to another machine`,
+          );
+        }
+      }
+
       const machine = new Machine({
         name: data.name.trim(),
         nameHash: nameHash,
         category_id: data.category_id,
+        subcategory_id: data.subcategory_id || null,
         created_by: data.created_by,
         images: data.images || [],
         documents: data.documents || [],
         party_name: data.party_name.trim(),
         location: data.location.trim(),
         mobile_number: data.mobile_number.trim(),
+        machine_sequence: data.machine_sequence || null,
         metadata: data.metadata || {},
         is_approved:
           typeof data.is_approved === 'boolean' ? data.is_approved : false,
@@ -160,14 +222,33 @@ class MachineService {
         query['created_by'] = filters.created_by;
       }
 
+      // Handle search filter
       if (filters.search) {
-        query['$or'] = [{ name: { $regex: filters.search, $options: 'i' } }];
+        query['name'] = { $regex: filters.search, $options: 'i' };
+      }
+
+      // Handle has_sequence filter
+      if (typeof filters.has_sequence === 'boolean') {
+        if (filters.has_sequence) {
+          query['machine_sequence'] = {
+            $exists: true,
+            $ne: null,
+            $nin: [''],
+          };
+        } else {
+          query['$or'] = [
+            { machine_sequence: { $exists: false } },
+            { machine_sequence: null },
+            { machine_sequence: '' },
+          ];
+        }
       }
 
       const [machines, total] = await Promise.all([
         Machine.find(query)
           .populate([
             { path: 'category_id', select: 'name description' },
+            { path: 'subcategory_id', select: 'name description' },
             { path: 'created_by', select: 'username email' },
             { path: 'updatedBy', select: 'username email' },
           ])
@@ -211,6 +292,7 @@ class MachineService {
         deletedAt: null,
       }).populate([
         { path: 'category_id', select: 'name description' },
+        { path: 'subcategory_id', select: 'name description' },
         { path: 'created_by', select: 'username email' },
         { path: 'updatedBy', select: 'username email' },
       ]);
@@ -302,6 +384,28 @@ class MachineService {
         }
       }
 
+      // Check for duplicate sequence number
+      if (
+        data.machine_sequence !== undefined &&
+        data.machine_sequence !== null &&
+        data.machine_sequence.trim() !== ''
+      ) {
+        const duplicateSequenceMachine = await Machine.findOne({
+          machine_sequence: data.machine_sequence.trim(),
+          _id: { $ne: id },
+          deletedAt: null,
+        });
+
+        if (duplicateSequenceMachine) {
+          throw new ApiError(
+            ERROR_MESSAGES.MACHINE.ACTION.UPDATE,
+            StatusCodes.CONFLICT,
+            'DUPLICATE_SEQUENCE',
+            `Machine sequence "${data.machine_sequence}" is already assigned to another machine`,
+          );
+        }
+      }
+
       const updateData: UpdateMachineData = { ...data };
       if (data.name) {
         updateData.name = data.name.trim();
@@ -314,6 +418,13 @@ class MachineService {
       }
       if (data.mobile_number) {
         updateData.mobile_number = data.mobile_number.trim();
+      }
+      // Handle machine_sequence: empty string means remove sequence
+      if (data.machine_sequence !== undefined) {
+        updateData.machine_sequence =
+          data.machine_sequence.trim() === ''
+            ? ''
+            : data.machine_sequence.trim();
       }
 
       // Handle document removal

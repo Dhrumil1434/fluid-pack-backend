@@ -1,75 +1,145 @@
 import { Router } from 'express';
 import {
-  createCategorySchema,
-  updateCategorySchema,
-  categoryIdParamSchema,
-  categoryPaginationQuerySchema,
-} from '../modules/admin/categories/validators/category.validator';
-import { validateRequest } from '../middlewares/validateRequest';
-
+  CategoryController,
+  SequenceManagementController,
+} from '../modules/category/category.controller';
+import {
+  validateRequest,
+  validateQuery,
+  validateParams,
+} from '../middlewares/validateRequest';
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
-import CategoryController from '../modules/admin/categories/category.controller';
+import { validationSchemas } from '../modules/category/validators/category.joi.validator';
 
 const router = Router();
 
-// Create category - Admin/Manager only
+/**
+ * Category Routes
+ */
+
+// Create category
 router.post(
   '/',
   verifyJWT,
-  AuthRole('admin'),
-
-  validateRequest(createCategorySchema),
+  AuthRole(['admin']),
+  validateRequest(validationSchemas.createCategory),
   CategoryController.createCategory,
 );
 
-// Get all categories with pagination and search - Public access
-router.get(
-  '/',
+// Get all categories
+router.get('/', CategoryController.getAllCategories);
 
-  validateRequest(categoryPaginationQuerySchema),
-  CategoryController.getAllCategories,
+// Get category tree
+router.get('/tree', CategoryController.getCategoryTree);
+
+/**
+ * Sequence Management Routes
+ * These routes must come BEFORE the /:id routes to avoid route conflicts
+ */
+
+// Create sequence configuration
+router.post(
+  '/sequence-configs',
+  verifyJWT,
+  AuthRole(['admin']),
+  validateRequest(validationSchemas.createSequenceConfig),
+  SequenceManagementController.createSequenceConfig,
 );
 
-// Get active categories (for dropdown/selection) - Public access
-router.get('/active', CategoryController.getActiveCategories);
-
-// Validate multiple category IDs - Admin/Manager only
-
-// Check if category exists - Public access
+// Get all sequence configurations
 router.get(
-  '/exists/:id',
-
-  validateRequest(categoryIdParamSchema),
-  CategoryController.checkCategoryExists,
+  '/sequence-configs',
+  SequenceManagementController.getAllSequenceConfigs,
 );
 
-// Get category by ID - Public access
+// Get sequence configuration by category/subcategory
+router.get(
+  '/sequence-configs/config',
+  validateQuery(validationSchemas.sequenceQuery),
+  SequenceManagementController.getSequenceConfigById,
+);
+
+// Generate sequence number
+// IMPORTANT: This must come BEFORE /sequence-configs/:id routes to ensure proper matching
+router.post(
+  '/sequence-configs/generate',
+  verifyJWT,
+  validateRequest(validationSchemas.sequenceGeneration),
+  SequenceManagementController.generateSequence,
+);
+
+// Get sequence configuration by ID
+router.get(
+  '/sequence-configs/:id',
+  verifyJWT,
+  AuthRole(['admin']),
+  validateParams(validationSchemas.sequenceConfigId),
+  SequenceManagementController.getSequenceConfigById,
+);
+
+// Update sequence configuration
+router.put(
+  '/sequence-configs/:id',
+  verifyJWT,
+  AuthRole(['admin']),
+  validateParams(validationSchemas.sequenceConfigId),
+  validateRequest(validationSchemas.updateSequenceConfig),
+  SequenceManagementController.updateSequenceConfig,
+);
+
+// Delete sequence configuration
+router.delete(
+  '/sequence-configs/:id',
+  verifyJWT,
+  AuthRole(['admin']),
+  validateParams(validationSchemas.sequenceConfigId),
+  SequenceManagementController.deleteSequenceConfig,
+);
+
+// Reset sequence number
+// IMPORTANT: This must come AFTER /sequence-configs/generate to avoid conflicts
+router.post(
+  '/sequence-configs/:id/reset',
+  verifyJWT,
+  AuthRole(['admin']),
+  validateParams(validationSchemas.sequenceConfigId),
+  validateRequest(validationSchemas.sequenceReset),
+  SequenceManagementController.resetSequence,
+);
+
+// Get category by ID (must come AFTER specific routes)
 router.get(
   '/:id',
-
-  validateRequest(categoryIdParamSchema),
+  verifyJWT,
+  validateParams(validationSchemas.categoryId),
   CategoryController.getCategoryById,
 );
 
-// Update category - Admin/Manager only
+// Get category hierarchy path
+router.get(
+  '/:id/path',
+  verifyJWT,
+  validateParams(validationSchemas.categoryId),
+  CategoryController.getCategoryPath,
+);
+
+// Update category
 router.put(
   '/:id',
   verifyJWT,
-  AuthRole('admin'),
-
-  validateRequest(categoryIdParamSchema),
-  validateRequest(updateCategorySchema),
+  AuthRole(['admin']),
+  validateParams(validationSchemas.categoryId),
+  validateRequest(validationSchemas.updateCategory),
   CategoryController.updateCategory,
 );
 
-// Delete category (soft delete) - Admin only
+// Delete category (soft delete)
 router.delete(
   '/:id',
   verifyJWT,
-  AuthRole('admin'),
-
-  validateRequest(categoryIdParamSchema),
+  AuthRole(['admin']),
+  validateParams(validationSchemas.categoryId),
   CategoryController.deleteCategory,
 );
 
