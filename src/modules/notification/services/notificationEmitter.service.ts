@@ -16,9 +16,66 @@ class NotificationEmitterService {
    * Initialize Socket.IO server
    */
   initialize(server: HTTPServer): void {
+    // Get allowed origins from environment or use defaults
+    // If ALLOWED_ORIGINS is set, merge with default regex patterns
+    const envOrigins = process.env['ALLOWED_ORIGINS']
+      ? process.env['ALLOWED_ORIGINS'].split(',').map((origin) => origin.trim())
+      : [];
+
+    const defaultOrigins = [
+      'http://localhost:4200',
+      'http://127.0.0.1:4200',
+      // Allow network IPs in development
+      ...(process.env['NODE_ENV'] !== 'production'
+        ? [
+            /^http:\/\/192\.168\.\d+\.\d+:4200$/,
+            /^http:\/\/10\.\d+\.\d+\.\d+:4200$/,
+            /^http:\/\/172\.\d+\.\d+\.\d+:4200$/, // Docker networks
+          ]
+        : []),
+    ];
+
+    // Merge environment origins with default origins (avoid duplicates)
+    const allowedOrigins = [
+      ...envOrigins,
+      ...defaultOrigins.filter(
+        (defaultOrigin) =>
+          !envOrigins.some((envOrigin) =>
+            typeof defaultOrigin === 'string'
+              ? envOrigin === defaultOrigin
+              : false,
+          ),
+      ),
+    ];
+
     this.io = new SocketIOServer(server, {
       cors: {
-        origin: ['http://localhost:4200', 'http://127.0.0.1:4200'],
+        origin: (origin, callback) => {
+          // Allow requests with no origin
+          if (!origin) return callback(null, true);
+
+          // Debug logging
+          console.log(`🔍 Socket.IO CORS Check - Origin: ${origin}`);
+
+          // Check if origin matches allowed origins
+          const isAllowed = allowedOrigins.some((allowed) => {
+            if (typeof allowed === 'string') {
+              return origin === allowed;
+            }
+            if (allowed instanceof RegExp) {
+              return allowed.test(origin);
+            }
+            return false;
+          });
+
+          if (isAllowed) {
+            console.log(`✅ Socket.IO CORS Allowed - Origin: ${origin}`);
+            callback(null, true);
+          } else {
+            console.error(`❌ Socket.IO CORS Rejected - Origin: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
+          }
+        },
         credentials: true,
         methods: ['GET', 'POST'],
       },
