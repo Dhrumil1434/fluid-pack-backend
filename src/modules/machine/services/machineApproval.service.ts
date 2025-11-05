@@ -33,6 +33,14 @@ export interface ApprovalFilters {
   requestedBy?: string;
   approvalType?: ApprovalType;
   machineId?: string;
+  sequence?: string; // Machine sequence number
+  categoryId?: string; // Category filter
+  dateFrom?: string; // Date range start (ISO string)
+  dateTo?: string; // Date range end (ISO string)
+  metadataKey?: string; // Metadata key to search
+  metadataValue?: string; // Metadata value to search
+  sortBy?: string; // Sort field (default: createdAt)
+  sortOrder?: 'asc' | 'desc'; // Sort order (default: desc)
 }
 
 export interface ApprovalListResult {
@@ -122,6 +130,7 @@ class MachineApprovalService {
 
   /**
    * Get approval requests with pagination and filters
+   * Uses aggregation pipeline for advanced filtering on populated fields
    */
   static async getApprovalRequests(
     page: number = 1,
@@ -130,34 +139,257 @@ class MachineApprovalService {
   ): Promise<ApprovalListResult> {
     try {
       const skip = (page - 1) * limit;
-      const query: Record<string, unknown> = {};
+      const sortBy = filters.sortBy || 'createdAt';
+      const sortOrder = filters.sortOrder === 'asc' ? 1 : -1;
 
-      // Apply filters
-      if (filters.status) query['status'] = filters.status;
-      if (filters.requestedBy) query['requestedBy'] = filters.requestedBy;
-      if (filters.approvalType) query['approvalType'] = filters.approvalType;
-      if (filters.machineId) query['machineId'] = filters.machineId;
+      // Build aggregation pipeline
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pipeline: any[] = [
+        // Lookup machine (include all fields including machine_sequence)
+        {
+          $lookup: {
+            from: 'machines',
+            localField: 'machineId',
+            foreignField: '_id',
+            as: 'machineId',
+          },
+        },
+        {
+          $unwind: '$machineId',
+        },
+        // Project to include machine_sequence explicitly
+        {
+          $addFields: {
+            'machineId.machine_sequence': '$machineId.machine_sequence',
+          },
+        },
+        // Lookup category
+        {
+          $lookup: {
+            from: 'categories',
+            localField: 'machineId.category_id',
+            foreignField: '_id',
+            as: 'machineId.category_id',
+          },
+        },
+        {
+          $unwind: {
+            path: '$machineId.category_id',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        // Lookup requestedBy user
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'requestedBy',
+            foreignField: '_id',
+            as: 'requestedBy',
+          },
+        },
+        {
+          $unwind: '$requestedBy',
+        },
+        // Lookup approvedBy user
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'approvedBy',
+            foreignField: '_id',
+            as: 'approvedBy',
+          },
+        },
+        {
+          $unwind: {
+            path: '$approvedBy',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        // Lookup rejectedBy user
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'rejectedBy',
+            foreignField: '_id',
+            as: 'rejectedBy',
+          },
+        },
+        {
+          $unwind: {
+            path: '$rejectedBy',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+      ];
 
-      const [approvals, total] = await Promise.all([
-        MachineApproval.find(query)
-          .populate([
-            { path: 'machineId', select: 'name category_id' },
-            { path: 'requestedBy', select: 'username email' },
-            { path: 'approvedBy', select: 'username email' },
-            { path: 'rejectedBy', select: 'username email' },
-          ])
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(limit),
-        MachineApproval.countDocuments(query),
-      ]);
+      // Build match stage for filters
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const matchStage: any = {};
+
+      // Basic filters
+      if (filters.status) {
+        matchStage.status = filters.status;
+      }
+      if (filters.approvalType) {
+        matchStage.approvalType = filters.approvalType;
+      }
+      if (filters.machineId) {
+        matchStage['machineId._id'] = new mongoose.Types.ObjectId(
+          filters.machineId,
+        );
+      }
+
+      // Category filter (only if valid ObjectId string)
+      if (
+        filters.categoryId &&
+        typeof filters.categoryId === 'string' &&
+        filters.categoryId.trim()
+      ) {
+        const categoryId = filters.categoryId.trim();
+        if (mongoose.Types.ObjectId.isValid(categoryId)) {
+          matchStage['machineId.category_id._id'] = new mongoose.Types.ObjectId(
+            categoryId,
+          );
+        }
+      }
+
+      // Sequence filter (only if non-empty string)
+      if (
+        filters.sequence &&
+        typeof filters.sequence === 'string' &&
+        filters.sequence.trim()
+      ) {
+        matchStage['machineId.machine_sequence'] = {
+          $regex: filters.sequence.trim(),
+          $options: 'i',
+        };
+      }
+
+      // RequestedBy filter (search by username or email)
+      if (
+        filters.requestedBy &&
+        typeof filters.requestedBy === 'string' &&
+        filters.requestedBy.trim()
+      ) {
+        const requestedByValue = filters.requestedBy.trim();
+        // If $or already exists (from metadata), combine them
+        if (matchStage.$or) {
+          matchStage.$or.push(
+            {
+              'requestedBy.username': {
+                $regex: requestedByValue,
+                $options: 'i',
+              },
+            },
+            {
+              'requestedBy.email': {
+                $regex: requestedByValue,
+                $options: 'i',
+              },
+            },
+          );
+        } else {
+          matchStage.$or = [
+            {
+              'requestedBy.username': {
+                $regex: requestedByValue,
+                $options: 'i',
+              },
+            },
+            {
+              'requestedBy.email': {
+                $regex: requestedByValue,
+                $options: 'i',
+              },
+            },
+          ];
+        }
+      }
+
+      // Date range filter (only if valid date strings)
+      if (filters.dateFrom || filters.dateTo) {
+        matchStage.createdAt = {};
+        if (
+          filters.dateFrom &&
+          typeof filters.dateFrom === 'string' &&
+          filters.dateFrom.trim()
+        ) {
+          const dateFrom = new Date(filters.dateFrom.trim());
+          if (!isNaN(dateFrom.getTime())) {
+            matchStage.createdAt.$gte = dateFrom;
+          }
+        }
+        if (
+          filters.dateTo &&
+          typeof filters.dateTo === 'string' &&
+          filters.dateTo.trim()
+        ) {
+          const endDate = new Date(filters.dateTo.trim());
+          if (!isNaN(endDate.getTime())) {
+            // Add one day to include the entire end date
+            endDate.setHours(23, 59, 59, 999);
+            matchStage.createdAt.$lte = endDate;
+          }
+        }
+        // Remove createdAt if no valid dates were set
+        if (Object.keys(matchStage.createdAt).length === 0) {
+          delete matchStage.createdAt;
+        }
+      }
+
+      // Metadata filter (key-value search)
+      if (
+        filters.metadataKey &&
+        typeof filters.metadataKey === 'string' &&
+        filters.metadataKey.trim()
+      ) {
+        const metadataPath = `machineId.metadata.${filters.metadataKey.trim()}`;
+        if (
+          filters.metadataValue &&
+          typeof filters.metadataValue === 'string' &&
+          filters.metadataValue.trim()
+        ) {
+          // Search for specific key-value pair
+          matchStage[metadataPath] = {
+            $regex: filters.metadataValue.trim(),
+            $options: 'i',
+          };
+        } else {
+          // Just check if key exists
+          matchStage[metadataPath] = { $exists: true };
+        }
+      }
+
+      // Add match stage if there are filters
+      if (Object.keys(matchStage).length > 0) {
+        pipeline.push({ $match: matchStage });
+      }
+
+      // Add sort
+      pipeline.push({ $sort: { [sortBy]: sortOrder } });
+
+      // Get total count before pagination
+      const countPipeline = [...pipeline, { $count: 'total' }];
+      const countResult = await MachineApproval.aggregate(countPipeline);
+      const total = countResult[0]?.total || 0;
+
+      // Add pagination
+      pipeline.push({ $skip: skip }, { $limit: limit });
+
+      // Execute aggregation
+      const approvals = await MachineApproval.aggregate(pipeline);
+
+      // Manually populate approverRoles if needed (aggregation doesn't populate arrays the same way)
+      // For now, we'll leave it as is since approverRoles is not critical for listing
 
       return {
-        approvals,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        approvals: approvals as any[],
         total,
         pages: Math.ceil(total / limit),
       };
-    } catch {
+    } catch (error) {
+      console.error('Error getting approval requests:', error);
       throw new ApiError(
         'GET_APPROVAL_REQUESTS',
         StatusCodes.INTERNAL_SERVER_ERROR,
@@ -403,23 +635,21 @@ class MachineApprovalService {
 
   /**
    * Get pending approvals for approvers
+   * Now uses getApprovalRequests with enhanced filters
    */
   static async getPendingApprovals(
     page: number = 1,
     limit: number = 10,
-    approverRoleId?: string,
+    _approverRoleId?: string, // Handled in controller, not used here
+    additionalFilters?: Partial<ApprovalFilters>,
   ): Promise<ApprovalListResult> {
-    const base: ApprovalFilters & { approverRoles?: string } = {
+    const filters: ApprovalFilters = {
       status: ApprovalStatus.PENDING,
+      ...additionalFilters,
     };
-    // Filter to approvals scoped to the approver's role if provided
-    const filters: ApprovalFilters & { approverRoles?: string } = { ...base };
-    if (approverRoleId) filters.approverRoles = approverRoleId;
-    return this.getApprovalRequests(
-      page,
-      limit,
-      filters as unknown as ApprovalFilters,
-    );
+    // Note: approverRoleId filtering is handled in the controller
+    // as it requires post-processing or additional aggregation stages
+    return this.getApprovalRequests(page, limit, filters);
   }
 
   /**

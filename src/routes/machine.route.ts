@@ -7,6 +7,7 @@ import {
   machinePaginationQuerySchema,
   machineApprovalSchema,
   validateMachineIdsSchema,
+  updateMachineSequenceSchema,
 } from '../modules/machine/validators/machine.joi.validator';
 import {
   validateRequest,
@@ -100,6 +101,16 @@ router.patch(
   validateParams(machineIdParamSchema),
   validateRequest(machineApprovalSchema),
   MachineController.updateMachineApproval,
+);
+
+// Update machine sequence - Requires permission
+router.patch(
+  '/:id/sequence',
+  verifyJWT,
+  checkPermission([ActionType.UPDATE_MACHINE_SEQUENCE]),
+  validateParams(machineIdParamSchema),
+  validateRequest(updateMachineSequenceSchema),
+  MachineController.updateMachineSequence,
 );
 
 // Get machines by category - Public access

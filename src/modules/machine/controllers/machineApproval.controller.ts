@@ -1,6 +1,7 @@
 // controllers/machineApproval.controller.ts
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
+import mongoose from 'mongoose';
 import MachineApprovalService, {
   CreateApprovalRequestData,
   ApprovalDecisionData,
@@ -107,6 +108,20 @@ class MachineApprovalController {
         filters.approvalType = req.query['approvalType'] as ApprovalType;
       if (req.query['machineId'])
         filters.machineId = req.query['machineId'] as string;
+      if (req.query['sequence'])
+        filters.sequence = req.query['sequence'] as string;
+      if (req.query['categoryId'])
+        filters.categoryId = req.query['categoryId'] as string;
+      if (req.query['dateFrom'])
+        filters.dateFrom = req.query['dateFrom'] as string;
+      if (req.query['dateTo']) filters.dateTo = req.query['dateTo'] as string;
+      if (req.query['metadataKey'])
+        filters.metadataKey = req.query['metadataKey'] as string;
+      if (req.query['metadataValue'])
+        filters.metadataValue = req.query['metadataValue'] as string;
+      if (req.query['sortBy']) filters.sortBy = req.query['sortBy'] as string;
+      if (req.query['sortOrder'])
+        filters.sortOrder = req.query['sortOrder'] as 'asc' | 'desc';
 
       const result = await MachineApprovalService.getApprovalRequests(
         page,
@@ -311,6 +326,8 @@ class MachineApprovalController {
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const page = parseInt(req.query['page'] as string) || 1;
       const limit = parseInt(req.query['limit'] as string) || 10;
+      const search = req.query['search'] as string | undefined;
+      const sort = req.query['sort'] as string | undefined;
 
       // Scope pending approvals to the current user's role if available
       let approverRoleId: string | undefined;
@@ -321,15 +338,76 @@ class MachineApprovalController {
         approverRoleId = (user.role as { _id?: string })?._id?.toString();
       }
 
+      // Build filters for pending approvals with enhanced search support
+      const additionalFilters: Partial<ApprovalFilters> = {};
+
+      // Extract search parameters
+      if (search) {
+        // Try to parse as sequence number (if it looks like a sequence)
+        // Otherwise treat as general search (requestedBy)
+        if (/^[A-Z0-9-_]+$/i.test(search)) {
+          additionalFilters.sequence = search;
+        } else {
+          additionalFilters.requestedBy = search;
+        }
+      }
+
+      // Parse sort string (e.g., "-createdAt" or "createdAt")
+      if (sort) {
+        if (sort.startsWith('-')) {
+          additionalFilters.sortBy = sort.substring(1);
+          additionalFilters.sortOrder = 'desc';
+        } else {
+          additionalFilters.sortBy = sort;
+          additionalFilters.sortOrder = 'asc';
+        }
+      }
+
+      // Extract additional filters from query
+      if (req.query['categoryId'])
+        additionalFilters.categoryId = req.query['categoryId'] as string;
+      if (req.query['dateFrom'])
+        additionalFilters.dateFrom = req.query['dateFrom'] as string;
+      if (req.query['dateTo'])
+        additionalFilters.dateTo = req.query['dateTo'] as string;
+      if (req.query['metadataKey'])
+        additionalFilters.metadataKey = req.query['metadataKey'] as string;
+      if (req.query['metadataValue'])
+        additionalFilters.metadataValue = req.query['metadataValue'] as string;
+
       const result = await MachineApprovalService.getPendingApprovals(
         page,
         limit,
         approverRoleId,
+        additionalFilters,
       );
+
+      // Filter by approver role if needed (this is a simplified approach)
+      // In a production system, you might want to add this to the aggregation pipeline
+      let filteredApprovals = result.approvals;
+      if (approverRoleId) {
+        // Filter approvals that match the approver's role
+        // Note: This is done post-query. For better performance, add to aggregation pipeline
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        filteredApprovals = result.approvals.filter((approval: any) => {
+          const approverRoles = approval.approverRoles || [];
+          return approverRoles.some(
+            (role: string | { _id?: string | mongoose.Types.ObjectId }) => {
+              const roleId =
+                typeof role === 'string' ? role : role?._id?.toString();
+              return roleId === approverRoleId;
+            },
+          );
+        });
+      }
 
       const response = new ApiResponse(
         StatusCodes.OK,
-        result,
+        {
+          approvals: filteredApprovals,
+          total: filteredApprovals.length,
+          pages: Math.ceil(filteredApprovals.length / limit),
+        },
         'Pending approvals retrieved successfully',
       );
       res.status(response.statusCode).json(response);

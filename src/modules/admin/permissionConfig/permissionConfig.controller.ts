@@ -650,6 +650,76 @@ class PermissionConfigController {
       }
     },
   );
+
+  /**
+   * Verify permission config for specific action (debug helper)
+   * GET /api/permission-configs/verify/:action
+   */
+  static verifyPermissionConfig = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { action } = req.params;
+
+      if (!req.user) {
+        throw new ApiError(
+          'VERIFY_PERMISSION_CONFIG',
+          StatusCodes.UNAUTHORIZED,
+          'USER_NOT_AUTHENTICATED',
+          'User authentication required',
+        );
+      }
+
+      try {
+        // Clear cache first to get fresh data
+        PermissionConfigService.clearPermissionCache();
+
+        // Check permission for current user
+        const result = await PermissionConfigService.checkPermission(
+          req.user._id,
+          action as ActionType,
+        );
+
+        // Also get all configs for this action from DB
+        const configs = await PermissionConfigService.getByAction(
+          action as ActionType,
+          1,
+          100,
+        );
+
+        const response = new ApiResponse(
+          StatusCodes.OK,
+          {
+            action,
+            userId: req.user._id,
+            userRole: req.user.role,
+            permissionResult: result,
+            configsFound: configs.total,
+            configs: configs.configs.map((c) => ({
+              id: c._id,
+              name: c.name,
+              action: c.action,
+              permission: c.permission,
+              isActive: c.isActive,
+              priority: c.priority,
+              roleIds: c.roleIds,
+            })),
+          },
+          'Permission configuration verification completed',
+        );
+
+        res.status(StatusCodes.OK).json(response);
+      } catch (error) {
+        if (error instanceof ApiError) {
+          throw error;
+        }
+        throw new ApiError(
+          'VERIFY_PERMISSION_CONFIG',
+          StatusCodes.INTERNAL_SERVER_ERROR,
+          'VERIFICATION_FAILED',
+          'Failed to verify permission configuration',
+        );
+      }
+    },
+  );
 }
 
 export default PermissionConfigController;

@@ -227,6 +227,25 @@ export const machineIdParamSchema = Joi.object({
 });
 
 /**
+ * Validation schema for updating machine sequence
+ */
+export const updateMachineSequenceSchema = Joi.object({
+  machine_sequence: Joi.string().trim().max(50).optional().allow('').messages({
+    'string.max': 'Machine sequence cannot exceed 50 characters',
+  }),
+})
+  .custom((value, helpers) => {
+    // Ensure machine_sequence is provided
+    if (value.machine_sequence === undefined) {
+      return helpers.error('any.required');
+    }
+    return value;
+  })
+  .messages({
+    'any.required': 'Machine sequence field is required',
+  });
+
+/**
  * Validation schema for pagination query parameters
  */
 export const machinePaginationQuerySchema = Joi.object({

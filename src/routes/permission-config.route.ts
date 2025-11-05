@@ -138,4 +138,13 @@ router.post(
   PermissionConfigController.clearPermissionCache,
 );
 
+// Verify permission config for action (debug helper) - Admin only
+router.get(
+  '/verify/:action',
+  verifyJWT,
+  AuthRole('admin'),
+  validateParams(actionParamSchema),
+  PermissionConfigController.verifyPermissionConfig,
+);
+
 export default router;

@@ -15,6 +15,7 @@ import {
   machinePaginationQuerySchema,
   machineApprovalSchema,
   validateMachineIdsSchema,
+  updateMachineSequenceSchema,
 } from './validators/machine.joi.validator';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { ApiResponse } from '../../utils/ApiResponse';
@@ -405,6 +406,60 @@ class MachineController {
         }
         throw error;
       }
+    },
+  );
+
+  /**
+   * Update machine sequence only
+   * PATCH /api/machines/:id/sequence
+   */
+  static updateMachineSequence = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const paramsValidation = machineIdParamSchema.validate(req.params);
+      if (paramsValidation.error) {
+        throw new ApiError(
+          'UPDATE_MACHINE_SEQUENCE_VALIDATION',
+          StatusCodes.BAD_REQUEST,
+          'VALIDATION_ERROR',
+          paramsValidation.error.details[0]?.message,
+        );
+      }
+
+      const bodyValidation = updateMachineSequenceSchema.validate(req.body);
+      if (bodyValidation.error) {
+        throw new ApiError(
+          'UPDATE_MACHINE_SEQUENCE_VALIDATION',
+          StatusCodes.BAD_REQUEST,
+          'VALIDATION_ERROR',
+          bodyValidation.error.details[0]?.message,
+        );
+      }
+
+      if (!req.user?._id) {
+        throw new ApiError(
+          'UPDATE_MACHINE_SEQUENCE_AUTH',
+          StatusCodes.UNAUTHORIZED,
+          'AUTH_ERROR',
+          'User not authenticated',
+        );
+      }
+
+      const updateData: UpdateMachineData = {
+        machine_sequence: bodyValidation.value.machine_sequence,
+        updatedBy: req.user._id,
+      };
+
+      const machine = await MachineService.update(
+        paramsValidation.value.id,
+        updateData,
+      );
+
+      const response = new ApiResponse(
+        StatusCodes.OK,
+        machine,
+        'Machine sequence updated successfully',
+      );
+      res.status(response.statusCode).json(response);
     },
   );
 
