@@ -14,6 +14,10 @@ import {
   ApprovalType,
   ApprovalStatus,
 } from '../../../models/machineApproval.model';
+import {
+  notifyMachineApproved,
+  notifyMachineRejected,
+} from '../../notification/helpers/notification.helper';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -220,6 +224,42 @@ class MachineApprovalController {
 
       const updatedApproval =
         await MachineApprovalService.processApprovalDecision(decisionData);
+
+      // Emit notification to requester
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const approval = updatedApproval as any;
+      const machineId =
+        typeof approval?.machineId === 'string'
+          ? approval.machineId
+          : approval?.machineId?._id?.toString();
+      const machineName =
+        approval?.machineId?.name || approval?.machineId?.name || 'Machine';
+      const requesterId =
+        typeof approval?.requestedBy === 'string'
+          ? approval.requestedBy
+          : approval?.requestedBy?._id?.toString();
+      const approverName = req.user?.username || req.user?.email || 'Admin';
+
+      if (requesterId && machineId) {
+        if (approved) {
+          await notifyMachineApproved(
+            machineId,
+            machineName,
+            requesterId,
+            req.user._id,
+            approverName,
+          );
+        } else {
+          await notifyMachineRejected(
+            machineId,
+            machineName,
+            requesterId,
+            req.user._id,
+            approverName,
+            rejectionReason || 'No reason provided',
+          );
+        }
+      }
 
       const response = new ApiResponse(
         StatusCodes.OK,
@@ -456,7 +496,7 @@ class MachineApprovalController {
    * GET /api/machine-approvals/statistics
    */
   static getApprovalStatistics = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
+    async (_req: Request, res: Response): Promise<void> => {
       const statistics = await MachineApprovalService.getApprovalStatistics();
 
       const response = new ApiResponse(

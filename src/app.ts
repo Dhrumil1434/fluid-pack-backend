@@ -11,6 +11,7 @@ import machineRouter from './routes/machine.route';
 import machineApprovalRouter from './routes/machine-approval.route';
 import qaMachineRouter from './routes/qa-machine.route';
 import qcApprovalRouter from './routes/qc-approval.route';
+import notificationRouter from './routes/notification.route';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 class App {
@@ -65,6 +66,7 @@ class App {
     this.app.use('/api/qc-approvals', qcApprovalRouter);
     this.app.use('/api/categories', categoryRouter);
     this.app.use('/api/permission', permissionRouter);
+    this.app.use('/api/notifications', notificationRouter);
   }
 
   private setErrorHandler(): void {

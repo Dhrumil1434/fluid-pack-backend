@@ -27,6 +27,7 @@ import {
 } from '../../middlewares/multer.middleware';
 import MachineApprovalService from './services/machineApproval.service';
 import { ApprovalType } from '../../models/machineApproval.model';
+import { notifyMachineCreated } from '../notification/helpers/notification.helper';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -254,6 +255,23 @@ class MachineController {
           approvalPayload.approverRoles = approverRolesResolved;
         }
         await MachineApprovalService.createApprovalRequest(approvalPayload);
+
+        // Emit notification to approvers
+        const machineId = (
+          machine as { _id: { toString(): string } }
+        )._id.toString();
+        const machineName =
+          (machine as { name?: string }).name || 'Unnamed Machine';
+        const requesterName =
+          req.user?.username || req.user?.email || 'Unknown User';
+
+        await notifyMachineCreated(
+          machineId,
+          machineName,
+          req.user._id,
+          requesterName,
+          approverRolesResolved || [],
+        );
       }
 
       // Include permission context if available (e.g., requiresApproval)
