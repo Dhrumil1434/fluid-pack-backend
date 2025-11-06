@@ -31,6 +31,7 @@ export interface ApprovalDecisionData {
 export interface ApprovalFilters {
   status?: ApprovalStatus;
   requestedBy?: string;
+  createdBy?: string; // Machine created_by field (username/email)
   approvalType?: ApprovalType;
   machineId?: string;
   sequence?: string; // Machine sequence number
@@ -112,7 +113,10 @@ class MachineApprovalService {
 
       // Populate related data
       await approvalRequest.populate([
-        { path: 'machineId', select: 'name category_id' },
+        {
+          path: 'machineId',
+          select: 'name category_id dispatch_date machine_sequence metadata',
+        },
         { path: 'requestedBy', select: 'username email' },
       ]);
 
@@ -157,10 +161,11 @@ class MachineApprovalService {
         {
           $unwind: '$machineId',
         },
-        // Project to include machine_sequence explicitly
+        // Project to include machine_sequence and dispatch_date explicitly
         {
           $addFields: {
             'machineId.machine_sequence': '$machineId.machine_sequence',
+            'machineId.dispatch_date': '$machineId.dispatch_date',
           },
         },
         // Lookup category
@@ -189,6 +194,21 @@ class MachineApprovalService {
         },
         {
           $unwind: '$requestedBy',
+        },
+        // Lookup machine's created_by user
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'machineId.created_by',
+            foreignField: '_id',
+            as: 'machineId.created_by',
+          },
+        },
+        {
+          $unwind: {
+            path: '$machineId.created_by',
+            preserveNullAndEmptyArrays: true,
+          },
         },
         // Lookup approvedBy user
         {
@@ -306,6 +326,47 @@ class MachineApprovalService {
         }
       }
 
+      // CreatedBy filter (search by machine's created_by username or email)
+      if (
+        filters.createdBy &&
+        typeof filters.createdBy === 'string' &&
+        filters.createdBy.trim()
+      ) {
+        const createdByValue = filters.createdBy.trim();
+        // Search in machine's created_by field (populated as user object)
+        if (matchStage.$or) {
+          matchStage.$or.push(
+            {
+              'machineId.created_by.username': {
+                $regex: createdByValue,
+                $options: 'i',
+              },
+            },
+            {
+              'machineId.created_by.email': {
+                $regex: createdByValue,
+                $options: 'i',
+              },
+            },
+          );
+        } else {
+          matchStage.$or = [
+            {
+              'machineId.created_by.username': {
+                $regex: createdByValue,
+                $options: 'i',
+              },
+            },
+            {
+              'machineId.created_by.email': {
+                $regex: createdByValue,
+                $options: 'i',
+              },
+            },
+          ];
+        }
+      }
+
       // Date range filter (only if valid date strings)
       if (filters.dateFrom || filters.dateTo) {
         matchStage.createdAt = {};
@@ -414,7 +475,10 @@ class MachineApprovalService {
       }
 
       const approval = await MachineApproval.findById(id).populate([
-        { path: 'machineId', select: 'name category_id' },
+        {
+          path: 'machineId',
+          select: 'name category_id dispatch_date machine_sequence metadata',
+        },
         { path: 'requestedBy', select: 'username email' },
         { path: 'approvedBy', select: 'username email' },
         { path: 'rejectedBy', select: 'username email' },
@@ -502,7 +566,10 @@ class MachineApprovalService {
       // Use $set explicitly to avoid merge semantics with arrays
       await MachineApproval.updateOne({ _id: id }, { $set: updateData });
       const updated = await MachineApproval.findById(id).populate([
-        { path: 'machineId', select: 'name category_id' },
+        {
+          path: 'machineId',
+          select: 'name category_id dispatch_date machine_sequence metadata',
+        },
         { path: 'requestedBy', select: 'username email' },
         { path: 'approverRoles', select: 'name' },
       ]);
@@ -583,7 +650,10 @@ class MachineApprovalService {
         updateData,
         { new: true, runValidators: true },
       ).populate([
-        { path: 'machineId', select: 'name category_id' },
+        {
+          path: 'machineId',
+          select: 'name category_id dispatch_date machine_sequence metadata',
+        },
         { path: 'requestedBy', select: 'username email' },
         { path: 'approvedBy', select: 'username email' },
         { path: 'rejectedBy', select: 'username email' },
@@ -693,7 +763,10 @@ class MachineApprovalService {
         { status: ApprovalStatus.CANCELLED },
         { new: true, runValidators: true },
       ).populate([
-        { path: 'machineId', select: 'name category_id' },
+        {
+          path: 'machineId',
+          select: 'name category_id dispatch_date machine_sequence metadata',
+        },
         { path: 'requestedBy', select: 'username email' },
       ]);
 

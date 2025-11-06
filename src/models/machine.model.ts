@@ -26,6 +26,7 @@ export interface IMachine extends Document {
   party_name: string; // Party/Company name
   location: string; // City-Country or location
   mobile_number: string; // Contact mobile number
+  dispatch_date?: Date; // Dispatch date for the machine
   updatedBy?: mongoose.Types.ObjectId;
   deletedAt?: Date | null;
   metadata: Record<string, unknown>;
@@ -116,6 +117,10 @@ const machineSchema = new Schema<IMachine>(
       required: true,
       trim: true,
       maxlength: 20,
+    },
+    dispatch_date: {
+      type: Date,
+      default: null,
     },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,

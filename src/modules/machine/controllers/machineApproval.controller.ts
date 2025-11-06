@@ -108,6 +108,8 @@ class MachineApprovalController {
         filters.status = req.query['status'] as ApprovalStatus;
       if (req.query['requestedBy'])
         filters.requestedBy = req.query['requestedBy'] as string;
+      if (req.query['createdBy'])
+        filters.createdBy = req.query['createdBy'] as string;
       if (req.query['approvalType'])
         filters.approvalType = req.query['approvalType'] as ApprovalType;
       if (req.query['machineId'])

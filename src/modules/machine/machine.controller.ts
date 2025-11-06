@@ -94,6 +94,13 @@ class MachineController {
           );
         }
       }
+      // Handle dispatch_date: convert empty string to null for proper validation
+      if (
+        rawBody['dispatch_date'] === '' ||
+        rawBody['dispatch_date'] === null
+      ) {
+        bodyForValidation['dispatch_date'] = null;
+      }
 
       const { error, value } = createMachineSchema.validate(bodyForValidation);
       if (error) {
@@ -307,6 +314,14 @@ class MachineController {
       if (value.search) filters.search = value.search;
       if (typeof value.has_sequence === 'boolean')
         filters.has_sequence = value.has_sequence;
+      if (value.metadata_key) filters.metadata_key = value.metadata_key;
+      if (value.metadata_value) filters.metadata_value = value.metadata_value;
+      if (value.dispatch_date_from)
+        filters.dispatch_date_from = value.dispatch_date_from;
+      if (value.dispatch_date_to)
+        filters.dispatch_date_to = value.dispatch_date_to;
+      if (value.sortBy) filters.sortBy = value.sortBy;
+      if (value.sortOrder) filters.sortOrder = value.sortOrder;
 
       const page = parseInt(value.page as string) || 1;
       const limit = parseInt(value.limit as string) || 10;
@@ -400,11 +415,23 @@ class MachineController {
           );
         }
 
-        const updateData: UpdateMachineData = {
-          ...req.body,
+        // Handle dispatch_date: convert empty string to null for proper processing
+        const rawBody = req.body as Record<string, unknown>;
+        const bodyData: Partial<UpdateMachineData> = { ...rawBody };
+        if (
+          rawBody['dispatch_date'] === '' ||
+          rawBody['dispatch_date'] === null
+        ) {
+          bodyData['dispatch_date'] = null;
+        }
+
+        const updateData: Partial<UpdateMachineData> = {
+          ...bodyData,
           updatedBy: req.user._id,
-          images: imagePaths.length > 0 ? imagePaths : undefined,
         };
+        if (imagePaths.length > 0) {
+          updateData.images = imagePaths;
+        }
 
         const machine = await MachineService.update(
           paramsValidation.value.id,

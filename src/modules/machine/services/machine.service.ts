@@ -6,6 +6,7 @@ import { StatusCodes } from 'http-status-codes';
 // import { ERROR_MESSAGES } from '../../../../constants/errorMessages';
 import mongoose from 'mongoose';
 import { Category } from '../../../models/category.model';
+import { User } from '../../../models/user.model';
 
 import { IMachine, Machine } from '../../../models/machine.model';
 import { ApiError } from '../../../utils/ApiError';
@@ -24,6 +25,7 @@ export interface CreateMachineData {
   party_name: string;
   location: string;
   mobile_number: string;
+  dispatch_date?: Date | string;
   machine_sequence?: string;
   metadata?: Record<string, unknown>;
   is_approved?: boolean;
@@ -42,6 +44,7 @@ export interface UpdateMachineData {
   party_name?: string;
   location?: string;
   mobile_number?: string;
+  dispatch_date?: Date | string | null;
   machine_sequence?: string;
   metadata?: Record<string, unknown>;
   removedDocuments?: Array<{
@@ -65,6 +68,12 @@ export interface MachineFilters {
   created_by?: string;
   search?: string;
   has_sequence?: boolean;
+  metadata_key?: string;
+  metadata_value?: string;
+  dispatch_date_from?: string | Date;
+  dispatch_date_to?: string | Date;
+  sortBy?: 'createdAt' | 'name' | 'category' | 'dispatch_date';
+  sortOrder?: 'asc' | 'desc';
 }
 
 class MachineService {
@@ -160,6 +169,23 @@ class MachineService {
         }
       }
 
+      // Parse dispatch_date if provided as string
+      let dispatchDate: Date | null = null;
+      if (data.dispatch_date) {
+        if (
+          typeof data.dispatch_date === 'string' &&
+          data.dispatch_date.trim() !== ''
+        ) {
+          const parsedDate = new Date(data.dispatch_date);
+          // Check if date is valid
+          if (!isNaN(parsedDate.getTime())) {
+            dispatchDate = parsedDate;
+          }
+        } else if (data.dispatch_date instanceof Date) {
+          dispatchDate = data.dispatch_date;
+        }
+      }
+
       const machine = new Machine({
         name: data.name.trim(),
         nameHash: nameHash,
@@ -171,6 +197,7 @@ class MachineService {
         party_name: data.party_name.trim(),
         location: data.location.trim(),
         mobile_number: data.mobile_number.trim(),
+        dispatch_date: dispatchDate,
         machine_sequence: data.machine_sequence || null,
         metadata: data.metadata || {},
         is_approved:
@@ -222,9 +249,37 @@ class MachineService {
         query['created_by'] = filters.created_by;
       }
 
-      // Handle search filter
+      // Build $and array for complex queries
+      const andConditions: Array<Record<string, unknown>> = [];
+
+      // Handle search filter - search across multiple fields including created_by
       if (filters.search) {
-        query['name'] = { $regex: filters.search, $options: 'i' };
+        const searchRegex = { $regex: filters.search, $options: 'i' };
+        // First, find users matching the search term for created_by
+        const matchingUsers = await User.find({
+          $or: [{ username: searchRegex }, { email: searchRegex }],
+        })
+          .select('_id')
+          .lean();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const matchingUserIds = matchingUsers.map((u: any) => u._id);
+
+        const searchOrConditions: Array<Record<string, unknown>> = [
+          { name: searchRegex },
+          { party_name: searchRegex },
+          { location: searchRegex },
+          { mobile_number: searchRegex },
+          { machine_sequence: searchRegex },
+        ];
+
+        // Add created_by search if matching users found
+        if (matchingUserIds.length > 0) {
+          searchOrConditions.push({ created_by: { $in: matchingUserIds } });
+        }
+
+        andConditions.push({
+          $or: searchOrConditions,
+        });
       }
 
       // Handle has_sequence filter
@@ -236,11 +291,76 @@ class MachineService {
             $nin: [''],
           };
         } else {
-          query['$or'] = [
-            { machine_sequence: { $exists: false } },
-            { machine_sequence: null },
-            { machine_sequence: '' },
-          ];
+          andConditions.push({
+            $or: [
+              { machine_sequence: { $exists: false } },
+              { machine_sequence: null },
+              { machine_sequence: '' },
+            ],
+          });
+        }
+      }
+
+      // Combine $and conditions if any exist
+      if (andConditions.length > 0) {
+        if (andConditions.length === 1) {
+          Object.assign(query, andConditions[0]);
+        } else {
+          query['$and'] = andConditions;
+        }
+      }
+
+      // Handle metadata key-value search
+      if (filters.metadata_key) {
+        const metadataKey = filters.metadata_key.trim();
+        if (filters.metadata_value) {
+          // Search for specific key-value pair
+          const metadataValue = filters.metadata_value.trim();
+          query[`metadata.${metadataKey}`] = {
+            $regex: metadataValue,
+            $options: 'i',
+          };
+        } else {
+          // Just check if key exists
+          query[`metadata.${metadataKey}`] = { $exists: true };
+        }
+      }
+
+      // Handle dispatch_date range filter
+      if (filters.dispatch_date_from || filters.dispatch_date_to) {
+        const dateQuery: { $gte?: Date; $lte?: Date } = {};
+        if (filters.dispatch_date_from) {
+          dateQuery.$gte = new Date(filters.dispatch_date_from);
+        }
+        if (filters.dispatch_date_to) {
+          const toDate = new Date(filters.dispatch_date_to);
+          toDate.setHours(23, 59, 59, 999); // Include entire end date
+          dateQuery.$lte = toDate;
+        }
+        query['dispatch_date'] = dateQuery;
+      }
+
+      // Determine sort order
+      const sortOrder = filters.sortOrder === 'asc' ? 1 : -1;
+      let sortField: Record<string, 1 | -1> = { createdAt: -1 }; // Default: latest first
+
+      if (filters.sortBy) {
+        switch (filters.sortBy) {
+          case 'name':
+            sortField = { name: sortOrder };
+            break;
+          case 'category':
+            // We'll need to sort by populated category name, but MongoDB can't sort by populated fields directly
+            // So we'll sort by category_id and handle category name sorting in a different way
+            sortField = { category_id: sortOrder };
+            break;
+          case 'dispatch_date':
+            sortField = { dispatch_date: sortOrder };
+            break;
+          case 'createdAt':
+          default:
+            sortField = { createdAt: sortOrder };
+            break;
         }
       }
 
@@ -252,7 +372,7 @@ class MachineService {
             { path: 'created_by', select: 'username email' },
             { path: 'updatedBy', select: 'username email' },
           ])
-          .sort({ createdAt: -1 })
+          .sort(sortField)
           .skip(skip)
           .limit(limit),
         Machine.countDocuments(query),
@@ -406,7 +526,7 @@ class MachineService {
         }
       }
 
-      const updateData: UpdateMachineData = { ...data };
+      const updateData: Partial<UpdateMachineData> = { ...data };
       if (data.name) {
         updateData.name = data.name.trim();
       }
@@ -418,6 +538,16 @@ class MachineService {
       }
       if (data.mobile_number) {
         updateData.mobile_number = data.mobile_number.trim();
+      }
+      // Handle dispatch_date
+      if (data.dispatch_date !== undefined) {
+        if (data.dispatch_date === null || data.dispatch_date === '') {
+          updateData.dispatch_date = null;
+        } else if (typeof data.dispatch_date === 'string') {
+          updateData.dispatch_date = new Date(data.dispatch_date);
+        } else if (data.dispatch_date instanceof Date) {
+          updateData.dispatch_date = data.dispatch_date;
+        }
       }
       // Handle machine_sequence: empty string means remove sequence
       if (data.machine_sequence !== undefined) {

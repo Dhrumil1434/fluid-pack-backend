@@ -92,6 +92,11 @@ export const createMachineSchema = Joi.object({
         'Mobile number can only contain numbers, spaces, hyphens, parentheses, and optional + prefix',
       'any.required': 'Mobile number is required',
     }),
+
+  dispatch_date: Joi.date().iso().optional().allow(null, '').messages({
+    'date.base': 'Dispatch date must be a valid date',
+    'date.format': 'Dispatch date must be in ISO format (YYYY-MM-DD)',
+  }),
 });
 
 /**
@@ -190,6 +195,11 @@ export const updateMachineSchema = Joi.object({
       'string.pattern.base':
         'Mobile number can only contain numbers, spaces, hyphens, parentheses, and optional + prefix',
     }),
+
+  dispatch_date: Joi.date().iso().optional().allow(null, '').messages({
+    'date.base': 'Dispatch date must be a valid date',
+    'date.format': 'Dispatch date must be in ISO format (YYYY-MM-DD)',
+  }),
 })
   .custom((value, helpers) => {
     // Check if at least one field is provided (including empty string for machine_sequence)
@@ -288,6 +298,36 @@ export const machinePaginationQuerySchema = Joi.object({
     .messages({
       'string.pattern.base': 'Invalid creator ID format',
     }),
+
+  metadata_key: Joi.string().trim().max(100).optional().messages({
+    'string.max': 'Metadata key cannot exceed 100 characters',
+  }),
+
+  metadata_value: Joi.string().trim().max(500).optional().messages({
+    'string.max': 'Metadata value cannot exceed 500 characters',
+  }),
+
+  dispatch_date_from: Joi.date().iso().optional().messages({
+    'date.base': 'Dispatch date from must be a valid date',
+    'date.format': 'Dispatch date from must be in ISO format (YYYY-MM-DD)',
+  }),
+
+  dispatch_date_to: Joi.date().iso().optional().messages({
+    'date.base': 'Dispatch date to must be a valid date',
+    'date.format': 'Dispatch date to must be in ISO format (YYYY-MM-DD)',
+  }),
+
+  sortBy: Joi.string()
+    .valid('createdAt', 'name', 'category', 'dispatch_date')
+    .optional()
+    .messages({
+      'any.only':
+        'Sort by must be one of: createdAt, name, category, dispatch_date',
+    }),
+
+  sortOrder: Joi.string().valid('asc', 'desc').optional().messages({
+    'any.only': 'Sort order must be either asc or desc',
+  }),
 });
 
 /**
