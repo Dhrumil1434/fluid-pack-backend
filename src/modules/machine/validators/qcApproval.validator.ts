@@ -76,20 +76,19 @@ export const updateQCApprovalSchema = Joi.object({
 
 /**
  * QC approval action validation
+ * Note: validateRequest middleware validates req.body directly, so schema should not have nested 'body' wrapper
  */
 export const qcApprovalActionSchema = Joi.object({
-  body: Joi.object({
-    approvalId: Joi.string().hex().length(24).required().messages({
-      'string.hex': 'Invalid QC Approval ID format',
-      'string.length': 'QC Approval ID must be 24 characters long',
-      'any.required': 'QC Approval ID is required',
-    }),
-    action: Joi.string().valid('approve', 'reject').required().messages({
-      'any.only': 'Action must be either "approve" or "reject"',
-      'any.required': 'Action is required',
-    }),
-    notes: Joi.string().trim().optional(),
+  approvalId: Joi.string().hex().length(24).required().messages({
+    'string.hex': 'Invalid QC Approval ID format',
+    'string.length': 'QC Approval ID must be 24 characters long',
+    'any.required': 'QC Approval ID is required',
   }),
+  action: Joi.string().valid('approve', 'reject').required().messages({
+    'any.only': 'Action must be either "approve" or "reject"',
+    'any.required': 'Action is required',
+  }),
+  notes: Joi.string().trim().optional(),
 });
 
 /**

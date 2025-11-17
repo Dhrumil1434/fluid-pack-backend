@@ -164,6 +164,7 @@ export const getAllQCApprovals = asyncHandler(
     if (search) {
       matchStage.$or = [
         { 'machineId.name': { $regex: search, $options: 'i' } },
+        { 'machineId.machine_sequence': { $regex: search, $options: 'i' } },
         { 'requestedBy.name': { $regex: search, $options: 'i' } },
         { 'requestedBy.username': { $regex: search, $options: 'i' } },
         { qcNotes: { $regex: search, $options: 'i' } },
@@ -268,6 +269,20 @@ export const getAllQCApprovals = asyncHandler(
           preserveNullAndEmptyArrays: true,
         },
       },
+      {
+        $lookup: {
+          from: 'qamachineentries',
+          localField: 'qcEntryId',
+          foreignField: '_id',
+          as: 'qcEntryId',
+        },
+      },
+      {
+        $unwind: {
+          path: '$qcEntryId',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
     ];
 
     // Add additional filters after population
@@ -321,6 +336,7 @@ export const getAllQCApprovals = asyncHandler(
           'rejectedBy.refreshToken': 0,
           'rejectedBy.role_id': 0,
           'rejectedBy.department_id': 0,
+          // documents and qcEntryId are included by default in exclusion projection
         },
       },
     );
@@ -742,16 +758,62 @@ export const deleteQCApproval = asyncHandler(
  */
 export const processQCApprovalAction = asyncHandler(
   async (req: Request, res: Response) => {
-    const { approvalId, action, notes } = req.body;
+    // Extract from validated body (validateRequest middleware validates req.body directly)
+    const { approvalId, action, notes } = req.body as {
+      approvalId: string;
+      action: 'approve' | 'reject';
+      notes?: string;
+    };
     const userId = (req as any).user?.id;
 
+    console.log('🔵 processQCApprovalAction called:', {
+      approvalId,
+      action,
+      notes,
+      userId,
+      rawBody: req.body,
+    });
+
+    if (!approvalId) {
+      console.error('❌ Missing approvalId in request:', {
+        body: req.body,
+        bodyKeys: Object.keys(req.body || {}),
+      });
+      throw new ApiError(
+        'MISSING_APPROVAL_ID',
+        400,
+        'MISSING_APPROVAL_ID',
+        'Approval ID is required',
+      );
+    }
+
     const approval = await QCApproval.findById(approvalId);
+    console.log('🔵 Approval lookup result:', {
+      found: !!approval,
+      approvalId,
+      approvalStatus: approval?.status,
+      hasProposedChanges: !!approval?.proposedChanges,
+    });
+
     if (!approval) {
+      // Try to find by string ID if ObjectId lookup failed
+      const allApprovals = await QCApproval.find({})
+        .limit(5)
+        .select('_id status')
+        .lean();
+      console.log(
+        '🔵 Sample approval IDs in DB:',
+        allApprovals.map((a) => ({
+          id: a._id?.toString(),
+          status: a.status,
+        })),
+      );
+
       throw new ApiError(
         'QC_APPROVAL_NOT_FOUND',
         404,
         'QC_APPROVAL_NOT_FOUND',
-        'QC approval not found',
+        `QC approval not found with ID: ${approvalId}`,
       );
     }
 
@@ -764,11 +826,16 @@ export const processQCApprovalAction = asyncHandler(
       );
     }
 
+    // Ensure proposedChanges exists (required field)
+    if (!approval.proposedChanges) {
+      approval.proposedChanges = {};
+    }
+
     if (action === 'approve') {
       approval.status = QCApprovalStatus.APPROVED;
       approval.approvedBy = userId;
       approval.approvalDate = new Date();
-      approval.approverNotes = notes;
+      approval.approverNotes = notes || '';
       // Mirror dispatch: mark related QC entry active and approved
       if (approval.qcEntryId) {
         await QAMachineEntry.findByIdAndUpdate(approval.qcEntryId, {
@@ -781,13 +848,13 @@ export const processQCApprovalAction = asyncHandler(
       approval.status = QCApprovalStatus.REJECTED;
       approval.rejectedBy = userId;
       approval.approvalDate = new Date();
-      approval.rejectionReason = notes;
+      approval.rejectionReason = notes || '';
       // Mirror dispatch: keep QC entry inactive and set rejection reason
       if (approval.qcEntryId) {
         await QAMachineEntry.findByIdAndUpdate(approval.qcEntryId, {
           is_active: false,
           approval_status: 'REJECTED',
-          rejection_reason: notes,
+          rejection_reason: notes || '',
         } as any);
       }
     } else {

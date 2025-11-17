@@ -81,6 +81,12 @@ router.get(
 // Update sequence configuration
 router.put(
   '/sequence-configs/:id',
+  (req, res, next) => {
+    console.log('🔵 PUT /sequence-configs/:id route hit');
+    console.log(`   Params:`, req.params);
+    console.log(`   Body:`, JSON.stringify(req.body, null, 2));
+    next();
+  },
   verifyJWT,
   AuthRole(['admin']),
   validateParams(validationSchemas.sequenceConfigId),

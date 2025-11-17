@@ -230,6 +230,9 @@ export const sequenceManagementValidationSchemas = {
     isActive: Joi.boolean().optional().messages({
       'boolean.base': 'isActive must be a boolean value',
     }),
+    updateMachineSequences: Joi.boolean().optional().messages({
+      'boolean.base': 'updateMachineSequences must be a boolean value',
+    }),
   }),
 
   sequenceConfigId: Joi.object({

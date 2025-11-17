@@ -443,13 +443,29 @@ class SequenceManagementController {
   ): Promise<void> {
     try {
       const { id } = req.params;
+
+      console.log('📥 Received updateSequenceConfig request:');
+      console.log(`   ID: ${id}`);
+      console.log(`   Body:`, JSON.stringify(req.body, null, 2));
+      console.log(
+        `   updateMachineSequences from body: ${req.body.updateMachineSequences}`,
+      );
+      console.log(`   Type: ${typeof req.body.updateMachineSequences}`);
+
       const updateData: UpdateSequenceConfigData = {
         sequencePrefix: req.body.sequencePrefix,
         startingNumber: req.body.startingNumber,
         format: req.body.format,
         isActive: req.body.isActive,
+        updateMachineSequences:
+          req.body.updateMachineSequences === true ||
+          req.body.updateMachineSequences === 'true',
         updatedBy: req.user?._id as string,
       };
+
+      console.log(
+        `   Final updateMachineSequences value: ${updateData.updateMachineSequences}`,
+      );
 
       const sequenceConfig = await SequenceService.updateSequenceConfig(
         id as string,
@@ -464,11 +480,14 @@ class SequenceManagementController {
 
       res.status(response.statusCode).json(response);
     } catch (error) {
+      console.error('❌ Error in updateSequenceConfig controller:', error);
       if (error instanceof ApiError) {
+        console.error(`   ApiError: ${error.message} (${error.statusCode})`);
         res.status(error.statusCode).json(error);
         return;
       }
 
+      console.error('   Unknown error type:', error);
       const apiError = new ApiError(
         ERROR_MESSAGES.SEQUENCE_MANAGEMENT.ACTION.UPDATE,
         StatusCodes.INTERNAL_SERVER_ERROR,

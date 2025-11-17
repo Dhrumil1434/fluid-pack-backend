@@ -100,7 +100,7 @@ class CategoryMigration {
             sequence_prefix: this.generatePrefix(category.name),
             current_sequence: 0,
             starting_number: 1,
-            format: `${this.generatePrefix(category.name)}-{category}-{sequence}`,
+            format: `${this.generatePrefix(category.name)}-{sequence}-{category}`,
             is_active: true,
             created_by: category.created_by,
             created_at: new Date(),
