@@ -2,6 +2,7 @@ import express, { Application } from 'express';
 import cors, { CorsOptions } from 'cors';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
+import path from 'path';
 import { errorHandler } from './middlewares/errorhandler';
 import userRouter from './routes/user.route';
 import departmentAndRoleRouter from './routes/department-role.route';
@@ -120,7 +121,15 @@ class App {
     this.app.use(cors(corsOptions));
     // Explicitly handle preflight for all routes
     this.app.options('*', cors(corsOptions));
-    this.app.use(express.static('public'));
+
+    // Serve static files from public directory
+    // Use absolute path to ensure it works in all environments
+    const publicPath = path.join(process.cwd(), 'public');
+    this.app.use(express.static(publicPath));
+
+    // Also serve uploads directly for better compatibility
+    this.app.use('/uploads', express.static(path.join(publicPath, 'uploads')));
+
     this.app.set('view engine', 'ejs');
     this.app.use(cookieParser());
     this.app.use(morgan(':method :url :status :response-time ms'));

@@ -4,6 +4,7 @@ import { networkInterfaces } from 'os';
 import connectDB from './db/index';
 import app from './app';
 import notificationEmitter from './modules/notification/services/notificationEmitter.service';
+import { ensureUploadDirectories } from './utils/ensureUploadDirs';
 dotenv.config();
 
 const PORT = parseInt(process.env['PORT'] || '5000', 10);
@@ -25,6 +26,9 @@ function getLocalIP(): string | null {
   }
   return null;
 }
+
+// Ensure upload directories exist before starting server
+ensureUploadDirectories();
 
 connectDB()
   .then(() => {

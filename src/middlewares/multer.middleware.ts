@@ -5,6 +5,11 @@ import { Request, Response, NextFunction } from 'express';
 import { FileFilterCallback } from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 
+// Get absolute base directory for uploads
+const getUploadBaseDir = (): string => {
+  return path.join(process.cwd(), 'public', 'uploads');
+};
+
 // Create directory if it doesn't exist
 const ensureDirectoryExists = (dirPath: string): void => {
   if (!fs.existsSync(dirPath)) {
@@ -15,8 +20,8 @@ const ensureDirectoryExists = (dirPath: string): void => {
 // Set storage engine for machine images
 const machineStorage = multer.diskStorage({
   destination: function (_req: Request, _file, cb) {
-    // Create machine-specific directory structure using absolute path
-    const baseDir = path.join(process.cwd(), 'public', 'uploads', 'machines');
+    // Create machine-specific directory structure
+    const baseDir = path.join(getUploadBaseDir(), 'machines');
     const tempDir = path.join(baseDir, 'temp');
 
     ensureDirectoryExists(tempDir);
@@ -34,14 +39,8 @@ const machineStorage = multer.diskStorage({
 // Set storage engine for machine documents
 const machineDocumentStorage = multer.diskStorage({
   destination: function (_req: Request, _file, cb) {
-    // Create document-specific directory structure using absolute path
-    const baseDir = path.join(
-      process.cwd(),
-      'public',
-      'uploads',
-      'machines',
-      'documents',
-    );
+    // Create document-specific directory structure
+    const baseDir = path.join(getUploadBaseDir(), 'machines', 'documents');
     const tempDir = path.join(baseDir, 'temp');
 
     ensureDirectoryExists(tempDir);
@@ -63,7 +62,7 @@ const machineUpdateStorage = multer.diskStorage({
     if (!machineId) {
       return cb(new Error('Machine ID is required'), '');
     }
-    const baseDir = path.join(process.cwd(), 'public', 'uploads', 'machines');
+    const baseDir = path.join(getUploadBaseDir(), 'machines');
     const machineDir = path.join(baseDir, machineId);
 
     ensureDirectoryExists(machineDir);
@@ -196,7 +195,7 @@ const moveFilesToMachineDirectory = async (
   files: Express.Multer.File[],
   machineId: string,
 ): Promise<string[]> => {
-  const baseDir = path.join(process.cwd(), 'public', 'uploads', 'machines');
+  const baseDir = path.join(getUploadBaseDir(), 'machines');
   const machineDir = path.join(baseDir, machineId);
   const imagePaths: string[] = [];
 
@@ -230,7 +229,7 @@ const moveDocumentFilesToMachineDirectory = async (
   files: Express.Multer.File[],
   machineId: string,
 ): Promise<string[]> => {
-  const baseDir = path.join(process.cwd(), 'public', 'uploads', 'machines');
+  const baseDir = path.join(getUploadBaseDir(), 'machines');
   const machineDir = path.join(baseDir, machineId);
   const documentPaths: string[] = [];
 
@@ -262,7 +261,7 @@ const moveDocumentFilesToMachineDirectory = async (
 // Utility function to delete machine images
 const deleteMachineImages = (imagePaths: string[]): void => {
   imagePaths.forEach((imagePath) => {
-    const fullPath = path.join('./public', imagePath);
+    const fullPath = path.join(process.cwd(), 'public', imagePath);
     if (fs.existsSync(fullPath)) {
       try {
         fs.unlinkSync(fullPath);
@@ -275,7 +274,7 @@ const deleteMachineImages = (imagePaths: string[]): void => {
 
 // Utility function to clean up machine directory
 const cleanupMachineDirectory = (machineId: string): void => {
-  const machineDir = path.join('./public/uploads/machines', machineId);
+  const machineDir = path.join(getUploadBaseDir(), 'machines', machineId);
   if (fs.existsSync(machineDir)) {
     try {
       fs.rmSync(machineDir, { recursive: true, force: true });
@@ -291,13 +290,8 @@ const cleanupMachineDirectory = (machineId: string): void => {
 // Set storage engine for QA machine files
 const qaMachineStorage = multer.diskStorage({
   destination: function (_req: Request, _file, cb) {
-    // Create QA-specific directory structure using absolute path
-    const baseDir = path.join(
-      process.cwd(),
-      'public',
-      'uploads',
-      'qa-machines',
-    );
+    // Create QA-specific directory structure
+    const baseDir = path.join(getUploadBaseDir(), 'qa-machines');
     const tempDir = path.join(baseDir, 'temp');
 
     ensureDirectoryExists(tempDir);
@@ -319,12 +313,7 @@ const qaMachineUpdateStorage = multer.diskStorage({
     if (!qaEntryId) {
       return cb(new Error('QA Entry ID is required'), '');
     }
-    const baseDir = path.join(
-      process.cwd(),
-      'public',
-      'uploads',
-      'qa-machines',
-    );
+    const baseDir = path.join(getUploadBaseDir(), 'qa-machines');
     const qaEntryDir = path.join(baseDir, qaEntryId);
 
     ensureDirectoryExists(qaEntryDir);
@@ -392,7 +381,7 @@ const moveQAFilesToEntryDirectory = async (
   files: Express.Multer.File[],
   qaEntryId: string,
 ): Promise<string[]> => {
-  const baseDir = path.join(process.cwd(), 'public', 'uploads', 'qc-machines');
+  const baseDir = path.join(getUploadBaseDir(), 'qc-machines');
   const qaEntryDir = path.join(baseDir, qaEntryId);
   const filePaths: string[] = [];
 
@@ -424,7 +413,7 @@ const moveQAFilesToEntryDirectory = async (
 // Utility function to delete QC files
 const deleteQAFiles = (filePaths: string[]): void => {
   filePaths.forEach((filePath) => {
-    const fullPath = path.join('./public', filePath);
+    const fullPath = path.join(process.cwd(), 'public', filePath);
     if (fs.existsSync(fullPath)) {
       try {
         fs.unlinkSync(fullPath);
@@ -437,7 +426,7 @@ const deleteQAFiles = (filePaths: string[]): void => {
 
 // Utility function to clean up QC entry directory
 const cleanupQAEntryDirectory = (qaEntryId: string): void => {
-  const qaEntryDir = path.join('./public/uploads/qc-machines', qaEntryId);
+  const qaEntryDir = path.join(getUploadBaseDir(), 'qc-machines', qaEntryId);
   if (fs.existsSync(qaEntryDir)) {
     try {
       fs.rmSync(qaEntryDir, { recursive: true, force: true });
@@ -529,12 +518,7 @@ const handleFileUploadError = (
 const upload = multer({
   storage: multer.diskStorage({
     destination: function (_req: Request, _file, cb) {
-      const baseDir = path.join(
-        process.cwd(),
-        'public',
-        'uploads',
-        'qc-approvals',
-      );
+      const baseDir = path.join(getUploadBaseDir(), 'qc-approvals');
       ensureDirectoryExists(baseDir);
       cb(null, baseDir);
     },
