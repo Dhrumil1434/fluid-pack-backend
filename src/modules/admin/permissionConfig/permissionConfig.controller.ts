@@ -629,7 +629,7 @@ class PermissionConfigController {
    * POST /api/permission-configs/clear-cache
    */
   static clearPermissionCache = asyncHandler(
-    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
       try {
         PermissionConfigService.clearPermissionCache();
 

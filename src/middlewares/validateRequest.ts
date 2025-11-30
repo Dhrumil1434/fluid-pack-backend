@@ -42,7 +42,7 @@ const handleValidation = (
  * Middleware to validate request body
  */
 export const validateRequest = (schema: Joi.ObjectSchema) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
     const validated = handleValidation(schema, req.body, 'body', next);
     if (validated) req.body = validated;
     next();
@@ -53,7 +53,7 @@ export const validateRequest = (schema: Joi.ObjectSchema) => {
  * Middleware to validate request parameters
  */
 export const validateParams = (schema: Joi.ObjectSchema) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
     const validated = handleValidation(schema, req.params, 'params', next);
     if (validated) req.params = validated;
     next();
@@ -64,7 +64,7 @@ export const validateParams = (schema: Joi.ObjectSchema) => {
  * Middleware to validate request query
  */
 export const validateQuery = (schema: Joi.ObjectSchema) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
     const validated = handleValidation(schema, req.query, 'query', next);
     if (validated) req.query = validated;
     next();

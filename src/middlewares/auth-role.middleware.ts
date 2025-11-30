@@ -5,7 +5,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 
 export const AuthRole = (requiredRole: string | string[]) => {
   return asyncHandler(
-    async (req: Request, res: Response, next: NextFunction) => {
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       const token =
         req.cookies?.['accessToken'] ||
         req.headers.authorization?.replace('Bearer ', '');

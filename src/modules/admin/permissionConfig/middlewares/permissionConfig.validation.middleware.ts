@@ -19,7 +19,7 @@ interface RequestWithAuth extends Request {
 export const checkPermission = (actions: ActionType[]) => {
   return async (
     req: Request,
-    res: Response,
+    _res: Response,
     next: NextFunction,
   ): Promise<void> => {
     try {

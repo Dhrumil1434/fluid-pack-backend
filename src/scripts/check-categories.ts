@@ -5,7 +5,7 @@ import { Category } from '../models/category.model';
 const connectDB = async () => {
   try {
     await mongoose.connect(
-      process.env.MONGODB_URI || 'mongodb://localhost:27017/fluidpack',
+      process.env['MONGODB_URI'] || 'mongodb://localhost:27017/fluidpack',
     );
     console.log('MongoDB connected successfully');
   } catch (error) {

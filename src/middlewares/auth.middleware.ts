@@ -13,7 +13,11 @@ interface AuthenticatedRequest extends Request {
 }
 
 export const verifyJWT = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     // Get token from cookies or headers
     const token =
       req.cookies?.accessToken ||

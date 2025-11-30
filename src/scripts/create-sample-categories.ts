@@ -5,7 +5,7 @@ import { Category } from '../models/category.model';
 const connectDB = async () => {
   try {
     await mongoose.connect(
-      process.env.MONGODB_URI || 'mongodb://localhost:27017/fluidpack',
+      process.env['MONGODB_URI'] || 'mongodb://localhost:27017/fluidpack',
     );
     console.log('MongoDB connected successfully');
   } catch (error) {
@@ -62,7 +62,10 @@ const createSampleCategories = async () => {
     console.log('Created main categories:', createdMainCategories.length);
 
     // Create subcategories for Tablet Press Machine
-    const tabletPressId = createdMainCategories[0]._id;
+    const tabletPressId = createdMainCategories[0]?._id;
+    if (!tabletPressId) {
+      throw new Error('Failed to create main categories');
+    }
     const tabletSubcategories = [
       {
         name: 'Single Punch Tablet Press',
@@ -98,7 +101,10 @@ const createSampleCategories = async () => {
     );
 
     // Create subcategories for Capsule Filling Machine
-    const capsuleFillingId = createdMainCategories[1]._id;
+    const capsuleFillingId = createdMainCategories[1]?._id;
+    if (!capsuleFillingId) {
+      throw new Error('Failed to create main categories');
+    }
     const capsuleSubcategories = [
       {
         name: 'Manual Capsule Filler',
