@@ -26,6 +26,7 @@ class App {
 
   private setMiddlewares(): void {
     this.app.use(compression());
+    this.app.set('trust proxy', 1); // Trust first proxy
     this.app.use(
       rateLimit({
         windowMs: 10 * 60 * 1000, // 15 mins
