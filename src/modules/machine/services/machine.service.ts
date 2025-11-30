@@ -11,6 +11,10 @@ import { User } from '../../../models/user.model';
 import { IMachine, Machine } from '../../../models/machine.model';
 import { ApiError } from '../../../utils/ApiError';
 import { ERROR_MESSAGES } from '../machine.error.constant';
+import {
+  sanitizeMachine,
+  sanitizeMachines,
+} from '../../../utils/sanitizeMachineResponse';
 export interface CreateMachineData {
   name: string;
   category_id: string;
@@ -379,19 +383,23 @@ class MachineService {
       const [machines, total] = await Promise.all([
         Machine.find(query)
           .populate([
-            { path: 'category_id', select: 'name description' },
-            { path: 'subcategory_id', select: 'name description' },
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
             { path: 'created_by', select: 'username email' },
             { path: 'updatedBy', select: 'username email' },
           ])
           .sort(sortField)
           .skip(skip)
-          .limit(limit),
+          .limit(limit)
+          .lean(), // Use lean() to get plain objects
         Machine.countDocuments(query),
       ]);
 
+      // Sanitize machines to handle null populated fields
+      const sanitizedMachines = sanitizeMachines(machines);
+
       return {
-        machines,
+        machines: sanitizedMachines as IMachine[],
         total,
         pages: Math.ceil(total / limit),
       };
@@ -422,12 +430,14 @@ class MachineService {
       const machine = await Machine.findOne({
         _id: id,
         deletedAt: null,
-      }).populate([
-        { path: 'category_id', select: 'name description' },
-        { path: 'subcategory_id', select: 'name description' },
-        { path: 'created_by', select: 'username email' },
-        { path: 'updatedBy', select: 'username email' },
-      ]);
+      })
+        .populate([
+          { path: 'category_id', select: 'name description slug' },
+          { path: 'subcategory_id', select: 'name description slug' },
+          { path: 'created_by', select: 'username email' },
+          { path: 'updatedBy', select: 'username email' },
+        ])
+        .lean(); // Use lean() to get plain object
 
       if (!machine) {
         throw new ApiError(
@@ -438,7 +448,8 @@ class MachineService {
         );
       }
 
-      return machine;
+      // Sanitize the response to handle null populated fields
+      return sanitizeMachine(machine) as IMachine;
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw new ApiError(
