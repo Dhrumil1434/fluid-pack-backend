@@ -15,8 +15,8 @@ const ensureDirectoryExists = (dirPath: string): void => {
 // Set storage engine for machine images
 const machineStorage = multer.diskStorage({
   destination: function (_req: Request, _file, cb) {
-    // Create machine-specific directory structure
-    const baseDir = './public/uploads/machines';
+    // Create machine-specific directory structure using absolute path
+    const baseDir = path.join(process.cwd(), 'public', 'uploads', 'machines');
     const tempDir = path.join(baseDir, 'temp');
 
     ensureDirectoryExists(tempDir);
@@ -34,8 +34,14 @@ const machineStorage = multer.diskStorage({
 // Set storage engine for machine documents
 const machineDocumentStorage = multer.diskStorage({
   destination: function (_req: Request, _file, cb) {
-    // Create document-specific directory structure
-    const baseDir = './public/uploads/machines/documents';
+    // Create document-specific directory structure using absolute path
+    const baseDir = path.join(
+      process.cwd(),
+      'public',
+      'uploads',
+      'machines',
+      'documents',
+    );
     const tempDir = path.join(baseDir, 'temp');
 
     ensureDirectoryExists(tempDir);
@@ -57,7 +63,7 @@ const machineUpdateStorage = multer.diskStorage({
     if (!machineId) {
       return cb(new Error('Machine ID is required'), '');
     }
-    const baseDir = './public/uploads/machines';
+    const baseDir = path.join(process.cwd(), 'public', 'uploads', 'machines');
     const machineDir = path.join(baseDir, machineId);
 
     ensureDirectoryExists(machineDir);
@@ -190,7 +196,7 @@ const moveFilesToMachineDirectory = async (
   files: Express.Multer.File[],
   machineId: string,
 ): Promise<string[]> => {
-  const baseDir = './public/uploads/machines';
+  const baseDir = path.join(process.cwd(), 'public', 'uploads', 'machines');
   const machineDir = path.join(baseDir, machineId);
   const imagePaths: string[] = [];
 
@@ -224,7 +230,7 @@ const moveDocumentFilesToMachineDirectory = async (
   files: Express.Multer.File[],
   machineId: string,
 ): Promise<string[]> => {
-  const baseDir = './public/uploads/machines';
+  const baseDir = path.join(process.cwd(), 'public', 'uploads', 'machines');
   const machineDir = path.join(baseDir, machineId);
   const documentPaths: string[] = [];
 
@@ -285,8 +291,13 @@ const cleanupMachineDirectory = (machineId: string): void => {
 // Set storage engine for QA machine files
 const qaMachineStorage = multer.diskStorage({
   destination: function (_req: Request, _file, cb) {
-    // Create QA-specific directory structure
-    const baseDir = './public/uploads/qa-machines';
+    // Create QA-specific directory structure using absolute path
+    const baseDir = path.join(
+      process.cwd(),
+      'public',
+      'uploads',
+      'qa-machines',
+    );
     const tempDir = path.join(baseDir, 'temp');
 
     ensureDirectoryExists(tempDir);
@@ -308,7 +319,12 @@ const qaMachineUpdateStorage = multer.diskStorage({
     if (!qaEntryId) {
       return cb(new Error('QA Entry ID is required'), '');
     }
-    const baseDir = './public/uploads/qa-machines';
+    const baseDir = path.join(
+      process.cwd(),
+      'public',
+      'uploads',
+      'qa-machines',
+    );
     const qaEntryDir = path.join(baseDir, qaEntryId);
 
     ensureDirectoryExists(qaEntryDir);
@@ -376,7 +392,7 @@ const moveQAFilesToEntryDirectory = async (
   files: Express.Multer.File[],
   qaEntryId: string,
 ): Promise<string[]> => {
-  const baseDir = './public/uploads/qc-machines';
+  const baseDir = path.join(process.cwd(), 'public', 'uploads', 'qc-machines');
   const qaEntryDir = path.join(baseDir, qaEntryId);
   const filePaths: string[] = [];
 
@@ -513,7 +529,12 @@ const handleFileUploadError = (
 const upload = multer({
   storage: multer.diskStorage({
     destination: function (_req: Request, _file, cb) {
-      const baseDir = './public/uploads/qc-approvals';
+      const baseDir = path.join(
+        process.cwd(),
+        'public',
+        'uploads',
+        'qc-approvals',
+      );
       ensureDirectoryExists(baseDir);
       cb(null, baseDir);
     },
