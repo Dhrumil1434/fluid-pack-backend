@@ -45,13 +45,18 @@ class App {
 
     const defaultOrigins = [
       'http://localhost:4200',
+      'http://localhost:3000',
       'http://127.0.0.1:4200',
+      'http://127.0.0.1:3000',
       // Allow network IPs in development (regex patterns)
       ...(process.env['NODE_ENV'] !== 'production'
         ? [
             /^http:\/\/192\.168\.\d+\.\d+:4200$/,
+            /^http:\/\/192\.168\.\d+\.\d+:3000$/,
             /^http:\/\/10\.\d+\.\d+\.\d+:4200$/,
+            /^http:\/\/10\.\d+\.\d+\.\d+:3000$/,
             /^http:\/\/172\.\d+\.\d+\.\d+:4200$/, // Docker networks
+            /^http:\/\/172\.\d+\.\d+\.\d+:3000$/, // Docker networks
           ]
         : []),
     ];

@@ -36,8 +36,8 @@ export const createMachineSchema = Joi.object({
       'string.pattern.base': 'Invalid subcategory ID format',
     }),
 
-  machine_sequence: Joi.string().trim().max(50).optional().allow('').messages({
-    'string.max': 'Machine sequence cannot exceed 50 characters',
+  machine_sequence: Joi.string().trim().max(500).optional().allow('').messages({
+    'string.max': 'Machine sequence cannot exceed 500 characters',
   }),
 
   images: Joi.array()
@@ -131,8 +131,8 @@ export const updateMachineSchema = Joi.object({
       'string.pattern.base': 'Invalid subcategory ID format',
     }),
 
-  machine_sequence: Joi.string().trim().max(50).optional().allow('').messages({
-    'string.max': 'Machine sequence cannot exceed 50 characters',
+  machine_sequence: Joi.string().trim().max(500).optional().allow('').messages({
+    'string.max': 'Machine sequence cannot exceed 500 characters',
   }),
 
   images: Joi.array()
@@ -240,8 +240,8 @@ export const machineIdParamSchema = Joi.object({
  * Validation schema for updating machine sequence
  */
 export const updateMachineSequenceSchema = Joi.object({
-  machine_sequence: Joi.string().trim().max(50).optional().allow('').messages({
-    'string.max': 'Machine sequence cannot exceed 50 characters',
+  machine_sequence: Joi.string().trim().max(500).optional().allow('').messages({
+    'string.max': 'Machine sequence cannot exceed 500 characters',
   }),
 })
   .custom((value, helpers) => {
