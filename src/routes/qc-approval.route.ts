@@ -58,11 +58,11 @@ router.post(
   QCApprovalController.createQCApproval,
 );
 
-// Update QC approval - restrict to admin only
+// Update QC approval - allow admin, manager1, qc (for PENDING/REJECTED records)
 router.put(
   '/:id',
   verifyJWT,
-  AuthRole('admin'),
+  AuthRole(['admin', 'manager1', 'qc']),
   checkPermission([ActionType.EDIT_QC_APPROVAL]),
   validateRequest(updateQCApprovalSchema),
   QCApprovalController.updateQCApproval,
@@ -217,11 +217,11 @@ router.post(
   QCApprovalController.uploadDocuments,
 );
 
-// Delete document from QC approval - restrict to admin only
+// Delete document from QC approval - allow admin, manager1, qc (for PENDING/REJECTED records)
 router.delete(
   '/:id/documents/:documentId',
   verifyJWT,
-  AuthRole('admin'),
+  AuthRole(['admin', 'manager1', 'qc']),
   checkPermission([ActionType.EDIT_QC_APPROVAL]),
   QCApprovalController.deleteDocument,
 );

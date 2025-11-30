@@ -165,10 +165,19 @@ export const getAllQCApprovals = asyncHandler(
       matchStage.$or = [
         { 'machineId.name': { $regex: search, $options: 'i' } },
         { 'machineId.machine_sequence': { $regex: search, $options: 'i' } },
+        { 'machineId.category_id.name': { $regex: search, $options: 'i' } },
         { 'requestedBy.name': { $regex: search, $options: 'i' } },
         { 'requestedBy.username': { $regex: search, $options: 'i' } },
+        { 'requestedBy.email': { $regex: search, $options: 'i' } },
+        { 'approvedBy.name': { $regex: search, $options: 'i' } },
+        { 'approvedBy.username': { $regex: search, $options: 'i' } },
+        { 'rejectedBy.name': { $regex: search, $options: 'i' } },
+        { 'rejectedBy.username': { $regex: search, $options: 'i' } },
         { qcNotes: { $regex: search, $options: 'i' } },
         { requestNotes: { $regex: search, $options: 'i' } },
+        { approverNotes: { $regex: search, $options: 'i' } },
+        { rejectionReason: { $regex: search, $options: 'i' } },
+        { approvalType: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -647,53 +656,84 @@ export const updateQCApproval = asyncHandler(
       );
     }
 
-    // Only allow updates if status is PENDING
-    if (approval.status !== QCApprovalStatus.PENDING) {
+    // Only allow updates if status is PENDING or REJECTED
+    // REJECTED records can be updated to resubmit for approval
+    if (
+      approval.status !== QCApprovalStatus.PENDING &&
+      approval.status !== QCApprovalStatus.REJECTED
+    ) {
       throw new ApiError(
         'CANNOT_UPDATE_QC_APPROVAL',
         400,
         'CANNOT_UPDATE_QC_APPROVAL',
-        'Cannot update approved/rejected QC approval',
+        'Can only update PENDING or REJECTED QC approvals',
       );
     }
+
+    // If updating a REJECTED approval, reset status to PENDING
+    if (approval.status === QCApprovalStatus.REJECTED) {
+      approval.status = QCApprovalStatus.PENDING;
+      approval.rejectedBy = null as any;
+      approval.rejectionReason = null as any;
+      approval.approvalDate = null as any;
+    }
+
+    // Ensure proposedChanges exists (required field)
+    if (
+      !approval.proposedChanges ||
+      typeof approval.proposedChanges !== 'object'
+    ) {
+      approval.proposedChanges = {};
+    }
+
+    // Preserve existing proposedChanges and update only changed fields
+    const proposedChanges: Record<string, unknown> = {
+      ...(approval.proposedChanges as Record<string, unknown>),
+    };
 
     // Update proposed changes
     if (updateData['qcNotes'] !== undefined) {
       approval.qcNotes = updateData['qcNotes'];
-      approval.proposedChanges['qcNotes'] = updateData['qcNotes'];
+      proposedChanges['qcNotes'] = updateData['qcNotes'];
     }
     if (updateData['qcFindings'] !== undefined) {
       approval.qcFindings = updateData['qcFindings'];
-      approval.proposedChanges['qcFindings'] = updateData['qcFindings'];
+      proposedChanges['qcFindings'] = updateData['qcFindings'];
     }
     if (updateData['qualityScore'] !== undefined) {
       approval.qualityScore = updateData['qualityScore'];
-      approval.proposedChanges['qualityScore'] = updateData['qualityScore'];
+      proposedChanges['qualityScore'] = updateData['qualityScore'];
     }
     if (updateData['inspectionDate'] !== undefined) {
       if (updateData['inspectionDate']) {
         approval.inspectionDate = new Date(
           updateData['inspectionDate'] as string,
         );
+        proposedChanges['inspectionDate'] = updateData['inspectionDate'];
       } else {
         approval.inspectionDate = undefined as any;
+        proposedChanges['inspectionDate'] = null;
       }
-      approval.proposedChanges['inspectionDate'] = updateData['inspectionDate'];
     }
     if (updateData['nextInspectionDate'] !== undefined) {
       if (updateData['nextInspectionDate']) {
         approval.nextInspectionDate = new Date(
           updateData['nextInspectionDate'] as string,
         );
+        proposedChanges['nextInspectionDate'] =
+          updateData['nextInspectionDate'];
       } else {
         approval.nextInspectionDate = undefined as any;
+        proposedChanges['nextInspectionDate'] = null;
       }
-      approval.proposedChanges['nextInspectionDate'] =
-        updateData['nextInspectionDate'];
     }
     if (updateData.requestNotes !== undefined) {
       approval.requestNotes = updateData.requestNotes;
+      proposedChanges['requestNotes'] = updateData.requestNotes;
     }
+
+    // Set the updated proposedChanges
+    approval.proposedChanges = proposedChanges;
 
     await approval.save();
 
@@ -929,6 +969,11 @@ export const activateMachine = asyncHandler(
       activatedAt: new Date(),
     });
 
+    // Ensure proposedChanges exists (required field)
+    if (!approval.proposedChanges) {
+      approval.proposedChanges = {};
+    }
+
     // Update approval
     approval.machineActivated = true;
     approval.activationDate = new Date();
@@ -1052,12 +1097,16 @@ export const uploadDocuments = asyncHandler(
       );
     }
 
-    if (approval.status !== QCApprovalStatus.PENDING) {
+    // Allow uploads for PENDING and REJECTED (REJECTED can be updated and resubmitted)
+    if (
+      approval.status !== QCApprovalStatus.PENDING &&
+      approval.status !== QCApprovalStatus.REJECTED
+    ) {
       throw new ApiError(
         'CANNOT_UPLOAD_DOCUMENTS',
         400,
         'CANNOT_UPLOAD_DOCUMENTS',
-        'Cannot upload documents for non-pending QC approval',
+        'Can only upload documents for PENDING or REJECTED QC approvals',
       );
     }
 
@@ -1108,12 +1157,16 @@ export const deleteDocument = asyncHandler(
       );
     }
 
-    if (approval.status !== QCApprovalStatus.PENDING) {
+    // Allow deletion for PENDING and REJECTED (REJECTED can be updated and resubmitted)
+    if (
+      approval.status !== QCApprovalStatus.PENDING &&
+      approval.status !== QCApprovalStatus.REJECTED
+    ) {
       throw new ApiError(
         'CANNOT_DELETE_DOCUMENTS',
         400,
         'CANNOT_DELETE_DOCUMENTS',
-        'Cannot delete documents from non-pending QC approval',
+        'Can only delete documents from PENDING or REJECTED QC approvals',
       );
     }
 

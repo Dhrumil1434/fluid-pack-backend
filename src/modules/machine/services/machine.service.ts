@@ -53,6 +53,7 @@ export interface UpdateMachineData {
     file_path?: string;
     document_type?: string;
   }>;
+  is_approved?: boolean;
   updatedBy?: string;
 }
 
@@ -271,6 +272,17 @@ class MachineService {
           { mobile_number: searchRegex },
           { machine_sequence: searchRegex },
         ];
+
+        // If search term looks like an ObjectId (24 hex characters), also search by _id
+        if (/^[0-9a-fA-F]{24}$/.test(filters.search.trim())) {
+          try {
+            searchOrConditions.push({
+              _id: new mongoose.Types.ObjectId(filters.search.trim()),
+            });
+          } catch {
+            // Invalid ObjectId format, skip
+          }
+        }
 
         // Add created_by search if matching users found
         if (matchingUserIds.length > 0) {
