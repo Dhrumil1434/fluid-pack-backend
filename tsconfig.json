@@ -42,6 +42,6 @@
     "skipLibCheck": true /* Skips type checking of declaration files. */,
     "typeRoots": ["./node_modules/@types", "./env.d.ts"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "api/**/*"],
   "exclude": ["node_modules"]
 }

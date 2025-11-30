@@ -10,7 +10,8 @@
     "lint": "eslint src/**/*.{ts,tsx,js,jsx}",
     "lint:fix": "eslint src/**/*.{ts,tsx,js,jsx} --fix",
     "format": "prettier --write src/**/*.{ts,tsx,js,jsx,json,css,md}",
-    "prepare": "husky"
+    "prepare": "husky",
+    "vercel-build": "tsc"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx,js,jsx}": [
@@ -39,6 +40,7 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^22.13.14",
     "@types/uuid": "^10.0.0",
+    "@types/vercel__node": "^3.0.0",
     "@typescript-eslint/eslint-plugin": "^8.28.0",
     "@typescript-eslint/parser": "^8.28.0",
     "eslint": "^9.23.0",
