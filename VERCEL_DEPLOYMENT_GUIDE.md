@@ -160,11 +160,15 @@ vercel --prod
 
 ### vercel.json
 
+**⚠️ Important**: This configuration uses the `builds` system only. Vercel does not allow mixing `builds` and `functions` blocks in the same configuration file.
+
 The `vercel.json` file is already created in your project root. It configures:
 
-- Serverless function routing
+- Serverless function routing using the `builds` system
 - API route handling
-- Maximum function duration (30 seconds)
+- All routes are directed to the Express app via `/api/index.ts`
+
+**Note**: This configuration uses the `builds` system (not `functions`). Function settings like `maxDuration` should be configured in the Vercel Dashboard under Project Settings → Functions.
 
 ### api/index.ts
 
@@ -243,7 +247,10 @@ Make sure:
 
 **Solutions**:
 
-1. Increase `maxDuration` in `vercel.json` (max 60s on Pro plan)
+1. Configure `maxDuration` in Vercel Dashboard:
+   - Go to Project Settings → Functions
+   - Set maximum duration (max 60s on Pro plan, 10s on Hobby plan)
+   - **Note**: Cannot be set in `vercel.json` when using `builds` system
 2. Optimize slow database queries
 3. Add caching where possible
 4. Consider upgrading Vercel plan for longer timeouts
