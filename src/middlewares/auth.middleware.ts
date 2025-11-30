@@ -24,16 +24,16 @@ export const verifyJWT = asyncHandler(
       req.get('Authorization')?.replace('Bearer ', '');
 
     if (!token) {
-      return res
-        .status(401)
-        .json({ message: 'Unauthorized: No token provided' });
+      res.status(401).json({ message: 'Unauthorized: No token provided' });
+      return;
     }
 
     const secret: string = process.env['ACCESS_TOKEN_SECRET']!;
     if (!secret) {
-      return res.status(500).json({
+      res.status(500).json({
         message: 'Internal Server Error: Missing ACCESS_TOKEN_SECRET',
       });
+      return;
     }
 
     try {
@@ -41,9 +41,10 @@ export const verifyJWT = asyncHandler(
       const decodedToken = jwt.verify(token, secret) as JwtPayload;
 
       if (!decodedToken['_id']) {
-        return res
+        res
           .status(401)
           .json({ message: 'Unauthorized: Invalid token structure' });
+        return;
       }
 
       // Find user by ID from token payload
@@ -51,16 +52,16 @@ export const verifyJWT = asyncHandler(
         '-password -refreshToken',
       );
       if (!user) {
-        return res
-          .status(401)
-          .json({ message: 'Unauthorized: Invalid Access Token' });
+        res.status(401).json({ message: 'Unauthorized: Invalid Access Token' });
+        return;
       }
 
       req.user = user;
 
       next(); // Proceed to next middleware
     } catch {
-      return res.status(401).json({ message: 'Unauthorized: Invalid token' });
+      res.status(401).json({ message: 'Unauthorized: Invalid token' });
+      return;
     }
   },
 );

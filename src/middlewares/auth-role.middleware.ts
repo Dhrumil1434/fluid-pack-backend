@@ -11,32 +11,30 @@ export const AuthRole = (requiredRole: string | string[]) => {
         req.headers.authorization?.replace('Bearer ', '');
 
       if (!token) {
-        return res
-          .status(401)
-          .json({ message: 'Unauthorized: No token found' });
+        res.status(401).json({ message: 'Unauthorized: No token found' });
+        return;
       }
 
       const secret = process.env['ACCESS_TOKEN_SECRET']!;
       if (!secret) {
-        return res.status(500).json({
+        res.status(500).json({
           message: 'Internal Server Error: Missing ACCESS_TOKEN_SECRET',
         });
+        return;
       }
 
       const decodedToken = jwt.verify(token, secret) as JwtPayload;
       const roleId = decodedToken['role'];
 
       if (!roleId) {
-        return res
-          .status(403)
-          .json({ message: 'Forbidden: Role not found in token' });
+        res.status(403).json({ message: 'Forbidden: Role not found in token' });
+        return;
       }
 
       const userRole = await Role.findById(roleId);
       if (!userRole) {
-        return res
-          .status(403)
-          .json({ message: 'Forbidden: Role does not exist' });
+        res.status(403).json({ message: 'Forbidden: Role does not exist' });
+        return;
       }
 
       const roleName = userRole.name.toLowerCase(); // assuming Role has `.name`
@@ -46,7 +44,8 @@ export const AuthRole = (requiredRole: string | string[]) => {
         : roleName === requiredRole.toLowerCase();
 
       if (!isAllowed) {
-        return res.status(403).json({ message: 'Forbidden: Access denied' });
+        res.status(403).json({ message: 'Forbidden: Access denied' });
+        return;
       }
 
       next();
