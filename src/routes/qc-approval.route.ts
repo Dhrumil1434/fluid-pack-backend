@@ -226,4 +226,13 @@ router.delete(
   QCApprovalController.deleteDocument,
 );
 
+// Get search suggestions for autocomplete - allow admin, manager1, qc
+router.get(
+  '/suggestions/search',
+  verifyJWT,
+  AuthRole(['admin', 'manager1', 'qc']),
+  checkPermission([ActionType.VIEW_QC_APPROVAL]),
+  QCApprovalController.getSearchSuggestions,
+);
+
 export default router;

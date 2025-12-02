@@ -9,6 +9,7 @@ import {
 } from '../modules/machine/validators/qcMachine.validator';
 import {
   validateRequest,
+  validateParams,
   parseJsonFields,
 } from '../middlewares/validateRequest';
 import QAMachineController from '../modules/machine/controllers/qcMachine.controller';
@@ -18,7 +19,6 @@ import { checkPermission } from '../modules/admin/permissionConfig/middlewares/p
 import { ActionType } from '../models/permissionConfig.model';
 import {
   uploadQAMachineFiles,
-  uploadQAMachineFilesUpdate,
   handleFileUploadError,
 } from '../middlewares/multer.middleware';
 
@@ -41,7 +41,11 @@ router.use(verifyJWT);
 router.post(
   '/',
   AuthRole(['admin', 'manager1', 'qc']),
-  uploadQAMachineFiles.array('files', 10), // Allow up to 10 files with field name 'files'
+  uploadQAMachineFiles.fields([
+    { name: 'images', maxCount: 10 },
+    { name: 'documents', maxCount: 10 },
+    { name: 'files', maxCount: 10 },
+  ]), // Allow images, documents, and QC files
   handleFileUploadError,
   // Permission: create QC entry
   checkPermission([ActionType.CREATE_QC_ENTRY]),
@@ -56,7 +60,7 @@ router.get(
   '/:id',
   AuthRole(['admin', 'manager1', 'qc']),
   checkPermission([ActionType.VIEW_QC_ENTRY]),
-  validateRequest(qaMachineEntryIdParamSchema),
+  validateParams(qaMachineEntryIdParamSchema),
   QAMachineController.getQAMachineEntryById,
 );
 
@@ -64,10 +68,16 @@ router.get(
 router.put(
   '/:id',
   AuthRole('admin'),
-  uploadQAMachineFilesUpdate.array('files', 10), // Allow up to 10 new files
+  uploadQAMachineFiles.fields([
+    { name: 'images', maxCount: 10 },
+    { name: 'documents', maxCount: 10 },
+    { name: 'files', maxCount: 10 },
+  ]), // Allow images, documents, and QC files
   handleFileUploadError,
   checkPermission([ActionType.EDIT_QC_ENTRY]),
-  validateRequest(qaMachineEntryIdParamSchema),
+  // Parse JSON string fields from multipart/form-data
+  parseJsonFields(['images', 'documents', 'files']),
+  validateParams(qaMachineEntryIdParamSchema),
   validateRequest(updateQAMachineEntrySchema),
   QAMachineController.updateQAMachineEntry,
 );
@@ -77,7 +87,7 @@ router.delete(
   '/:id',
   AuthRole('admin'),
   checkPermission([ActionType.DELETE_QC_ENTRY]),
-  validateRequest(qaMachineEntryIdParamSchema),
+  validateParams(qaMachineEntryIdParamSchema),
   QAMachineController.deleteQAMachineEntry,
 );
 
@@ -86,7 +96,7 @@ router.get(
   '/machine/:machineId',
   AuthRole(['admin', 'manager1', 'qc']),
   checkPermission([ActionType.VIEW_QC_ENTRY]),
-  validateRequest(machineIdParamSchema),
+  validateParams(machineIdParamSchema),
   QAMachineController.getQAMachineEntriesByMachine,
 );
 
@@ -95,7 +105,7 @@ router.get(
   '/user/:userId',
   AuthRole(['admin', 'manager1', 'qc']),
   checkPermission([ActionType.VIEW_QC_ENTRY]),
-  validateRequest(userIdParamSchema),
+  validateParams(userIdParamSchema),
   QAMachineController.getQAMachineEntriesByUser,
 );
 

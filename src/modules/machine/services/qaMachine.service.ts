@@ -4,6 +4,7 @@ import {
   QAMachineEntry,
   IQAMachineEntry,
 } from '../../../models/qcMachine.model';
+import { QCApproval, QCApprovalStatus } from '../../../models/qcApproval.model';
 import { Machine } from '../../../models/machine.model';
 import { User } from '../../../models/user.model';
 import { ApiError } from '../../../utils/ApiError';
@@ -11,8 +12,32 @@ import { ApiError } from '../../../utils/ApiError';
 export interface CreateQAMachineEntryData {
   machine_id: string;
   added_by: string;
+
+  // Machine fields
+  name: string;
+  category_id: string;
+  subcategory_id?: string;
+  machine_sequence?: string;
+  party_name: string;
+  location: string;
+  mobile_number: string;
+  dispatch_date?: Date | string;
+  images?: string[];
+  documents?: Array<{
+    name: string;
+    file_path: string;
+    document_type?: string;
+  }>;
+
+  // QC-specific fields
+  qcNotes?: string;
+  qualityScore?: number;
+  inspectionDate?: Date | string;
+  qc_date?: Date | string;
+  nextInspectionDate?: Date | string;
   report_link?: string;
   files?: string[];
+
   metadata?: Record<string, unknown>;
   is_active?: boolean;
   approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -20,8 +45,31 @@ export interface CreateQAMachineEntryData {
 }
 
 export interface UpdateQAMachineEntryData {
+  // Machine fields
+  name?: string;
+  category_id?: string;
+  subcategory_id?: string;
+  machine_sequence?: string;
+  party_name?: string;
+  location?: string;
+  mobile_number?: string;
+  dispatch_date?: Date | string;
+  images?: string[];
+  documents?: Array<{
+    name: string;
+    file_path: string;
+    document_type?: string;
+  }>;
+
+  // QC-specific fields
+  qcNotes?: string;
+  qualityScore?: number;
+  inspectionDate?: Date | string;
+  qc_date?: Date | string;
+  nextInspectionDate?: Date | string;
   report_link?: string;
   files?: string[];
+
   metadata?: Record<string, unknown>;
   is_active?: boolean;
   approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -73,11 +121,56 @@ class QCMachineService {
         );
       }
 
+      // Prepare dispatch_date and QC dates
+      const dispatchDate = data.dispatch_date
+        ? typeof data.dispatch_date === 'string'
+          ? new Date(data.dispatch_date)
+          : data.dispatch_date
+        : undefined;
+
+      const inspectionDate = data.inspectionDate
+        ? typeof data.inspectionDate === 'string'
+          ? new Date(data.inspectionDate)
+          : data.inspectionDate
+        : undefined;
+
+      const qcDate = data.qc_date
+        ? typeof data.qc_date === 'string'
+          ? new Date(data.qc_date)
+          : data.qc_date
+        : undefined;
+
+      const nextInspectionDate = data.nextInspectionDate
+        ? typeof data.nextInspectionDate === 'string'
+          ? new Date(data.nextInspectionDate)
+          : data.nextInspectionDate
+        : undefined;
+
       const qaEntry = new QAMachineEntry({
         machine_id: data.machine_id,
         added_by: data.added_by,
+
+        // Machine fields
+        name: data.name,
+        category_id: data.category_id,
+        subcategory_id: data.subcategory_id,
+        machine_sequence: data.machine_sequence,
+        party_name: data.party_name,
+        location: data.location,
+        mobile_number: data.mobile_number,
+        dispatch_date: dispatchDate,
+        images: data.images || [],
+        documents: data.documents || [],
+
+        // QC-specific fields
+        qcNotes: data.qcNotes,
+        qualityScore: data.qualityScore,
+        inspectionDate: inspectionDate,
+        qc_date: qcDate,
+        nextInspectionDate: nextInspectionDate,
         report_link: data.report_link,
         files: data.files || [],
+
         metadata: data.metadata || {},
         is_active: data.is_active ?? false,
         approval_status: data.approval_status || 'PENDING',
@@ -89,7 +182,7 @@ class QCMachineService {
       // Populate related data
       await qaEntry.populate([
         { path: 'machine_id', select: 'name category_id' },
-        { path: 'added_by', select: 'username email' },
+        { path: 'added_by', select: 'username name email' },
       ]);
 
       return qaEntry;
@@ -216,7 +309,7 @@ class QCMachineService {
 
       const qaEntry = await QAMachineEntry.findById(id).populate([
         { path: 'machine_id', select: 'name category_id' },
-        { path: 'added_by', select: 'username email' },
+        { path: 'added_by', select: 'username name email' },
       ]);
 
       if (!qaEntry) {
@@ -257,12 +350,61 @@ class QCMachineService {
         );
       }
 
-      const qaEntry = await QAMachineEntry.findByIdAndUpdate(id, data, {
+      // Prepare date fields
+      type UpdateDataWithDates = Omit<
+        UpdateQAMachineEntryData,
+        'dispatch_date' | 'inspectionDate' | 'qc_date' | 'nextInspectionDate'
+      > & {
+        dispatch_date?: Date | string | null;
+        inspectionDate?: Date | string | null;
+        qc_date?: Date | string | null;
+        nextInspectionDate?: Date | string | null;
+      };
+      const updateData: Partial<UpdateDataWithDates> = { ...data };
+
+      if (data.dispatch_date !== undefined) {
+        updateData.dispatch_date = data.dispatch_date
+          ? typeof data.dispatch_date === 'string'
+            ? new Date(data.dispatch_date)
+            : data.dispatch_date
+          : null;
+      }
+
+      if (data.inspectionDate !== undefined) {
+        updateData.inspectionDate = data.inspectionDate
+          ? typeof data.inspectionDate === 'string'
+            ? new Date(data.inspectionDate)
+            : data.inspectionDate
+          : null;
+      }
+
+      if (data.qc_date !== undefined) {
+        updateData.qc_date = data.qc_date
+          ? typeof data.qc_date === 'string'
+            ? new Date(data.qc_date)
+            : data.qc_date
+          : null;
+      }
+
+      if (data.nextInspectionDate !== undefined) {
+        updateData.nextInspectionDate = data.nextInspectionDate
+          ? typeof data.nextInspectionDate === 'string'
+            ? new Date(data.nextInspectionDate)
+            : data.nextInspectionDate
+          : null;
+      }
+
+      // Auto-activate when approval status is set to APPROVED
+      if (data.approval_status === 'APPROVED') {
+        updateData.is_active = true;
+      }
+
+      const qaEntry = await QAMachineEntry.findByIdAndUpdate(id, updateData, {
         new: true,
         runValidators: true,
       }).populate([
         { path: 'machine_id', select: 'name category_id' },
-        { path: 'added_by', select: 'username email' },
+        { path: 'added_by', select: 'username name email' },
       ]);
 
       if (!qaEntry) {
@@ -272,6 +414,71 @@ class QCMachineService {
           'QA_ENTRY_NOT_FOUND',
           'QA machine entry not found',
         );
+      }
+
+      // Sync QCApproval status if approval_status was updated
+      if (data.approval_status !== undefined) {
+        try {
+          // Map QC entry approval_status to QCApproval status
+          let approvalStatus: QCApprovalStatus;
+          if (data.approval_status === 'APPROVED') {
+            approvalStatus = QCApprovalStatus.APPROVED;
+          } else if (data.approval_status === 'REJECTED') {
+            approvalStatus = QCApprovalStatus.REJECTED;
+          } else {
+            approvalStatus = QCApprovalStatus.PENDING;
+          }
+
+          // Find and update the related QCApproval record
+          const updateApprovalData: {
+            status: QCApprovalStatus;
+            qualityScore?: number;
+            inspectionDate?: Date | null;
+            nextInspectionDate?: Date | null;
+            approvalDate?: Date;
+            machineActivated?: boolean;
+            activationDate?: Date;
+          } = {
+            status: approvalStatus,
+          };
+
+          // Also sync qualityScore if it was updated
+          if (data.qualityScore !== undefined) {
+            updateApprovalData.qualityScore = data.qualityScore;
+          }
+
+          // Also sync inspection dates if they were updated
+          if (data.inspectionDate !== undefined) {
+            updateApprovalData.inspectionDate = data.inspectionDate
+              ? typeof data.inspectionDate === 'string'
+                ? new Date(data.inspectionDate)
+                : data.inspectionDate
+              : null;
+          }
+
+          if (data.nextInspectionDate !== undefined) {
+            updateApprovalData.nextInspectionDate = data.nextInspectionDate
+              ? typeof data.nextInspectionDate === 'string'
+                ? new Date(data.nextInspectionDate)
+                : data.nextInspectionDate
+              : null;
+          }
+
+          // Update approval date if status is APPROVED
+          if (data.approval_status === 'APPROVED') {
+            updateApprovalData.approvalDate = new Date();
+            // If machine is also activated, update machineActivated
+            if (updateData.is_active) {
+              updateApprovalData.machineActivated = true;
+              updateApprovalData.activationDate = new Date();
+            }
+          }
+
+          await QCApproval.updateMany({ qcEntryId: id }, updateApprovalData);
+        } catch (error) {
+          // Log error but don't fail the update
+          console.error('Error syncing QCApproval status:', error);
+        }
       }
 
       return qaEntry;
@@ -345,7 +552,7 @@ class QCMachineService {
         QAMachineEntry.find({ machine_id: machineId })
           .populate([
             { path: 'machine_id', select: 'name category_id' },
-            { path: 'added_by', select: 'username email' },
+            { path: 'added_by', select: 'username name email' },
           ])
           .sort({ createdAt: -1 })
           .skip(skip)
@@ -393,7 +600,7 @@ class QCMachineService {
         QAMachineEntry.find({ added_by: userId })
           .populate([
             { path: 'machine_id', select: 'name category_id' },
-            { path: 'added_by', select: 'username email' },
+            { path: 'added_by', select: 'username name email' },
           ])
           .sort({ createdAt: -1 })
           .skip(skip)

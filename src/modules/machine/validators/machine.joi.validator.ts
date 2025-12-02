@@ -317,16 +317,47 @@ export const machinePaginationQuerySchema = Joi.object({
     'date.format': 'Dispatch date to must be in ISO format (YYYY-MM-DD)',
   }),
 
+  // Specific field filters for suggestion-based search
+  party_name: Joi.string().trim().min(1).max(100).optional().messages({
+    'string.min': 'Party name filter must be at least 1 character long',
+    'string.max': 'Party name filter cannot exceed 100 characters',
+  }),
+
+  machine_sequence: Joi.string().trim().min(1).max(100).optional().messages({
+    'string.min': 'Machine sequence filter must be at least 1 character long',
+    'string.max': 'Machine sequence filter cannot exceed 100 characters',
+  }),
+
+  location: Joi.string().trim().min(1).max(100).optional().messages({
+    'string.min': 'Location filter must be at least 1 character long',
+    'string.max': 'Location filter cannot exceed 100 characters',
+  }),
+
+  mobile_number: Joi.string().trim().min(1).max(20).optional().messages({
+    'string.min': 'Mobile number filter must be at least 1 character long',
+    'string.max': 'Mobile number filter cannot exceed 20 characters',
+  }),
+
   sortBy: Joi.string()
-    .valid('createdAt', 'name', 'category', 'dispatch_date')
+    .valid(
+      'createdAt',
+      'name',
+      'category',
+      'dispatch_date',
+      'party_name',
+      'machine_sequence',
+      'location',
+      'mobile_number',
+      'created_by',
+    )
     .optional()
     .messages({
       'any.only':
-        'Sort by must be one of: createdAt, name, category, dispatch_date',
+        'Sort by must be one of: createdAt, name, category, dispatch_date, party_name, machine_sequence, location, mobile_number, created_by',
     }),
 
   sortOrder: Joi.string().valid('asc', 'desc').optional().messages({
-    'any.only': 'Sort order must be either asc or desc',
+    'any.only': 'Sort order must be either "asc" or "desc"',
   }),
 });
 

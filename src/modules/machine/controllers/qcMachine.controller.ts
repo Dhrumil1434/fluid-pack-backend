@@ -38,11 +38,19 @@ class QCMachineController {
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const { error, value } = createQAMachineEntrySchema.validate(req.body);
       if (error) {
-        if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(
-            (file) => file.path,
-          );
-          deleteQAFiles(filePaths);
+        // Clean up uploaded files on validation error
+        if (req.files) {
+          const files = req.files as {
+            [fieldname: string]: Express.Multer.File[];
+          };
+          const allFiles: Express.Multer.File[] = [];
+          if (files['images']) allFiles.push(...files['images']);
+          if (files['documents']) allFiles.push(...files['documents']);
+          if (files['files']) allFiles.push(...files['files']);
+          if (allFiles.length > 0) {
+            const filePaths = allFiles.map((file) => file.path);
+            deleteQAFiles(filePaths);
+          }
         }
         throw new ApiError(
           'CREATE_QA_MACHINE_ENTRY_VALIDATION',
@@ -53,11 +61,19 @@ class QCMachineController {
       }
 
       if (!req.user) {
-        if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(
-            (file) => file.path,
-          );
-          deleteQAFiles(filePaths);
+        // Clean up uploaded files on auth error
+        if (req.files) {
+          const files = req.files as {
+            [fieldname: string]: Express.Multer.File[];
+          };
+          const allFiles: Express.Multer.File[] = [];
+          if (files['images']) allFiles.push(...files['images']);
+          if (files['documents']) allFiles.push(...files['documents']);
+          if (files['files']) allFiles.push(...files['files']);
+          if (allFiles.length > 0) {
+            const filePaths = allFiles.map((file) => file.path);
+            deleteQAFiles(filePaths);
+          }
         }
         throw new ApiError(
           'CREATE_QA_MACHINE_ENTRY',
@@ -70,35 +86,89 @@ class QCMachineController {
       const createData: CreateQAMachineEntryData = {
         ...value,
         added_by: req.user._id,
+        images: [],
+        documents: [],
         files: [],
         is_active: false,
         approval_status: 'PENDING',
       };
 
       const qaEntry = await QCMachineService.create(createData);
+      const qaEntryId = String(
+        (qaEntry as unknown as { _id: { toString(): string } })._id.toString(),
+      );
 
-      // Move uploaded files directly into the QC entry directory using the newly created ID
-      if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      // Process uploaded files (images, documents, and QC files)
+      const imageFiles: Express.Multer.File[] = [];
+      const documentFiles: Express.Multer.File[] = [];
+      const qcFiles: Express.Multer.File[] = [];
+
+      if (req.files) {
+        const files = req.files as {
+          [fieldname: string]: Express.Multer.File[];
+        };
+
+        // Get image files
+        if (files['images'] && Array.isArray(files['images'])) {
+          imageFiles.push(...files['images']);
+        }
+
+        // Get document files
+        if (files['documents'] && Array.isArray(files['documents'])) {
+          documentFiles.push(...files['documents']);
+        }
+
+        // Get QC files
+        if (files['files'] && Array.isArray(files['files'])) {
+          qcFiles.push(...files['files']);
+        }
+      }
+
+      // Move image files to QC entry directory
+      if (imageFiles.length > 0) {
+        const actualImagePaths = await moveQAFilesToEntryDirectory(
+          imageFiles,
+          qaEntryId,
+        );
+
+        if (actualImagePaths.length > 0) {
+          await QCMachineService.update(qaEntryId, {
+            images: actualImagePaths,
+          });
+        }
+      }
+
+      // Process document files
+      if (documentFiles.length > 0) {
+        const actualDocumentPaths = await moveQAFilesToEntryDirectory(
+          documentFiles,
+          qaEntryId,
+        );
+
+        if (actualDocumentPaths.length > 0) {
+          const documents = documentFiles.map((file, index) => ({
+            name: file.originalname,
+            file_path: actualDocumentPaths[index] || file.path,
+            document_type: file.mimetype,
+          }));
+
+          await QCMachineService.update(qaEntryId, {
+            documents: documents,
+          });
+        }
+      }
+
+      // Move QC files to QC entry directory
+      if (qcFiles.length > 0) {
         const actualFilePaths = await moveQAFilesToEntryDirectory(
-          req.files as Express.Multer.File[],
-          String(
-            (
-              qaEntry as unknown as { _id: { toString(): string } }
-            )._id.toString(),
-          ),
+          qcFiles,
+          qaEntryId,
         );
 
         if (actualFilePaths.length > 0) {
-          await QCMachineService.update(
-            String(
-              (
-                qaEntry as unknown as { _id: { toString(): string } }
-              )._id.toString(),
-            ),
-            {
-              files: actualFilePaths,
-            },
-          );
+          await QCMachineService.update(qaEntryId, {
+            files: actualFilePaths,
+          });
         }
       }
 
@@ -112,39 +182,78 @@ class QCMachineController {
       // Auto-create a QCApproval linked to this entry (non-blocking)
       void (async () => {
         try {
-          await createQCApprovalForEntry(
+          const machineId = String(
+            (
+              qaEntry as unknown as {
+                machine_id: {
+                  _id?: { toString(): string };
+                  toString?: () => string;
+                };
+              }
+            ).machine_id?._id?.toString?.() ||
+              (
+                qaEntry as unknown as {
+                  machine_id: {
+                    _id?: { toString(): string };
+                    toString?: () => string;
+                  };
+                }
+              ).machine_id?.toString?.() ||
+              '',
+          );
+          const qcEntryId = String(
+            (
+              qaEntry as unknown as { _id?: { toString(): string } }
+            )._id?.toString?.() || '',
+          );
+
+          console.log(
+            '[QC Machine Controller] Creating QC approval asynchronously...',
+          );
+          console.log('[QC Machine Controller] Machine ID:', machineId);
+          console.log('[QC Machine Controller] QC Entry ID:', qcEntryId);
+          const requestedByUserId = String(req.user!._id);
+          console.log(
+            '[QC Machine Controller] Requested By User ID:',
+            requestedByUserId,
+          );
+          console.log(
+            '[QC Machine Controller] Requested By User (full object):',
             {
-              machineId: String(
-                (
-                  qaEntry as unknown as {
-                    machine_id: {
-                      _id?: { toString(): string };
-                      toString?: () => string;
-                    };
-                  }
-                ).machine_id?._id?.toString?.() ||
-                  (
-                    qaEntry as unknown as {
-                      machine_id: {
-                        _id?: { toString(): string };
-                        toString?: () => string;
-                      };
-                    }
-                  ).machine_id?.toString?.() ||
-                  '',
-              ),
-              qcEntryId: String(
-                (
-                  qaEntry as unknown as { _id?: { toString(): string } }
-                )._id?.toString?.() || '',
-              ),
+              _id: req.user!._id,
+              username: req.user?.username,
+              name: (req.user as { name?: string })?.name,
+              email: req.user?.email,
+            },
+          );
+
+          const approval = await createQCApprovalForEntry(
+            {
+              machineId,
+              qcEntryId,
               approvalType: 'MACHINE_QC_ENTRY',
               requestNotes: 'Auto-created from QC entry creation',
             },
-            req.user!._id,
+            requestedByUserId,
           );
-        } catch {
-          // ignore
+
+          console.log(
+            '[QC Machine Controller] QC approval created successfully!',
+          );
+          console.log('[QC Machine Controller] Approval ID:', approval._id);
+          console.log(
+            '[QC Machine Controller] Approval status:',
+            approval.status,
+          );
+        } catch (error) {
+          console.error(
+            '[QC Machine Controller] Error creating QC approval:',
+            error,
+          );
+          console.error('[QC Machine Controller] Error details:', {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+          });
         }
       })();
     },
@@ -208,11 +317,19 @@ class QCMachineController {
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const paramsValidation = qaMachineEntryIdParamSchema.validate(req.params);
       if (paramsValidation.error) {
-        if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(
-            (file) => file.path,
-          );
-          deleteQAFiles(filePaths);
+        // Clean up uploaded files on validation error
+        if (req.files) {
+          const files = req.files as {
+            [fieldname: string]: Express.Multer.File[];
+          };
+          const allFiles: Express.Multer.File[] = [];
+          if (files['images']) allFiles.push(...files['images']);
+          if (files['documents']) allFiles.push(...files['documents']);
+          if (files['files']) allFiles.push(...files['files']);
+          if (allFiles.length > 0) {
+            const filePaths = allFiles.map((file) => file.path);
+            deleteQAFiles(filePaths);
+          }
         }
         throw new ApiError(
           'UPDATE_QA_MACHINE_ENTRY_VALIDATION',
@@ -224,11 +341,19 @@ class QCMachineController {
 
       const bodyValidation = updateQAMachineEntrySchema.validate(req.body);
       if (bodyValidation.error) {
-        if (req.files && Array.isArray(req.files)) {
-          const filePaths = (req.files as Express.Multer.File[]).map(
-            (file) => file.path,
-          );
-          deleteQAFiles(filePaths);
+        // Clean up uploaded files on validation error
+        if (req.files) {
+          const files = req.files as {
+            [fieldname: string]: Express.Multer.File[];
+          };
+          const allFiles: Express.Multer.File[] = [];
+          if (files['images']) allFiles.push(...files['images']);
+          if (files['documents']) allFiles.push(...files['documents']);
+          if (files['files']) allFiles.push(...files['files']);
+          if (allFiles.length > 0) {
+            const filePaths = allFiles.map((file) => file.path);
+            deleteQAFiles(filePaths);
+          }
         }
         throw new ApiError(
           'UPDATE_QA_MACHINE_ENTRY_VALIDATION',
@@ -238,25 +363,151 @@ class QCMachineController {
         );
       }
 
-      let filePaths: string[] = [];
+      const qaEntryId = paramsValidation.value.id;
 
-      try {
-        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-          filePaths = await moveQAFilesToEntryDirectory(
-            req.files as Express.Multer.File[],
-            paramsValidation.value.id,
-          );
-        }
+      // Get existing entry to preserve existing files
+      const existingEntry = await QCMachineService.getById(qaEntryId);
+      if (!existingEntry) {
+        throw new ApiError(
+          'UPDATE_QA_MACHINE_ENTRY',
+          StatusCodes.NOT_FOUND,
+          'QA_ENTRY_NOT_FOUND',
+          'QA machine entry not found',
+        );
+      }
 
-        const updateData: UpdateQAMachineEntryData = {
-          ...bodyValidation.value,
-          files: filePaths.length > 0 ? filePaths : undefined,
+      const updateData: UpdateQAMachineEntryData = {
+        ...bodyValidation.value,
+      };
+
+      // Process uploaded files (images, documents, and QC files)
+      const imageFiles: Express.Multer.File[] = [];
+      const documentFiles: Express.Multer.File[] = [];
+      const qcFiles: Express.Multer.File[] = [];
+
+      if (req.files) {
+        const files = req.files as {
+          [fieldname: string]: Express.Multer.File[];
         };
 
-        const qaEntry = await QCMachineService.update(
-          paramsValidation.value.id,
-          updateData,
-        );
+        // Get image files
+        if (files['images'] && Array.isArray(files['images'])) {
+          imageFiles.push(...files['images']);
+        }
+
+        // Get document files
+        if (files['documents'] && Array.isArray(files['documents'])) {
+          documentFiles.push(...files['documents']);
+        }
+
+        // Get QC files
+        if (files['files'] && Array.isArray(files['files'])) {
+          qcFiles.push(...files['files']);
+        }
+      }
+
+      try {
+        // Handle images: if new images are provided, merge with remaining or replace
+        if (imageFiles.length > 0) {
+          const actualImagePaths = await moveQAFilesToEntryDirectory(
+            imageFiles,
+            qaEntryId,
+          );
+          if (actualImagePaths.length > 0) {
+            // If images field is explicitly set in body, merge with new files; otherwise append to existing
+            if (updateData.images !== undefined) {
+              // User sent remaining images as JSON, merge with new files
+              const remainingImages = Array.isArray(updateData.images)
+                ? (updateData.images as string[])
+                : [];
+              updateData.images = [...remainingImages, ...actualImagePaths];
+            } else {
+              // Append new images to existing
+              const existingImages = (existingEntry.images || []) as string[];
+              updateData.images = [...existingImages, ...actualImagePaths];
+            }
+          }
+        } else if (updateData.images !== undefined) {
+          // No new files, but user sent remaining images as JSON (to replace/update)
+          updateData.images = Array.isArray(updateData.images)
+            ? (updateData.images as string[])
+            : [];
+        }
+
+        // Handle documents: if new documents are provided, merge with remaining or replace
+        if (documentFiles.length > 0) {
+          const actualDocumentPaths = await moveQAFilesToEntryDirectory(
+            documentFiles,
+            qaEntryId,
+          );
+          if (actualDocumentPaths.length > 0) {
+            const newDocuments = documentFiles.map((file, index) => ({
+              name: file.originalname,
+              file_path: actualDocumentPaths[index] || file.path,
+              document_type: file.mimetype,
+            }));
+
+            // If documents field is explicitly set in body, merge with new files; otherwise append to existing
+            if (updateData.documents !== undefined) {
+              // User sent remaining documents as JSON, merge with new files
+              const remainingDocuments = Array.isArray(updateData.documents)
+                ? (updateData.documents as Array<{
+                    name: string;
+                    file_path: string;
+                    document_type?: string;
+                  }>)
+                : [];
+              updateData.documents = [...remainingDocuments, ...newDocuments];
+            } else {
+              // Append new documents to existing
+              const existingDocuments = (existingEntry.documents ||
+                []) as Array<{
+                name: string;
+                file_path: string;
+                document_type?: string;
+              }>;
+              updateData.documents = [...existingDocuments, ...newDocuments];
+            }
+          }
+        } else if (updateData.documents !== undefined) {
+          // No new files, but user sent remaining documents as JSON (to replace/update)
+          updateData.documents = Array.isArray(updateData.documents)
+            ? (updateData.documents as Array<{
+                name: string;
+                file_path: string;
+                document_type?: string;
+              }>)
+            : [];
+        }
+
+        // Handle QC files: if new files are provided, merge with remaining or replace
+        if (qcFiles.length > 0) {
+          const actualFilePaths = await moveQAFilesToEntryDirectory(
+            qcFiles,
+            qaEntryId,
+          );
+          if (actualFilePaths.length > 0) {
+            // If files field is explicitly set in body, merge with new files; otherwise append to existing
+            if (updateData.files !== undefined) {
+              // User sent remaining files as JSON, merge with new files
+              const remainingFiles = Array.isArray(updateData.files)
+                ? (updateData.files as string[])
+                : [];
+              updateData.files = [...remainingFiles, ...actualFilePaths];
+            } else {
+              // Append new files to existing
+              const existingFiles = (existingEntry.files || []) as string[];
+              updateData.files = [...existingFiles, ...actualFilePaths];
+            }
+          }
+        } else if (updateData.files !== undefined) {
+          // No new files, but user sent remaining files as JSON (to replace/update)
+          updateData.files = Array.isArray(updateData.files)
+            ? (updateData.files as string[])
+            : [];
+        }
+
+        const qaEntry = await QCMachineService.update(qaEntryId, updateData);
 
         const response = new ApiResponse(
           StatusCodes.OK,
@@ -265,7 +516,14 @@ class QCMachineController {
         );
         res.status(response.statusCode).json(response);
       } catch (error) {
-        if (filePaths.length > 0) {
+        // Clean up uploaded files on error
+        const allFiles: Express.Multer.File[] = [
+          ...imageFiles,
+          ...documentFiles,
+          ...qcFiles,
+        ];
+        if (allFiles.length > 0) {
+          const filePaths = allFiles.map((file) => file.path);
           deleteQAFiles(filePaths);
         }
         throw error;

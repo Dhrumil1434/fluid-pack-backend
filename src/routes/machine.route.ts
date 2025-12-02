@@ -128,4 +128,7 @@ router.post(
   MachineController.validateMachineIds,
 );
 
+// Get search suggestions for machines - Public access
+router.get('/suggestions/:field', MachineController.getSearchSuggestions);
+
 export default router;

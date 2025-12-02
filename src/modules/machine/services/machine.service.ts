@@ -77,7 +77,21 @@ export interface MachineFilters {
   metadata_value?: string;
   dispatch_date_from?: string | Date;
   dispatch_date_to?: string | Date;
-  sortBy?: 'createdAt' | 'name' | 'category' | 'dispatch_date';
+  // Specific field filters for suggestion-based search
+  party_name?: string;
+  machine_sequence?: string;
+  location?: string;
+  mobile_number?: string;
+  sortBy?:
+    | 'createdAt'
+    | 'name'
+    | 'category'
+    | 'dispatch_date'
+    | 'party_name'
+    | 'machine_sequence'
+    | 'location'
+    | 'mobile_number'
+    | 'created_by';
   sortOrder?: 'asc' | 'desc';
 }
 
@@ -356,6 +370,29 @@ class MachineService {
         query['dispatch_date'] = dateQuery;
       }
 
+      // Handle specific field filters for suggestion-based search
+      if (filters.party_name) {
+        query['party_name'] = { $regex: filters.party_name, $options: 'i' };
+      }
+
+      if (filters.machine_sequence) {
+        query['machine_sequence'] = {
+          $regex: filters.machine_sequence,
+          $options: 'i',
+        };
+      }
+
+      if (filters.location) {
+        query['location'] = { $regex: filters.location, $options: 'i' };
+      }
+
+      if (filters.mobile_number) {
+        query['mobile_number'] = {
+          $regex: filters.mobile_number,
+          $options: 'i',
+        };
+      }
+
       // Determine sort order
       const sortOrder = filters.sortOrder === 'asc' ? 1 : -1;
       let sortField: Record<string, 1 | -1> = { createdAt: -1 }; // Default: latest first
@@ -372,6 +409,21 @@ class MachineService {
             break;
           case 'dispatch_date':
             sortField = { dispatch_date: sortOrder };
+            break;
+          case 'party_name':
+            sortField = { party_name: sortOrder };
+            break;
+          case 'machine_sequence':
+            sortField = { machine_sequence: sortOrder };
+            break;
+          case 'location':
+            sortField = { location: sortOrder };
+            break;
+          case 'mobile_number':
+            sortField = { mobile_number: sortOrder };
+            break;
+          case 'created_by':
+            sortField = { created_by: sortOrder };
             break;
           case 'createdAt':
           default:

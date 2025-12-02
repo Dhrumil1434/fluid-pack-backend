@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from 'express';
+import { StatusCodes } from 'http-status-codes';
+import mongoose from 'mongoose';
 import {
   QCApproval,
   QCApprovalStatus,
@@ -77,15 +79,138 @@ const getQCApprovers = async (): Promise<string[]> => {
  * Get QC approval statistics
  */
 export const getQCApprovalStatistics = asyncHandler(
-  async (_req: Request, res: Response) => {
-    const stats = await QCApproval.aggregate([
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-        },
+  async (req: Request, res: Response) => {
+    const { requestedBy } = req.query;
+
+    console.log('[QC Approval Controller] getQCApprovalStatistics called');
+    console.log('[QC Approval Controller] requestedBy filter:', requestedBy);
+
+    // Build match stage for filtering
+    const matchStage: any = {};
+
+    // IMPORTANT: QC Dashboard statistics should ONLY count MACHINE_QC_ENTRY type approvals
+    // MACHINE_QC_EDIT is part of machine approval workflow, not QC workflow
+    matchStage.approvalType = QCApprovalType.MACHINE_QC_ENTRY;
+
+    // If filtering by requestedBy, look up the user first
+    if (requestedBy) {
+      console.log(
+        '[QC Approval Controller] Looking up user for statistics filter:',
+        requestedBy,
+      );
+      // Try exact match first (more efficient and accurate)
+      let user = await User.findOne({
+        $or: [
+          { username: requestedBy },
+          { name: requestedBy },
+          { email: requestedBy },
+        ],
+      })
+        .select('_id username name email')
+        .lean();
+
+      // If exact match not found, try regex match
+      if (!user) {
+        user = await User.findOne({
+          $or: [
+            { username: { $regex: requestedBy, $options: 'i' } },
+            { name: { $regex: requestedBy, $options: 'i' } },
+            { email: { $regex: requestedBy, $options: 'i' } },
+          ],
+        })
+          .select('_id username name email')
+          .lean();
+      }
+
+      if (user && user._id) {
+        matchStage.requestedBy = new mongoose.Types.ObjectId(String(user._id));
+        const userData = user as any;
+        console.log(
+          '[QC Approval Controller] Filtering statistics by requestedBy user:',
+          {
+            _id: matchStage.requestedBy.toString(),
+            username: userData.username,
+            name: userData.name,
+            email: userData.email,
+          },
+        );
+      } else {
+        console.warn(
+          '[QC Approval Controller] No user found for statistics filter, returning zeros',
+        );
+        // Return zeros if user not found
+        return res.status(200).json(
+          new ApiResponse(
+            200,
+            {
+              total: 0,
+              pending: 0,
+              approved: 0,
+              rejected: 0,
+              cancelled: 0,
+              activated: 0,
+            },
+            'QC approval statistics retrieved successfully',
+          ),
+        );
+      }
+    }
+
+    // Build aggregation pipeline for statistics
+    // We need to check both approval.requestedBy AND qcEntryId.added_by
+    const pipeline: any[] = [];
+
+    // IMPORTANT: Always filter by approvalType first (only MACHINE_QC_ENTRY for QC dashboard)
+    // This ensures statistics only count QC entry approvals, not machine edit approvals
+    pipeline.push({
+      $match: {
+        approvalType:
+          matchStage.approvalType || QCApprovalType.MACHINE_QC_ENTRY,
       },
-    ]);
+    });
+
+    // If filtering by requestedBy, we need to lookup qcEntryId first to check added_by
+    if (matchStage.requestedBy) {
+      const requestedByUserId = matchStage.requestedBy;
+
+      // Lookup qcEntryId to access added_by field
+      pipeline.push(
+        {
+          $lookup: {
+            from: 'qamachineentries',
+            localField: 'qcEntryId',
+            foreignField: '_id',
+            as: 'qcEntryId',
+          },
+        },
+        {
+          $unwind: {
+            path: '$qcEntryId',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+      );
+
+      // Match if EITHER requestedBy OR qcEntryId.added_by matches
+      pipeline.push({
+        $match: {
+          $or: [
+            { requestedBy: requestedByUserId },
+            { 'qcEntryId.added_by': requestedByUserId },
+          ],
+        },
+      });
+    }
+
+    // Group by status
+    pipeline.push({
+      $group: {
+        _id: '$status',
+        count: { $sum: 1 },
+      },
+    });
+
+    const stats = await QCApproval.aggregate(pipeline);
 
     const statistics = {
       total: 0,
@@ -114,11 +239,55 @@ export const getQCApprovalStatistics = asyncHandler(
       }
     });
 
-    // Count activated machines
-    const activatedCount = await QCApproval.countDocuments({
-      machineActivated: true,
-    });
-    statistics.activated = activatedCount;
+    // Count activated machines (with requestedBy filter if applicable)
+    // Use OR logic: match if either requestedBy OR qcEntryId.added_by matches
+    // IMPORTANT: Only count MACHINE_QC_ENTRY type approvals
+    if (matchStage.requestedBy) {
+      const requestedByUserId = matchStage.requestedBy;
+      // Use aggregation to count activated approvals with OR logic
+      const activatedPipeline: any[] = [
+        {
+          $match: {
+            approvalType: QCApprovalType.MACHINE_QC_ENTRY, // Only QC Entry approvals
+          },
+        },
+        {
+          $lookup: {
+            from: 'qamachineentries',
+            localField: 'qcEntryId',
+            foreignField: '_id',
+            as: 'qcEntryId',
+          },
+        },
+        {
+          $unwind: {
+            path: '$qcEntryId',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $match: {
+            machineActivated: true,
+            $or: [
+              { requestedBy: requestedByUserId },
+              { 'qcEntryId.added_by': requestedByUserId },
+            ],
+          },
+        },
+        { $count: 'total' },
+      ];
+      const activatedResult = await QCApproval.aggregate(activatedPipeline);
+      statistics.activated =
+        activatedResult.length > 0 ? activatedResult[0].total : 0;
+    } else {
+      const activatedCount = await QCApproval.countDocuments({
+        machineActivated: true,
+        approvalType: QCApprovalType.MACHINE_QC_ENTRY, // Only QC Entry approvals
+      });
+      statistics.activated = activatedCount;
+    }
+
+    console.log('[QC Approval Controller] Statistics calculated:', statistics);
 
     res
       .status(200)
@@ -137,9 +306,12 @@ export const getQCApprovalStatistics = asyncHandler(
  */
 export const getAllQCApprovals = asyncHandler(
   async (req: Request, res: Response) => {
+    console.log('[QC Approval Controller] getAllQCApprovals called');
+    console.log('[QC Approval Controller] Query params:', req.query);
+
     const {
       page = 1,
-      limit = 20,
+      limit = 10,
       search,
       status,
       approvalType,
@@ -150,22 +322,61 @@ export const getAllQCApprovals = asyncHandler(
       sortBy = 'createdAt',
       sortOrder = 'desc',
       category,
+      subcategory,
       machineName,
+      machineSequence,
       requestedBy,
+      partyName,
+      location,
+      mobileNumber,
+      dispatchDateFrom,
+      dispatchDateTo,
+      qcDateFrom,
+      qcDateTo,
+      inspectionDateFrom,
+      inspectionDateTo,
     } = req.query;
 
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    console.log('[QC Approval Controller] Parsed params:', {
+      page,
+      limit,
+      search,
+      status,
+      approvalType,
+      requestedBy,
+      sortBy,
+      sortOrder,
+    });
+
+    // Set defaults for pagination
+    const pageNum = page ? Math.max(1, parseInt(page as string, 10)) : 1;
+    const limitNum = limit
+      ? Math.max(1, Math.min(100, parseInt(limit as string, 10)))
+      : 20;
     const skip = (pageNum - 1) * limitNum;
 
     // Build filter object using aggregation for better search
     const matchStage: any = {};
+
+    // IMPORTANT: QC Dashboard should ONLY show MACHINE_QC_ENTRY type approvals
+    // MACHINE_QC_EDIT is part of machine approval workflow, not QC workflow
+    // Only filter by approvalType if explicitly provided, otherwise default to MACHINE_QC_ENTRY
+    if (approvalType) {
+      matchStage.approvalType = approvalType;
+    } else {
+      // Default: Only show QC Entry approvals (exclude machine edit approvals)
+      matchStage.approvalType = QCApprovalType.MACHINE_QC_ENTRY;
+    }
 
     if (search) {
       matchStage.$or = [
         { 'machineId.name': { $regex: search, $options: 'i' } },
         { 'machineId.machine_sequence': { $regex: search, $options: 'i' } },
         { 'machineId.category_id.name': { $regex: search, $options: 'i' } },
+        { 'machineId.subcategory_id.name': { $regex: search, $options: 'i' } },
+        { 'machineId.party_name': { $regex: search, $options: 'i' } },
+        { 'machineId.location': { $regex: search, $options: 'i' } },
+        { 'machineId.mobile_number': { $regex: search, $options: 'i' } },
         { 'requestedBy.name': { $regex: search, $options: 'i' } },
         { 'requestedBy.username': { $regex: search, $options: 'i' } },
         { 'requestedBy.email': { $regex: search, $options: 'i' } },
@@ -178,6 +389,13 @@ export const getAllQCApprovals = asyncHandler(
         { approverNotes: { $regex: search, $options: 'i' } },
         { rejectionReason: { $regex: search, $options: 'i' } },
         { approvalType: { $regex: search, $options: 'i' } },
+        // QC Entry fields (from qamachineentries)
+        { 'qcEntryId.name': { $regex: search, $options: 'i' } },
+        { 'qcEntryId.machine_sequence': { $regex: search, $options: 'i' } },
+        { 'qcEntryId.party_name': { $regex: search, $options: 'i' } },
+        { 'qcEntryId.location': { $regex: search, $options: 'i' } },
+        { 'qcEntryId.mobile_number': { $regex: search, $options: 'i' } },
+        { 'qcEntryId.qcNotes': { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -185,9 +403,8 @@ export const getAllQCApprovals = asyncHandler(
       matchStage.status = status;
     }
 
-    if (approvalType) {
-      matchStage.approvalType = approvalType;
-    }
+    // Note: approvalType filter is already set above (defaults to MACHINE_QC_ENTRY)
+    // Only override if explicitly provided in query params
 
     if (dateFrom || dateTo) {
       matchStage.createdAt = {};
@@ -209,11 +426,100 @@ export const getAllQCApprovals = asyncHandler(
       }
     }
 
-    // Build sort object
+    // Build sort object - map frontend sort fields to backend fields
     const sortStage: any = {};
-    sortStage[sortBy as string] = sortOrder === 'desc' ? -1 : 1;
+    const sortOrderNum = sortOrder === 'desc' ? -1 : 1;
 
-    const pipeline: any[] = [
+    // Map frontend sort field names to actual database field paths
+    const sortFieldMap: Record<string, string> = {
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+      qualityScore: 'qualityScore',
+      status: 'status',
+      approvalType: 'approvalType',
+      category: 'categoryNameForSort', // Use computed field for reliable sorting
+      inspectionDate: 'inspectionDateForSort', // Use computed field
+      qc_date: 'qcDateForSort', // Use computed field
+      dispatch_date: 'dispatchDateForSort', // Use computed field
+      machineName: 'machineId.name',
+      partyName: 'partyNameForSort', // Use computed field
+      location: 'locationForSort', // Use computed field
+      mobileNumber: 'mobileNumberForSort', // Use computed field
+      requestedBy: 'requestedByForSort', // Use computed field
+    };
+
+    const actualSortField =
+      sortFieldMap[sortBy as string] || (sortBy as string);
+    sortStage[actualSortField] = sortOrderNum;
+
+    // If filtering by requestedBy, first look up the user to get their ObjectId
+    let requestedByUserId: mongoose.Types.ObjectId | null = null;
+    if (requestedBy) {
+      console.log(
+        '[QC Approval Controller] Looking up user by requestedBy filter:',
+        requestedBy,
+      );
+      console.log(
+        '[QC Approval Controller] Searching for user with username/name/email matching:',
+        requestedBy,
+      );
+
+      // Try exact match first (more efficient and accurate)
+      let user = await User.findOne({
+        $or: [
+          { username: requestedBy },
+          { name: requestedBy },
+          { email: requestedBy },
+        ],
+      })
+        .select('_id username name email')
+        .lean();
+
+      // If exact match not found, try regex match
+      if (!user) {
+        user = await User.findOne({
+          $or: [
+            { username: { $regex: requestedBy, $options: 'i' } },
+            { name: { $regex: requestedBy, $options: 'i' } },
+            { email: { $regex: requestedBy, $options: 'i' } },
+          ],
+        })
+          .select('_id username name email')
+          .lean();
+      }
+
+      if (user && user._id) {
+        requestedByUserId = new mongoose.Types.ObjectId(String(user._id));
+        const userData = user as any;
+        console.log(
+          '[QC Approval Controller] Found user for requestedBy filter:',
+          {
+            _id: requestedByUserId.toString(),
+            username: userData.username,
+            name: userData.name,
+            email: userData.email,
+          },
+        );
+      } else {
+        console.warn(
+          '[QC Approval Controller] No user found matching requestedBy filter:',
+          requestedBy,
+        );
+        console.warn(
+          '[QC Approval Controller] This will result in no approvals being returned!',
+        );
+      }
+    }
+
+    const pipeline: any[] = [];
+
+    // Note: We don't pre-filter by requestedBy here because we need to check
+    // both approval.requestedBy AND qcEntryId.added_by after lookups
+    // This ensures we catch all approvals created by the user, regardless of
+    // whether they match via the approval's requestedBy or the QC entry's added_by
+
+    // Now do the machine lookup
+    pipeline.push(
       {
         $lookup: {
           from: 'machines',
@@ -225,6 +531,24 @@ export const getAllQCApprovals = asyncHandler(
       {
         $unwind: '$machineId',
       },
+    );
+
+    // Filter by category _id after machine lookup (if category is ObjectId)
+    if (category) {
+      if (mongoose.Types.ObjectId.isValid(category as string)) {
+        // Filter by category _id after machine lookup but before category lookup
+        pipeline.push({
+          $match: {
+            'machineId.category_id': new mongoose.Types.ObjectId(
+              category as string,
+            ),
+          },
+        });
+      }
+    }
+
+    // Continue with category lookups
+    pipeline.push(
       {
         $lookup: {
           from: 'categories',
@@ -241,14 +565,89 @@ export const getAllQCApprovals = asyncHandler(
       },
       {
         $lookup: {
+          from: 'categories',
+          localField: 'machineId.subcategory_id',
+          foreignField: '_id',
+          as: 'machineId.subcategory_id',
+        },
+      },
+      {
+        $unwind: {
+          path: '$machineId.subcategory_id',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      // Add computed fields for reliable sorting (BEFORE requestedBy lookup)
+      {
+        $addFields: {
+          categoryNameForSort: {
+            $ifNull: ['$machineId.category_id.name', ''],
+          },
+          partyNameForSort: {
+            $ifNull: [
+              { $ifNull: ['$qcEntryId.party_name', '$machineId.party_name'] },
+              '',
+            ],
+          },
+          locationForSort: {
+            $ifNull: [
+              { $ifNull: ['$qcEntryId.location', '$machineId.location'] },
+              '',
+            ],
+          },
+          mobileNumberForSort: {
+            $ifNull: [
+              {
+                $ifNull: [
+                  '$qcEntryId.mobile_number',
+                  '$machineId.mobile_number',
+                ],
+              },
+              '',
+            ],
+          },
+          dispatchDateForSort: {
+            $ifNull: ['$qcEntryId.dispatch_date', new Date(0)],
+          },
+          qcDateForSort: {
+            $ifNull: ['$qcEntryId.qc_date', new Date(0)],
+          },
+          inspectionDateForSort: {
+            $ifNull: ['$qcEntryId.inspectionDate', new Date(0)],
+          },
+        },
+      },
+      // Lookup requestedBy user (QC person who created the QC entry, NOT machine creator)
+      {
+        $lookup: {
           from: 'users',
-          localField: 'requestedBy',
+          localField: 'requestedBy', // This is the QC approval's requestedBy field
           foreignField: '_id',
           as: 'requestedBy',
         },
       },
       {
-        $unwind: '$requestedBy',
+        $unwind: {
+          path: '$requestedBy',
+          preserveNullAndEmptyArrays: true, // Don't drop documents if requestedBy lookup fails
+        },
+      },
+      // Add requestedByForSort AFTER lookup so requestedBy is populated
+      {
+        $addFields: {
+          requestedByForSort: {
+            $ifNull: [
+              {
+                $concat: [
+                  { $ifNull: ['$requestedBy.name', ''] },
+                  ' ',
+                  { $ifNull: ['$requestedBy.username', ''] },
+                ],
+              },
+              '',
+            ],
+          },
+        },
       },
       {
         $lookup: {
@@ -292,12 +691,80 @@ export const getAllQCApprovals = asyncHandler(
           preserveNullAndEmptyArrays: true,
         },
       },
-    ];
+      // Lookup the added_by user from the QC entry (QC person who created the entry)
+      // Note: We filter by qcEntryId.added_by ObjectId directly (no need to populate for filtering)
+      // The added_by field in qamachineentries is the QC person who created the entry
+      // We can filter by ObjectId directly: qcEntryId.added_by = requestedByUserId
+      // Add computed fields for reliable sorting (after all lookups)
+      {
+        $addFields: {
+          categoryNameForSort: {
+            $ifNull: ['$machineId.category_id.name', ''],
+          },
+          requestedByForSort: {
+            $ifNull: [
+              {
+                $concat: [
+                  { $ifNull: ['$requestedBy.name', ''] },
+                  ' ',
+                  { $ifNull: ['$requestedBy.username', ''] },
+                ],
+              },
+              '',
+            ],
+          },
+          partyNameForSort: {
+            $ifNull: [
+              { $ifNull: ['$qcEntryId.party_name', '$machineId.party_name'] },
+              '',
+            ],
+          },
+          locationForSort: {
+            $ifNull: [
+              { $ifNull: ['$qcEntryId.location', '$machineId.location'] },
+              '',
+            ],
+          },
+          mobileNumberForSort: {
+            $ifNull: [
+              {
+                $ifNull: [
+                  '$qcEntryId.mobile_number',
+                  '$machineId.mobile_number',
+                ],
+              },
+              '',
+            ],
+          },
+          dispatchDateForSort: {
+            $ifNull: ['$qcEntryId.dispatch_date', new Date(0)],
+          },
+          qcDateForSort: {
+            $ifNull: ['$qcEntryId.qc_date', new Date(0)],
+          },
+          inspectionDateForSort: {
+            $ifNull: ['$qcEntryId.inspectionDate', new Date(0)],
+          },
+        },
+      },
+    );
 
     // Add additional filters after population
     if (category) {
-      matchStage['machineId.category_id.name'] = {
-        $regex: category,
+      const isObjectId = mongoose.Types.ObjectId.isValid(category as string);
+      if (!isObjectId) {
+        // Filter by category name (for text search) - only if not ObjectId
+        // ObjectId filtering is done before lookups for efficiency
+        matchStage['machineId.category_id.name'] = {
+          $regex: category,
+          $options: 'i',
+        };
+      }
+    }
+
+    if (subcategory) {
+      matchStage['machineId.subcategory_id.name'] = {
+        $regex: subcategory,
         $options: 'i',
       };
     }
@@ -306,54 +773,298 @@ export const getAllQCApprovals = asyncHandler(
       matchStage['machineId.name'] = { $regex: machineName, $options: 'i' };
     }
 
-    if (requestedBy) {
-      matchStage['requestedBy.username'] = {
-        $regex: requestedBy,
+    if (machineSequence) {
+      matchStage['machineId.machine_sequence'] = {
+        $regex: machineSequence,
         $options: 'i',
       };
     }
 
+    // IMPORTANT: Filter by requestedBy user - match if EITHER:
+    // 1. The approval's requestedBy field matches the user, OR
+    // 2. The QC entry's added_by field matches the user (if qcEntryId exists)
+    // This ensures we catch all approvals created by the user
+    if (requestedByUserId) {
+      console.log(
+        '[QC Approval Controller] Adding filter for requestedBy user (OR logic):',
+        requestedByUserId.toString(),
+      );
+      console.log(
+        '[QC Approval Controller] Will match if approval.requestedBy OR qcEntryId.added_by matches',
+      );
+
+      // Build OR condition: match if either requestedBy OR qcEntryId.added_by matches
+      const requestedByOrCondition = {
+        $or: [
+          { requestedBy: requestedByUserId }, // Match approval's requestedBy
+          { 'qcEntryId.added_by': requestedByUserId }, // Match QC entry's added_by
+        ],
+      };
+
+      // Combine with existing matchStage conditions
+      if (matchStage.$and) {
+        matchStage.$and.push(requestedByOrCondition);
+      } else if (matchStage.$or) {
+        // If there's already an $or, wrap both with $and
+        const originalOr = matchStage.$or;
+        delete matchStage.$or;
+        matchStage.$and = [{ $or: originalOr }, requestedByOrCondition];
+      } else {
+        // No existing conditions, use the OR condition directly
+        matchStage.$or = requestedByOrCondition.$or;
+      }
+      console.log(
+        '[QC Approval Controller] Filter will match approvals where requestedBy OR qcEntryId.added_by =',
+        requestedByUserId.toString(),
+      );
+    } else if (requestedBy) {
+      // Fallback: if user not found by ObjectId, try filtering by populated fields
+      console.log(
+        '[QC Approval Controller] Falling back to post-lookup requestedBy filter (user not found by ObjectId)',
+      );
+      if (matchStage.$or) {
+        const requestedByFilter = {
+          $or: [
+            { 'requestedBy.name': { $regex: requestedBy, $options: 'i' } },
+            { 'requestedBy.username': { $regex: requestedBy, $options: 'i' } },
+            { 'requestedBy.email': { $regex: requestedBy, $options: 'i' } },
+            // Also try QC entry's added_by populated field
+            {
+              'qcEntryId.added_by.name': { $regex: requestedBy, $options: 'i' },
+            },
+            {
+              'qcEntryId.added_by.username': {
+                $regex: requestedBy,
+                $options: 'i',
+              },
+            },
+            {
+              'qcEntryId.added_by.email': {
+                $regex: requestedBy,
+                $options: 'i',
+              },
+            },
+          ],
+        };
+        const originalOr = matchStage.$or;
+        delete matchStage.$or;
+        matchStage.$and = [{ $or: originalOr }, requestedByFilter];
+      } else {
+        matchStage.$or = [
+          { 'requestedBy.name': { $regex: requestedBy, $options: 'i' } },
+          { 'requestedBy.username': { $regex: requestedBy, $options: 'i' } },
+          { 'requestedBy.email': { $regex: requestedBy, $options: 'i' } },
+          // Also try QC entry's added_by populated field
+          { 'qcEntryId.added_by.name': { $regex: requestedBy, $options: 'i' } },
+          {
+            'qcEntryId.added_by.username': {
+              $regex: requestedBy,
+              $options: 'i',
+            },
+          },
+          {
+            'qcEntryId.added_by.email': { $regex: requestedBy, $options: 'i' },
+          },
+        ];
+      }
+    }
+
+    // QC Entry filters (from qamachineentries)
+    if (partyName) {
+      matchStage['qcEntryId.party_name'] = {
+        $regex: partyName,
+        $options: 'i',
+      };
+    }
+
+    if (location) {
+      matchStage['qcEntryId.location'] = {
+        $regex: location,
+        $options: 'i',
+      };
+    }
+
+    if (mobileNumber) {
+      matchStage['qcEntryId.mobile_number'] = {
+        $regex: mobileNumber,
+        $options: 'i',
+      };
+    }
+
+    // Date filters for dispatch_date
+    if (dispatchDateFrom || dispatchDateTo) {
+      matchStage['qcEntryId.dispatch_date'] = {};
+      if (dispatchDateFrom) {
+        matchStage['qcEntryId.dispatch_date'].$gte = new Date(
+          dispatchDateFrom as string,
+        );
+      }
+      if (dispatchDateTo) {
+        matchStage['qcEntryId.dispatch_date'].$lte = new Date(
+          dispatchDateTo as string,
+        );
+      }
+    }
+
+    // Date filters for qc_date
+    if (qcDateFrom || qcDateTo) {
+      matchStage['qcEntryId.qc_date'] = {};
+      if (qcDateFrom) {
+        matchStage['qcEntryId.qc_date'].$gte = new Date(qcDateFrom as string);
+      }
+      if (qcDateTo) {
+        matchStage['qcEntryId.qc_date'].$lte = new Date(qcDateTo as string);
+      }
+    }
+
+    // Date filters for inspectionDate
+    if (inspectionDateFrom || inspectionDateTo) {
+      matchStage['qcEntryId.inspectionDate'] = {};
+      if (inspectionDateFrom) {
+        matchStage['qcEntryId.inspectionDate'].$gte = new Date(
+          inspectionDateFrom as string,
+        );
+      }
+      if (inspectionDateTo) {
+        matchStage['qcEntryId.inspectionDate'].$lte = new Date(
+          inspectionDateTo as string,
+        );
+      }
+    }
+
     // Add match stage if there are filters
+    // IMPORTANT: This must be AFTER all $lookup and $unwind stages so populated fields are available
     if (Object.keys(matchStage).length > 0) {
+      console.log(
+        '[QC Approval Controller] Applying match stage:',
+        JSON.stringify(matchStage, null, 2),
+      );
       pipeline.push({ $match: matchStage });
+    } else {
+      console.log('[QC Approval Controller] No match stage filters applied');
     }
 
     // Add sort and pagination
-    pipeline.push(
-      { $sort: sortStage },
-      { $skip: skip },
-      { $limit: limitNum },
-      {
-        $project: {
-          'machineId.metadata': 0,
-          'machineId.created_by': 0,
-          'machineId.updated_by': 0,
-          'machineId.is_approved': 0,
-          'machineId.is_active': 0,
-          'machineId.approvalStatus': 0,
-          'machineId.decisionByName': 0,
-          'machineId.decisionDate': 0,
-          'requestedBy.password': 0,
-          'requestedBy.refreshToken': 0,
-          'requestedBy.role_id': 0,
-          'requestedBy.department_id': 0,
-          'approvedBy.password': 0,
-          'approvedBy.refreshToken': 0,
-          'approvedBy.role_id': 0,
-          'approvedBy.department_id': 0,
-          'rejectedBy.password': 0,
-          'rejectedBy.refreshToken': 0,
-          'rejectedBy.role_id': 0,
-          'rejectedBy.department_id': 0,
-          // documents and qcEntryId are included by default in exclusion projection
-        },
+    // IMPORTANT: Order matters - sort first, then skip, then limit, then project
+    // Apply limit BEFORE project to ensure we only process the needed records
+    pipeline.push({ $sort: sortStage });
+    pipeline.push({ $skip: skip });
+    pipeline.push({ $limit: limitNum });
+    pipeline.push({
+      $project: {
+        'machineId.metadata': 0,
+        'machineId.created_by': 0,
+        'machineId.updated_by': 0,
+        'machineId.is_approved': 0,
+        'machineId.is_active': 0,
+        'machineId.approvalStatus': 0,
+        'machineId.decisionByName': 0,
+        'machineId.decisionDate': 0,
+        'requestedBy.password': 0,
+        'requestedBy.refreshToken': 0,
+        'requestedBy.role_id': 0,
+        'requestedBy.department_id': 0,
+        'approvedBy.password': 0,
+        'approvedBy.refreshToken': 0,
+        'approvedBy.role_id': 0,
+        'approvedBy.department_id': 0,
+        'rejectedBy.password': 0,
+        'rejectedBy.refreshToken': 0,
+        'rejectedBy.role_id': 0,
+        'rejectedBy.department_id': 0,
+        // documents and qcEntryId are included by default in exclusion projection
       },
+    });
+
+    console.log('[QC Approval Controller] Executing aggregation pipeline...');
+    console.log(
+      '[QC Approval Controller] Pipeline stages count:',
+      pipeline.length,
+    );
+    const approvals = await QCApproval.aggregate(pipeline);
+    console.log(
+      '[QC Approval Controller] Aggregation returned',
+      approvals.length,
+      'approvals',
     );
 
-    const approvals = await QCApproval.aggregate(pipeline);
+    // Final safety check - ensure we never return more than the limit
+    // This handles edge cases where aggregation might return unexpected results
+    const limitedApprovals =
+      approvals.length > limitNum ? approvals.slice(0, limitNum) : approvals;
+
+    if (approvals.length > limitNum) {
+      console.warn(
+        `⚠️ Aggregation returned ${approvals.length} records but limit is ${limitNum}. Limiting to ${limitNum}.`,
+      );
+    }
+
+    console.log(
+      '[QC Approval Controller] Final approvals count:',
+      limitedApprovals.length,
+    );
+
+    if (limitedApprovals.length > 0) {
+      console.log('[QC Approval Controller] Sample approval (first):', {
+        _id: limitedApprovals[0]._id?.toString(),
+        status: limitedApprovals[0].status,
+        approvalType: limitedApprovals[0].approvalType,
+        machineId: limitedApprovals[0].machineId?._id?.toString(),
+        requestedBy: limitedApprovals[0].requestedBy
+          ? {
+              _id: limitedApprovals[0].requestedBy._id?.toString(),
+              username: limitedApprovals[0].requestedBy.username,
+              name: limitedApprovals[0].requestedBy.name,
+              email: limitedApprovals[0].requestedBy.email,
+            }
+          : null,
+        qcEntryId: limitedApprovals[0].qcEntryId?._id?.toString(),
+      });
+    } else {
+      console.warn(
+        '[QC Approval Controller] No approvals returned from aggregation!',
+      );
+      console.warn('[QC Approval Controller] This might indicate:');
+      console.warn('  1. No approvals exist in database');
+      console.warn('  2. Filters are too restrictive');
+      console.warn(
+        '  3. requestedBy filter username does not match any approval',
+      );
+
+      // If requestedBy filter was applied, log what we're searching for
+      if (requestedBy) {
+        console.warn(
+          '[QC Approval Controller] requestedBy filter was:',
+          requestedBy,
+        );
+        console.warn(
+          '[QC Approval Controller] Searching for username/name/email matching:',
+          requestedBy,
+        );
+      }
+    }
 
     // Get total count with same filters
-    const countPipeline: any[] = [
+    // Build count pipeline (same structure as main pipeline but without sort/pagination)
+    const countPipeline: any[] = [];
+
+    // IMPORTANT: Filter by approvalType first (only MACHINE_QC_ENTRY for QC dashboard)
+    // This ensures count matches the filtered results
+    countPipeline.push({
+      $match: {
+        approvalType:
+          matchStage.approvalType || QCApprovalType.MACHINE_QC_ENTRY,
+      },
+    });
+
+    // Note: We're NOT filtering by requestedBy before lookups anymore
+    // Instead, we'll filter by qcEntryId.added_by after the qcEntryId lookup
+    // This ensures we use the actual QC entry creator from qamachineentries
+    console.log(
+      '[QC Approval Controller] Count pipeline will filter by qcEntryId.added_by after qcEntryId lookup',
+    );
+
+    countPipeline.push(
       {
         $lookup: {
           from: 'machines',
@@ -365,6 +1076,23 @@ export const getAllQCApprovals = asyncHandler(
       {
         $unwind: '$machineId',
       },
+    );
+
+    // Filter by category _id after machine lookup (if category is ObjectId)
+    if (category) {
+      if (mongoose.Types.ObjectId.isValid(category as string)) {
+        countPipeline.push({
+          $match: {
+            'machineId.category_id': new mongoose.Types.ObjectId(
+              category as string,
+            ),
+          },
+        });
+      }
+    }
+
+    // Continue with lookups for count
+    countPipeline.push(
       {
         $lookup: {
           from: 'categories',
@@ -381,6 +1109,20 @@ export const getAllQCApprovals = asyncHandler(
       },
       {
         $lookup: {
+          from: 'categories',
+          localField: 'machineId.subcategory_id',
+          foreignField: '_id',
+          as: 'machineId.subcategory_id',
+        },
+      },
+      {
+        $unwind: {
+          path: '$machineId.subcategory_id',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
           from: 'users',
           localField: 'requestedBy',
           foreignField: '_id',
@@ -388,12 +1130,68 @@ export const getAllQCApprovals = asyncHandler(
         },
       },
       {
-        $unwind: '$requestedBy',
+        $unwind: {
+          path: '$requestedBy',
+          preserveNullAndEmptyArrays: true, // Don't drop documents if requestedBy lookup fails
+        },
       },
-    ];
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'approvedBy',
+          foreignField: '_id',
+          as: 'approvedBy',
+        },
+      },
+      {
+        $unwind: {
+          path: '$approvedBy',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'rejectedBy',
+          foreignField: '_id',
+          as: 'rejectedBy',
+        },
+      },
+      {
+        $unwind: {
+          path: '$rejectedBy',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: 'qamachineentries',
+          localField: 'qcEntryId',
+          foreignField: '_id',
+          as: 'qcEntryId',
+        },
+      },
+      {
+        $unwind: {
+          path: '$qcEntryId',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      // Note: We filter by qcEntryId.added_by ObjectId directly (no need to populate for filtering)
+      // The added_by field in qamachineentries is the QC person who created the entry
+    );
 
-    // Add match stage for count
+    // IMPORTANT: For count pipeline, we also need to filter by qcEntryId.added_by
+    // if requestedByUserId is set, since we're now filtering by QC entry's added_by
+    // The matchStage already includes this filter, but we need to ensure it's applied
+    // after the qcEntryId lookup in the count pipeline
+
+    // Add match stage for count (after all lookups, including qcEntryId)
     if (Object.keys(matchStage).length > 0) {
+      console.log(
+        '[QC Approval Controller] Adding match stage to count pipeline:',
+        JSON.stringify(matchStage, null, 2),
+      );
       countPipeline.push({ $match: matchStage });
     }
 
@@ -407,7 +1205,7 @@ export const getAllQCApprovals = asyncHandler(
       new ApiResponse(
         200,
         {
-          approvals,
+          approvals: limitedApprovals,
           total,
           pages,
           currentPage: pageNum,
@@ -570,6 +1368,13 @@ export const createQCApprovalForEntry = async (
   },
   requestedByUserId: string,
 ) => {
+  console.log('[QC Approval Controller] createQCApprovalForEntry called');
+  console.log('[QC Approval Controller] Args:', args);
+  console.log(
+    '[QC Approval Controller] Requested By User ID:',
+    requestedByUserId,
+  );
+
   const {
     machineId,
     qcEntryId,
@@ -582,8 +1387,10 @@ export const createQCApprovalForEntry = async (
     requestNotes,
   } = args;
 
+  console.log('[QC Approval Controller] Looking up machine:', machineId);
   const machine = await Machine.findById(machineId);
   if (!machine) {
+    console.error('[QC Approval Controller] Machine not found:', machineId);
     throw new ApiError(
       'MACHINE_NOT_FOUND',
       404,
@@ -591,8 +1398,18 @@ export const createQCApprovalForEntry = async (
       'Machine not found',
     );
   }
+  console.log(
+    '[QC Approval Controller] Machine found:',
+    machine.name,
+    'is_approved:',
+    machine.is_approved,
+  );
 
   if (!machine.is_approved) {
+    console.error(
+      '[QC Approval Controller] Machine is not approved:',
+      machineId,
+    );
     throw new ApiError(
       'MACHINE_NOT_APPROVED',
       400,
@@ -601,20 +1418,99 @@ export const createQCApprovalForEntry = async (
     );
   }
 
+  console.log(
+    '[QC Approval Controller] Checking for existing PENDING approval...',
+  );
+  // Check for existing approval by machineId OR qcEntryId to avoid duplicates
   const existingApproval = await QCApproval.findOne({
-    machineId,
-    status: QCApprovalStatus.PENDING,
+    $or: [
+      {
+        machineId,
+        status: QCApprovalStatus.PENDING,
+        approvalType: approvalType || QCApprovalType.MACHINE_QC_ENTRY,
+      },
+      ...(qcEntryId
+        ? [
+            {
+              qcEntryId,
+              status: QCApprovalStatus.PENDING,
+              approvalType: approvalType || QCApprovalType.MACHINE_QC_ENTRY,
+            },
+          ]
+        : []),
+    ],
   });
   if (existingApproval) {
+    console.log(
+      '[QC Approval Controller] Existing PENDING approval found, returning it:',
+      existingApproval._id,
+    );
+    console.log('[QC Approval Controller] Existing approval details:', {
+      _id: existingApproval._id,
+      machineId: existingApproval.machineId,
+      qcEntryId: existingApproval.qcEntryId,
+      requestedBy: existingApproval.requestedBy,
+      status: existingApproval.status,
+      approvalType: existingApproval.approvalType,
+    });
     return existingApproval;
   }
+  console.log(
+    '[QC Approval Controller] No existing PENDING approval found, creating new one...',
+  );
 
+  console.log('[QC Approval Controller] Getting approvers...');
   const approvers = await getQCApprovers();
+  console.log('[QC Approval Controller] Approvers found:', approvers.length);
+
+  console.log('[QC Approval Controller] Creating new QC approval...');
+  console.log(
+    '[QC Approval Controller] IMPORTANT: requestedBy is the QC person who created the QC entry, NOT the machine creator',
+  );
+  console.log(
+    '[QC Approval Controller] requestedByUserId (QC person):',
+    requestedByUserId,
+  );
+
+  // Ensure requestedByUserId is a proper ObjectId
+  const requestedByObjectId = mongoose.Types.ObjectId.isValid(requestedByUserId)
+    ? new mongoose.Types.ObjectId(requestedByUserId)
+    : requestedByUserId;
+
+  console.log('[QC Approval Controller] Creating approval with requestedBy:', {
+    original: requestedByUserId,
+    objectId: requestedByObjectId,
+    type: typeof requestedByUserId,
+  });
+
+  // Verify the user exists
+  const user = await User.findById(requestedByObjectId)
+    .select('username name email')
+    .lean();
+  if (!user) {
+    console.error(
+      '[QC Approval Controller] User not found for requestedBy:',
+      requestedByObjectId,
+    );
+    throw new ApiError(
+      'USER_NOT_FOUND',
+      404,
+      'USER_NOT_FOUND',
+      'User not found for requestedBy',
+    );
+  }
+  const userData = user as any;
+  console.log('[QC Approval Controller] Verified user for requestedBy:', {
+    _id: user._id?.toString(),
+    username: userData.username,
+    name: userData.name,
+    email: userData.email,
+  });
 
   const approval = new QCApproval({
     machineId,
     qcEntryId,
-    requestedBy: requestedByUserId,
+    requestedBy: requestedByObjectId, // This is the QC person who created the QC entry
     approvalType: approvalType || QCApprovalType.MACHINE_QC_ENTRY,
     qcNotes,
     qcFindings,
@@ -634,7 +1530,81 @@ export const createQCApprovalForEntry = async (
     },
   });
 
+  console.log('[QC Approval Controller] Saving approval to database...');
   await approval.save();
+  console.log('[QC Approval Controller] Approval saved successfully!');
+  console.log(
+    '[QC Approval Controller] Approval ID:',
+    approval._id?.toString(),
+  );
+  console.log('[QC Approval Controller] Approval status:', approval.status);
+  console.log('[QC Approval Controller] Approval type:', approval.approvalType);
+  console.log(
+    '[QC Approval Controller] Requested by (User ID):',
+    approval.requestedBy?.toString(),
+  );
+  console.log(
+    '[QC Approval Controller] Machine ID:',
+    approval.machineId?.toString(),
+  );
+  console.log(
+    '[QC Approval Controller] QC Entry ID:',
+    approval.qcEntryId?.toString(),
+  );
+
+  // Verify the approval was saved by fetching it back
+  const savedApproval = await QCApproval.findById(approval._id)
+    .populate('requestedBy', 'username name email')
+    .lean();
+  console.log('[QC Approval Controller] Verified saved approval:', {
+    _id: savedApproval?._id?.toString(),
+    status: savedApproval?.status,
+    approvalType: savedApproval?.approvalType,
+    machineId: savedApproval?.machineId?.toString(),
+    qcEntryId: savedApproval?.qcEntryId?.toString(),
+    requestedBy: savedApproval?.requestedBy
+      ? {
+          _id: (savedApproval.requestedBy as any)?._id?.toString(),
+          username: (savedApproval.requestedBy as any)?.username,
+          name: (savedApproval.requestedBy as any)?.name,
+          email: (savedApproval.requestedBy as any)?.email,
+        }
+      : null,
+  });
+
+  // Also verify the machine's created_by to show the difference
+  const machineWithCreator = await Machine.findById(machineId)
+    .populate('created_by', 'username name email')
+    .lean();
+  console.log(
+    '[QC Approval Controller] Machine creator (for comparison - NOT used in QC approval):',
+    {
+      machineId: machineWithCreator?._id?.toString(),
+      created_by: machineWithCreator?.created_by
+        ? {
+            _id: (machineWithCreator.created_by as any)?._id?.toString(),
+            username: (machineWithCreator.created_by as any)?.username,
+            name: (machineWithCreator.created_by as any)?.name,
+            email: (machineWithCreator.created_by as any)?.email,
+          }
+        : null,
+    },
+  );
+  console.log('[QC Approval Controller] COMPARISON:');
+  console.log(
+    '[QC Approval Controller]   QC Approval requestedBy (QC person):',
+    savedApproval?.requestedBy
+      ? (savedApproval.requestedBy as any)?.username
+      : 'N/A',
+  );
+  console.log(
+    '[QC Approval Controller]   Machine created_by (technician):',
+    machineWithCreator?.created_by
+      ? (machineWithCreator.created_by as any)?.username
+      : 'N/A',
+  );
+  console.log('[QC Approval Controller]   These should be DIFFERENT users!');
+
   return approval;
 };
 
@@ -1207,6 +2177,227 @@ export const deleteDocument = asyncHandler(
   },
 );
 
+/**
+ * Get search suggestions for autocomplete
+ */
+export const getSearchSuggestions = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { field, query } = req.query;
+
+    if (!field || typeof field !== 'string') {
+      throw new ApiError(
+        'INVALID_FIELD',
+        StatusCodes.BAD_REQUEST,
+        'INVALID_FIELD',
+        'Field parameter is required',
+      );
+    }
+
+    const searchQuery = query ? String(query).trim() : '';
+    const limit = 20; // Limit suggestions to 20
+
+    let suggestions: string[] = [];
+
+    try {
+      switch (field) {
+        case 'requestedBy': {
+          // Get unique usernames, names, and emails from requestedBy
+          const pipeline = [
+            {
+              $lookup: {
+                from: 'users',
+                localField: 'requestedBy',
+                foreignField: '_id',
+                as: 'requestedBy',
+              },
+            },
+            {
+              $unwind: '$requestedBy',
+            },
+            {
+              $group: {
+                _id: null,
+                usernames: { $addToSet: '$requestedBy.username' },
+                names: { $addToSet: '$requestedBy.name' },
+                emails: { $addToSet: '$requestedBy.email' },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                allValues: {
+                  $setUnion: ['$usernames', '$names', '$emails'],
+                },
+              },
+            },
+          ];
+
+          const result = await QCApproval.aggregate(pipeline);
+          const allValues = result[0]?.allValues || [];
+
+          // Filter based on query
+          suggestions = allValues
+            .filter(
+              (val: string) =>
+                val && val.toLowerCase().includes(searchQuery.toLowerCase()),
+            )
+            .slice(0, limit);
+          break;
+        }
+
+        case 'partyName': {
+          // Get unique party names from both machine and QC entry
+          const pipeline = [
+            {
+              $lookup: {
+                from: 'machines',
+                localField: 'machineId',
+                foreignField: '_id',
+                as: 'machineId',
+              },
+            },
+            {
+              $unwind: '$machineId',
+            },
+            {
+              $lookup: {
+                from: 'qamachineentries',
+                localField: 'qcEntryId',
+                foreignField: '_id',
+                as: 'qcEntryId',
+              },
+            },
+            {
+              $unwind: {
+                path: '$qcEntryId',
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                machinePartyNames: {
+                  $addToSet: '$machineId.party_name',
+                },
+                qcPartyNames: {
+                  $addToSet: '$qcEntryId.party_name',
+                },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                allValues: {
+                  $setUnion: ['$machinePartyNames', '$qcPartyNames'],
+                },
+              },
+            },
+          ];
+
+          const result = await QCApproval.aggregate(pipeline);
+          const allValues = result[0]?.allValues || [];
+
+          // Filter based on query
+          suggestions = allValues
+            .filter(
+              (val: string) =>
+                val && val.toLowerCase().includes(searchQuery.toLowerCase()),
+            )
+            .slice(0, limit);
+          break;
+        }
+
+        case 'location': {
+          // Get unique locations from both machine and QC entry
+          const pipeline = [
+            {
+              $lookup: {
+                from: 'machines',
+                localField: 'machineId',
+                foreignField: '_id',
+                as: 'machineId',
+              },
+            },
+            {
+              $unwind: '$machineId',
+            },
+            {
+              $lookup: {
+                from: 'qamachineentries',
+                localField: 'qcEntryId',
+                foreignField: '_id',
+                as: 'qcEntryId',
+              },
+            },
+            {
+              $unwind: {
+                path: '$qcEntryId',
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                machineLocations: {
+                  $addToSet: '$machineId.location',
+                },
+                qcLocations: {
+                  $addToSet: '$qcEntryId.location',
+                },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                allValues: {
+                  $setUnion: ['$machineLocations', '$qcLocations'],
+                },
+              },
+            },
+          ];
+
+          const result = await QCApproval.aggregate(pipeline);
+          const allValues = result[0]?.allValues || [];
+
+          // Filter based on query
+          suggestions = allValues
+            .filter(
+              (val: string) =>
+                val && val.toLowerCase().includes(searchQuery.toLowerCase()),
+            )
+            .slice(0, limit);
+          break;
+        }
+
+        default:
+          throw new ApiError(
+            'INVALID_FIELD',
+            StatusCodes.BAD_REQUEST,
+            'INVALID_FIELD',
+            `Invalid field: ${field}. Supported fields: requestedBy, partyName, location`,
+          );
+      }
+
+      res
+        .status(200)
+        .json(
+          new ApiResponse(
+            200,
+            { suggestions },
+            'Suggestions retrieved successfully',
+          ),
+        );
+    } catch (error: any) {
+      throw new ApiError(
+        'SUGGESTION_ERROR',
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'SUGGESTION_ERROR',
+        error.message || 'Failed to retrieve suggestions',
+      );
+    }
+  },
+);
+
 const QCApprovalController = {
   getQCApprovalStatistics,
   getAllQCApprovals,
@@ -1220,6 +2411,7 @@ const QCApprovalController = {
   getQCApprovalsByUser,
   uploadDocuments,
   deleteDocument,
+  getSearchSuggestions,
 };
 
 export default QCApprovalController;

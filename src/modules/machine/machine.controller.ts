@@ -47,6 +47,7 @@ import { ICategory } from '../../models/category.model';
 import mongoose from 'mongoose';
 import notificationEmitter from '../notification/services/notificationEmitter.service';
 import { NotificationType } from '../../models/notification.model';
+import { QAMachineEntry } from '../../models/qcMachine.model';
 
 /**
  * Get approvers for QC approval based on permission configuration
@@ -406,6 +407,12 @@ class MachineController {
         filters.dispatch_date_from = value.dispatch_date_from;
       if (value.dispatch_date_to)
         filters.dispatch_date_to = value.dispatch_date_to;
+      // Specific field filters
+      if (value.party_name) filters.party_name = value.party_name;
+      if (value.machine_sequence)
+        filters.machine_sequence = value.machine_sequence;
+      if (value.location) filters.location = value.location;
+      if (value.mobile_number) filters.mobile_number = value.mobile_number;
       if (value.sortBy) filters.sortBy = value.sortBy;
       if (value.sortOrder) filters.sortOrder = value.sortOrder;
 
@@ -894,9 +901,40 @@ class MachineController {
             );
           }
 
+          // Find the QC person who created the most recent QC entry for this machine
+          // This ensures requestedBy is set to a QC person, not the technician
+          let requestedByUserId: mongoose.Types.ObjectId | string = userId; // Fallback to technician if no QC entry found
+
+          const mostRecentQCEntry = await QAMachineEntry.findOne({
+            machine_id: machineId,
+          })
+            .sort({ createdAt: -1 })
+            .select('added_by')
+            .lean();
+
+          if (mostRecentQCEntry && mostRecentQCEntry.added_by) {
+            requestedByUserId =
+              mostRecentQCEntry.added_by as mongoose.Types.ObjectId;
+            console.log(
+              `[Machine Controller] Using QC person from most recent QC entry as requestedBy: ${requestedByUserId}`,
+            );
+          } else {
+            // If no QC entry exists, use the first QC approver as requestedBy
+            if (approvers.length > 0) {
+              requestedByUserId = approvers[0];
+              console.log(
+                `[Machine Controller] No QC entry found, using first QC approver as requestedBy: ${requestedByUserId}`,
+              );
+            } else {
+              console.warn(
+                '[Machine Controller] No QC entry and no approvers found, using technician as requestedBy (fallback)',
+              );
+            }
+          }
+
           const qcApproval = new QCApproval({
             machineId: machineId,
-            requestedBy: userId,
+            requestedBy: requestedByUserId,
             approvalType: QCApprovalType.MACHINE_QC_EDIT,
             status: QCApprovalStatus.PENDING,
             approvers: approvers,
@@ -1149,6 +1187,173 @@ class MachineController {
         'Machine statistics retrieved successfully',
       );
       res.status(response.statusCode).json(response);
+    },
+  );
+
+  /**
+   * Get search suggestions for machines
+   * GET /api/machines/suggestions/:field?query=...
+   */
+  static getSearchSuggestions = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const { field } = req.params;
+      const query = (req.query.query as string) || '';
+      const limit = parseInt((req.query.limit as string) || '10', 10);
+
+      if (!field) {
+        throw new ApiError(
+          'INVALID_FIELD',
+          StatusCodes.BAD_REQUEST,
+          'INVALID_FIELD',
+          'Field parameter is required',
+        );
+      }
+
+      const searchQuery = query.trim().toLowerCase();
+      let suggestions: string[] = [];
+
+      try {
+        switch (field) {
+          case 'partyName': {
+            const machines = await Machine.find({
+              deletedAt: null,
+              party_name: { $exists: true, $ne: null, $ne: '' },
+            })
+              .select('party_name')
+              .distinct('party_name')
+              .lean();
+
+            suggestions = machines
+              .filter(
+                (name: string) =>
+                  name && name.toLowerCase().includes(searchQuery),
+              )
+              .slice(0, limit);
+            break;
+          }
+
+          case 'machineSequence': {
+            const machines = await Machine.find({
+              deletedAt: null,
+              machine_sequence: { $exists: true, $ne: null, $ne: '' },
+            })
+              .select('machine_sequence')
+              .distinct('machine_sequence')
+              .lean();
+
+            suggestions = machines
+              .filter(
+                (seq: string) => seq && seq.toLowerCase().includes(searchQuery),
+              )
+              .slice(0, limit);
+            break;
+          }
+
+          case 'location': {
+            const machines = await Machine.find({
+              deletedAt: null,
+              location: { $exists: true, $ne: null, $ne: '' },
+            })
+              .select('location')
+              .distinct('location')
+              .lean();
+
+            suggestions = machines
+              .filter(
+                (loc: string) => loc && loc.toLowerCase().includes(searchQuery),
+              )
+              .slice(0, limit);
+            break;
+          }
+
+          case 'mobileNumber': {
+            const machines = await Machine.find({
+              deletedAt: null,
+              mobile_number: { $exists: true, $ne: null, $ne: '' },
+            })
+              .select('mobile_number')
+              .distinct('mobile_number')
+              .lean();
+
+            suggestions = machines
+              .filter((num: string) => num && num.includes(searchQuery))
+              .slice(0, limit);
+            break;
+          }
+
+          case 'approver': {
+            // Get unique users who created machines
+            const machines = await Machine.find({
+              deletedAt: null,
+              created_by: { $exists: true, $ne: null },
+            })
+              .select('created_by')
+              .populate('created_by', 'username name email')
+              .lean();
+
+            const userMap = new Map<string, string>();
+            machines.forEach(
+              (m: {
+                created_by?: {
+                  _id: mongoose.Types.ObjectId | string;
+                  name?: string;
+                  username?: string;
+                  email?: string;
+                };
+              }) => {
+                if (m.created_by && m.created_by._id) {
+                  const userId = m.created_by._id.toString();
+                  const displayName =
+                    m.created_by.name ||
+                    m.created_by.username ||
+                    m.created_by.email ||
+                    '';
+                  if (displayName && !userMap.has(userId)) {
+                    userMap.set(userId, displayName);
+                  }
+                }
+              },
+            );
+
+            suggestions = Array.from(userMap.values())
+              .filter(
+                (name: string) =>
+                  name && name.toLowerCase().includes(searchQuery),
+              )
+              .slice(0, limit);
+            break;
+          }
+
+          default:
+            throw new ApiError(
+              'INVALID_FIELD',
+              StatusCodes.BAD_REQUEST,
+              'INVALID_FIELD',
+              `Invalid field: ${field}. Supported fields: partyName, machineSequence, location, mobileNumber, approver`,
+            );
+        }
+
+        res
+          .status(200)
+          .json(
+            new ApiResponse(
+              200,
+              { suggestions },
+              'Suggestions retrieved successfully',
+            ),
+          );
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : 'Failed to retrieve suggestions';
+        throw new ApiError(
+          'SUGGESTION_ERROR',
+          StatusCodes.INTERNAL_SERVER_ERROR,
+          'SUGGESTION_ERROR',
+          errorMessage,
+        );
+      }
     },
   );
 }
