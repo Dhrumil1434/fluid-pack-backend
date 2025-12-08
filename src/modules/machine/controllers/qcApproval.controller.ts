@@ -691,10 +691,22 @@ export const getAllQCApprovals = asyncHandler(
           preserveNullAndEmptyArrays: true,
         },
       },
-      // Lookup the added_by user from the QC entry (QC person who created the entry)
-      // Note: We filter by qcEntryId.added_by ObjectId directly (no need to populate for filtering)
-      // The added_by field in qamachineentries is the QC person who created the entry
-      // We can filter by ObjectId directly: qcEntryId.added_by = requestedByUserId
+      // Lookup the added_by user from the QC entry (for filtering by requestedBy text search)
+      // This allows us to filter by qcEntryId.added_by.username, name, or email
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'qcEntryId.added_by',
+          foreignField: '_id',
+          as: 'qcEntryId.added_by',
+        },
+      },
+      {
+        $unwind: {
+          path: '$qcEntryId.added_by',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
       // Add computed fields for reliable sorting (after all lookups)
       {
         $addFields: {
@@ -794,10 +806,11 @@ export const getAllQCApprovals = asyncHandler(
       );
 
       // Build OR condition: match if either requestedBy OR qcEntryId.added_by matches
+      // Note: We need to match on the ObjectId field BEFORE lookup, so we use the raw field
       const requestedByOrCondition = {
         $or: [
-          { requestedBy: requestedByUserId }, // Match approval's requestedBy
-          { 'qcEntryId.added_by': requestedByUserId }, // Match QC entry's added_by
+          { requestedBy: requestedByUserId }, // Match approval's requestedBy ObjectId
+          { 'qcEntryId.added_by': requestedByUserId }, // Match QC entry's added_by ObjectId
         ],
       };
 
@@ -818,43 +831,20 @@ export const getAllQCApprovals = asyncHandler(
         requestedByUserId.toString(),
       );
     } else if (requestedBy) {
-      // Fallback: if user not found by ObjectId, try filtering by populated fields
+      // Fallback: if user not found by ObjectId, try filtering by populated fields after lookup
+      // This will be applied in the pipeline AFTER the lookups happen
       console.log(
-        '[QC Approval Controller] Falling back to post-lookup requestedBy filter (user not found by ObjectId)',
+        '[QC Approval Controller] User not found by ObjectId, will filter by populated fields after lookup:',
+        requestedBy,
       );
-      if (matchStage.$or) {
-        const requestedByFilter = {
-          $or: [
-            { 'requestedBy.name': { $regex: requestedBy, $options: 'i' } },
-            { 'requestedBy.username': { $regex: requestedBy, $options: 'i' } },
-            { 'requestedBy.email': { $regex: requestedBy, $options: 'i' } },
-            // Also try QC entry's added_by populated field
-            {
-              'qcEntryId.added_by.name': { $regex: requestedBy, $options: 'i' },
-            },
-            {
-              'qcEntryId.added_by.username': {
-                $regex: requestedBy,
-                $options: 'i',
-              },
-            },
-            {
-              'qcEntryId.added_by.email': {
-                $regex: requestedBy,
-                $options: 'i',
-              },
-            },
-          ],
-        };
-        const originalOr = matchStage.$or;
-        delete matchStage.$or;
-        matchStage.$and = [{ $or: originalOr }, requestedByFilter];
-      } else {
-        matchStage.$or = [
+
+      // Filter by populated fields after lookup (applied in pipeline after lookups)
+      const requestedByTextFilter = {
+        $or: [
           { 'requestedBy.name': { $regex: requestedBy, $options: 'i' } },
           { 'requestedBy.username': { $regex: requestedBy, $options: 'i' } },
           { 'requestedBy.email': { $regex: requestedBy, $options: 'i' } },
-          // Also try QC entry's added_by populated field
+          // Also try QC entry's added_by populated field (after lookup)
           { 'qcEntryId.added_by.name': { $regex: requestedBy, $options: 'i' } },
           {
             'qcEntryId.added_by.username': {
@@ -865,7 +855,18 @@ export const getAllQCApprovals = asyncHandler(
           {
             'qcEntryId.added_by.email': { $regex: requestedBy, $options: 'i' },
           },
-        ];
+        ],
+      };
+
+      // Combine with existing matchStage conditions
+      if (matchStage.$and) {
+        matchStage.$and.push(requestedByTextFilter);
+      } else if (matchStage.$or) {
+        const originalOr = matchStage.$or;
+        delete matchStage.$or;
+        matchStage.$and = [{ $or: originalOr }, requestedByTextFilter];
+      } else {
+        matchStage.$or = requestedByTextFilter.$or;
       }
     }
 

@@ -1,0 +1,782 @@
+{
+  "data_type_rules": {
+    "string": {
+      "description": "Plain text string values",
+      "excel": {
+        "method": "Direct cell value assignment",
+        "format": "text",
+        "style": "data_row",
+        "null_handling": "Display as empty string or '-'",
+        "max_length": "No limit, but Excel has cell character limit of 32,767",
+        "example": "cell.value = fieldValue || '-'"
+      },
+      "pdf": {
+        "method": "Text element",
+        "format": "plain_text",
+        "style": "value",
+        "null_handling": "Display as 'N/A' or '-'",
+        "wrap": true,
+        "example": "{ text: fieldValue || 'N/A', style: 'value' }"
+      }
+    },
+    "number": {
+      "description": "Numeric values (integers, decimals)",
+      "excel": {
+        "method": "Direct cell value assignment",
+        "format": "number",
+        "style": "data_row",
+        "decimal_places": "Preserve original decimal places",
+        "null_handling": "Display as 0 or '-'",
+        "example": "cell.value = fieldValue ?? '-'"
+      },
+      "pdf": {
+        "method": "Text element with number formatting",
+        "format": "number",
+        "style": "value",
+        "null_handling": "Display as 'N/A' or '-'",
+        "locale_formatting": true,
+        "example": "{ text: fieldValue?.toLocaleString() || 'N/A', style: 'value' }"
+      }
+    },
+    "boolean": {
+      "description": "True/false boolean values",
+      "excel": {
+        "method": "Convert to text representation",
+        "format": "text",
+        "style": "data_row",
+        "mapping": {
+          "true": "Yes",
+          "false": "No"
+        },
+        "null_handling": "Display as '-'",
+        "example": "cell.value = fieldValue === true ? 'Yes' : fieldValue === false ? 'No' : '-'"
+      },
+      "pdf": {
+        "method": "Text element with Yes/No",
+        "format": "text",
+        "style": "value",
+        "mapping": {
+          "true": "Yes",
+          "false": "No"
+        },
+        "null_handling": "Display as 'N/A'",
+        "example": "{ text: fieldValue === true ? 'Yes' : fieldValue === false ? 'No' : 'N/A', style: 'value' }"
+      }
+    },
+    "date": {
+      "description": "Date and datetime values",
+      "excel": {
+        "method": "Excel date format",
+        "format": "date",
+        "style": "data_row",
+        "date_format": "YYYY-MM-DD",
+        "datetime_format": "YYYY-MM-DD HH:mm:ss",
+        "null_handling": "Display as '-'",
+        "timezone": "Use server timezone or UTC",
+        "example": "cell.value = fieldValue ? new Date(fieldValue) : null; cell.numFmt = 'yyyy-mm-dd hh:mm:ss'"
+      },
+      "pdf": {
+        "method": "Formatted date string",
+        "format": "date_string",
+        "style": "value",
+        "date_format": "YYYY-MM-DD",
+        "datetime_format": "YYYY-MM-DD HH:mm:ss",
+        "null_handling": "Display as 'N/A'",
+        "locale_formatting": true,
+        "example": "{ text: fieldValue ? formatDate(fieldValue) : 'N/A', style: 'value' }"
+      },
+      "formatting_function": {
+        "name": "formatDate",
+        "description": "Format date according to specified format",
+        "parameters": ["dateValue", "includeTime"]
+      }
+    },
+    "object": {
+      "description": "Nested object structures",
+      "excel": {
+        "method": "Flatten to readable string using export_value or nested field access",
+        "format": "flattened_string",
+        "style": "data_row",
+        "flattening_rules": {
+          "single_nested_field": "Use export_value path (e.g., 'role.name')",
+          "multiple_fields": "Join with comma or create separate columns",
+          "complex_object": "Stringify as JSON or extract key fields"
+        },
+        "null_handling": "Display as '-'",
+        "example": "cell.value = nestedObject?.name || nestedObject?._id || '-'"
+      },
+      "pdf": {
+        "method": "Extract value or display as formatted object",
+        "format": "extracted_value_or_object",
+        "style": "value",
+        "extraction_rules": {
+          "has_export_value": "Use export_value path",
+          "has_display_field": "Use common display fields (name, title, label)",
+          "complex_object": "Display as key-value pairs or JSON string"
+        },
+        "null_handling": "Display as 'N/A'",
+        "example": "{ text: extractNestedValue(object, 'name') || 'N/A', style: 'value' }"
+      },
+      "common_extraction_fields": [
+        "name",
+        "title",
+        "label",
+        "username",
+        "email",
+        "_id"
+      ]
+    },
+    "array": {
+      "description": "Array of values",
+      "excel": {
+        "method": "Join array elements with separator OR use column spanning for better readability",
+        "format": "joined_string_or_column_span",
+        "style": "data_row",
+        "separator": ", ",
+        "max_items_display": "All items",
+        "truncation": "If too long, show first N items + '...'",
+        "null_handling": "Display as '-'",
+        "column_spanning": {
+          "when_to_use": "When array has multiple items and readability is important",
+          "method": "Use cell merge (mergeCells) to span multiple columns if needed, or use text wrapping",
+          "text_wrapping": {
+            "enabled": true,
+            "wrapText": true,
+            "alignment": "left"
+          },
+          "cell_width": "Auto-adjust or set minimum width based on content",
+          "example": "cell.value = array?.join(', '); cell.alignment = { wrapText: true, vertical: 'top' }"
+        },
+        "example": "cell.value = array?.length > 0 ? array.join(', ') : '-'"
+      },
+      "pdf": {
+        "method": "Comma-separated string for inline display",
+        "format": "comma_separated_string",
+        "style": "value",
+        "display_as_list": false,
+        "separator": ", ",
+        "null_handling": "Display as 'N/A'",
+        "wrapping": {
+          "enabled": true,
+          "max_width": "Full page width minus margins"
+        },
+        "example": "{ text: array?.length > 0 ? array.join(', ') : 'N/A', style: 'value' }"
+      },
+      "special_cases": {
+        "array_of_objects": {
+          "description": "Extract specific field from each object",
+          "excel": {
+            "method": "Extract field and join with comma",
+            "example": "array.map(obj => obj.name || obj._id).filter(Boolean).join(', ')"
+          },
+          "pdf": {
+            "method": "Extract field and join with comma",
+            "example": "array.map(obj => obj.name || obj._id).filter(Boolean).join(', ')"
+          }
+        },
+        "array_of_strings": {
+          "description": "Join directly with comma separator",
+          "excel": "array.join(', ')",
+          "pdf": "array.join(', ')"
+        },
+        "empty_array": {
+          "description": "Display placeholder",
+          "excel": "Display as '-'",
+          "pdf": "Display as 'N/A'"
+        },
+        "multiple_related_arrays": {
+          "description": "When exporting multiple related arrays (e.g., roles, departments, categories)",
+          "excel": {
+            "method": "Each array in separate column, joined with comma",
+            "example": "roles: roles.join(', '), departments: departments.join(', ')"
+          },
+          "pdf": {
+            "method": "Each array on separate line with label, comma-separated values",
+            "example": "{ text: ['Roles: ', roles.join(', ')], style: 'value' }"
+          }
+        }
+      }
+    },
+    "image": {
+      "description": "Single image URL or path",
+      "excel": {
+        "method": "Embed image in cell using exceljs addImage()",
+        "format": "embedded_image",
+        "style": "data_row",
+        "image_sizing": {
+          "width": 100,
+          "height": 100,
+          "unit": "pixels",
+          "maintain_aspect_ratio": true
+        },
+        "cell_sizing": {
+          "row_height": 100,
+          "column_width": 15
+        },
+        "positioning": {
+          "method": "addImage() with cell coordinates",
+          "anchor": "cell",
+          "offsetX": 2,
+          "offsetY": 2
+        },
+        "fallback": "If image fails to load, display image URL as text",
+        "null_handling": "Display as '-'",
+        "supported_formats": ["png", "jpeg", "jpg", "gif", "bmp"],
+        "implementation": {
+          "step1": "Load image from URL or file path",
+          "step2": "Convert to buffer if needed",
+          "step3": "Use worksheet.addImage(imageBuffer, { tl: { col: colIndex, row: rowIndex }, ext: { width: 100, height: 100 } })",
+          "step4": "Adjust row height to fit image"
+        },
+        "example": "worksheet.addImage(imageBuffer, { tl: { col: colIndex, row: rowIndex }, ext: { width: 100, height: 100 } })"
+      },
+      "pdf": {
+        "method": "Embed image using pdfmake images object",
+        "format": "embedded_image",
+        "style": "value",
+        "image_sizing": {
+          "width": 200,
+          "height": 200,
+          "fit": [200, 200],
+          "maintain_aspect_ratio": true
+        },
+        "positioning": "Inline with text or in dedicated image section",
+        "fallback": "If image fails to load, display placeholder text with URL",
+        "null_handling": "Display as 'No image available'",
+        "supported_formats": ["png", "jpeg", "jpg"],
+        "conversion": {
+          "method": "Convert to base64 or use file system path",
+          "base64_prefix": "data:image/png;base64,",
+          "file_path": "Use absolute path if available"
+        },
+        "implementation": {
+          "step1": "Load image from URL or file path",
+          "step2": "Convert to base64 string",
+          "step3": "Add to pdfmake images object: images: { imageKey: base64String }",
+          "step4": "Use in content: { image: 'imageKey', width: 200, height: 200 }"
+        },
+        "example": "{ image: 'imageKey', width: 200, height: 200, fit: [200, 200] }"
+      },
+      "error_handling": {
+        "image_not_found": "Display placeholder text",
+        "invalid_format": "Skip image, show error message",
+        "load_timeout": "Use timeout, show placeholder after timeout"
+      }
+    },
+    "image_array": {
+      "description": "Array of image URLs or paths",
+      "excel": {
+        "method": "Embed first image, list others as URLs",
+        "format": "first_image_embedded_plus_urls",
+        "style": "data_row",
+        "primary_image": {
+          "embed": true,
+          "sizing": {
+            "width": 100,
+            "height": 100
+          }
+        },
+        "additional_images": {
+          "method": "List URLs in cell or separate column",
+          "format": "comma_separated_urls",
+          "max_display": "First 3 URLs, then '...' if more"
+        },
+        "cell_sizing": {
+          "row_height": 100,
+          "column_width": 15
+        },
+        "null_handling": "Display as '-'",
+        "example": "Embed first image, cell.value = array.length > 1 ? `+${array.length - 1} more` : ''"
+      },
+      "pdf": {
+        "method": "Display all images in grid or list",
+        "format": "image_gallery",
+        "style": "value",
+        "layout": {
+          "method": "columns or stack",
+          "images_per_row": 2,
+          "spacing": 10
+        },
+        "image_sizing": {
+          "width": 150,
+          "height": 150,
+          "fit": [150, 150]
+        },
+        "max_images_display": "All images",
+        "pagination": "If too many images, create new page",
+        "null_handling": "Display as 'No images available'",
+        "example": "{ columns: images.map(img => ({ image: imgKey, width: 150, height: 150 })) }"
+      }
+    },
+    "document": {
+      "description": "Single document object with name and file_path",
+      "excel": {
+        "method": "Create hyperlink in cell",
+        "format": "hyperlink",
+        "style": "data_row",
+        "hyperlink_format": {
+          "text": "document.name",
+          "link": "file:///absolute_path or http://url",
+          "tooltip": "Click to open document"
+        },
+        "file_path_handling": {
+          "absolute_path": "Use as-is with file:/// prefix",
+          "relative_path": "Convert to absolute path",
+          "url": "Use http:// or https:// prefix"
+        },
+        "null_handling": "Display as '-'",
+        "example": "cell.value = { text: document.name, hyperlink: 'file:///' + absolutePath }"
+      },
+      "pdf": {
+        "method": "Create clickable link",
+        "format": "link",
+        "style": "value",
+        "link_format": {
+          "text": "document.name",
+          "link": "file:///absolute_path or http://url",
+          "color": "#3B82F6",
+          "decoration": "underline"
+        },
+        "file_path_handling": {
+          "absolute_path": "Use as-is with file:/// prefix",
+          "relative_path": "Convert to absolute path",
+          "url": "Use http:// or https:// prefix"
+        },
+        "null_handling": "Display as 'N/A'",
+        "example": "{ text: document.name, link: absolutePath, color: '#3B82F6', decoration: 'underline' }"
+      },
+      "document_structure": {
+        "name": "Document display name",
+        "file_path": "Path or URL to document",
+        "document_type": "Optional document type (PDF, DOC, etc.)",
+        "uploaded_at": "Optional upload date"
+      }
+    },
+    "document_array": {
+      "description": "Array of document objects",
+      "excel": {
+        "method": "List hyperlinks in cell or separate rows",
+        "format": "multiple_hyperlinks",
+        "style": "data_row",
+        "display_method": "comma_separated_links",
+        "alternative": "Create separate rows for each document",
+        "max_display": "First 3 documents, then '+N more'",
+        "cell_wrapping": true,
+        "null_handling": "Display as '-'",
+        "example": "cell.value = documents.map(doc => doc.name).join(', '); Add hyperlinks for each"
+      },
+      "pdf": {
+        "method": "Bullet list of clickable links",
+        "format": "link_list",
+        "style": "value",
+        "layout": "unordered_list",
+        "item_format": {
+          "text": "document.name",
+          "link": "file_path",
+          "color": "#3B82F6",
+          "decoration": "underline"
+        },
+        "show_document_type": true,
+        "show_upload_date": false,
+        "null_handling": "Display as 'No documents available'",
+        "example": "{ ul: documents.map(doc => ({ text: doc.name, link: doc.file_path, color: '#3B82F6' })) }"
+      }
+    },
+    "status_badge": {
+      "description": "Status values with color coding (approved, pending, rejected, etc.)",
+      "excel": {
+        "method": "Text with background color fill",
+        "format": "colored_cell",
+        "style": "status_specific",
+        "status_mapping": {
+          "approved": {
+            "text": "Approved",
+            "fill_color": "#10B981",
+            "text_color": "#FFFFFF",
+            "bold": true
+          },
+          "pending": {
+            "text": "Pending",
+            "fill_color": "#F59E0B",
+            "text_color": "#FFFFFF",
+            "bold": true
+          },
+          "rejected": {
+            "text": "Rejected",
+            "fill_color": "#EF4444",
+            "text_color": "#FFFFFF",
+            "bold": true
+          },
+          "active": {
+            "text": "Active",
+            "fill_color": "#10B981",
+            "text_color": "#FFFFFF",
+            "bold": true
+          },
+          "inactive": {
+            "text": "Inactive",
+            "fill_color": "#6B7280",
+            "text_color": "#FFFFFF",
+            "bold": true
+          }
+        },
+        "cell_alignment": "center",
+        "null_handling": "Display as '-' with default style",
+        "example": "Apply status-specific style based on value"
+      },
+      "pdf": {
+        "method": "Colored text with background",
+        "format": "colored_text",
+        "style": "status_specific",
+        "status_mapping": {
+          "approved": {
+            "text": "Approved",
+            "color": "#FFFFFF",
+            "fillColor": "#10B981",
+            "bold": true
+          },
+          "pending": {
+            "text": "Pending",
+            "color": "#FFFFFF",
+            "fillColor": "#F59E0B",
+            "bold": true
+          },
+          "rejected": {
+            "text": "Rejected",
+            "color": "#FFFFFF",
+            "fillColor": "#EF4444",
+            "bold": true
+          },
+          "active": {
+            "text": "Active",
+            "color": "#FFFFFF",
+            "fillColor": "#10B981",
+            "bold": true
+          },
+          "inactive": {
+            "text": "Inactive",
+            "color": "#FFFFFF",
+            "fillColor": "#6B7280",
+            "bold": true
+          }
+        },
+        "null_handling": "Display as 'N/A' with default style",
+        "example": "Apply status-specific style in pdfmake text definition"
+      }
+    },
+    "json_object": {
+      "description": "Complex JSON objects (like metadata)",
+      "excel": {
+        "method": "Stringify as JSON or key-value pairs",
+        "format": "json_string",
+        "style": "data_row",
+        "display_method": "stringified_json",
+        "alternative": "Flatten to key-value pairs in separate columns",
+        "null_handling": "Display as '-'",
+        "example": "cell.value = JSON.stringify(object, null, 2)"
+      },
+      "pdf": {
+        "method": "Formatted key-value pairs or JSON string",
+        "format": "formatted_object",
+        "style": "value",
+        "display_method": "key_value_pairs",
+        "formatting": {
+          "key_style": "bold",
+          "value_style": "normal",
+          "separator": ": "
+        },
+        "null_handling": "Display as 'N/A'",
+        "example": "Display as formatted list: { text: 'Key: Value', style: 'value' }"
+      }
+    },
+    "url": {
+      "description": "URL or hyperlink",
+      "excel": {
+        "method": "Create hyperlink",
+        "format": "hyperlink",
+        "style": "data_row",
+        "hyperlink_format": {
+          "text": "URL or friendly name",
+          "link": "full_url",
+          "tooltip": "Click to open link"
+        },
+        "null_handling": "Display as '-'",
+        "example": "cell.value = { text: 'Link', hyperlink: url }"
+      },
+      "pdf": {
+        "method": "Clickable link",
+        "format": "link",
+        "style": "value",
+        "link_format": {
+          "text": "URL or friendly name",
+          "link": "full_url",
+          "color": "#3B82F6",
+          "decoration": "underline"
+        },
+        "null_handling": "Display as 'N/A'",
+        "example": "{ text: 'Link', link: url, color: '#3B82F6', decoration: 'underline' }"
+      }
+    }
+  },
+  "export_format_rules": {
+    "excel": {
+      "workbook_structure": {
+        "default_sheet_name": "Data",
+        "header_row": 1,
+        "data_start_row": 2,
+        "freeze_panes": {
+          "row": 1,
+          "column": 0
+        },
+        "sheet_naming": {
+          "rule": "Use descriptive, meaningful names based on page/export type",
+          "format": "Page Name or Data Type",
+          "examples": {
+            "user_management": "Users",
+            "machine_management": "Machines",
+            "category_management": "Categories",
+            "qc_entries": "QC Entries",
+            "machine_approvals": "Machine Approvals",
+            "role_management": "Roles",
+            "permission_management": "Permissions",
+            "sequence_management": "Sequence Configurations"
+          },
+          "max_length": 31,
+          "invalid_characters": [":", "\\", "/", "?", "*", "[", "]"]
+        },
+        "filter_and_sort_info": {
+          "include_in_export": true,
+          "placement": "metadata_sheet_or_header",
+          "description": "If the page has search/filter/sort functionality, include this information in the Excel export",
+          "options": {
+            "option_1": "Create a separate 'Export Info' sheet with filter and sort details",
+            "option_2": "Add filter/sort information as header rows above the data",
+            "option_3": "Add as worksheet properties/metadata"
+          },
+          "recommended": "option_1",
+          "information_to_include": {
+            "filters": {
+              "search_term": "Search query if applied",
+              "applied_filters": "All active filters (role, department, status, etc.)",
+              "date_range": "Date from/to if applied",
+              "category_filters": "Category/subcategory filters if applied"
+            },
+            "sorting": {
+              "sort_by": "Column being sorted",
+              "sort_order": "asc or desc",
+              "multiple_sorts": "If multiple sort columns exist"
+            },
+            "pagination": {
+              "note": "Export includes ALL matching records, not just current page",
+              "total_records": "Total number of records exported",
+              "exported_at": "Timestamp of export"
+            }
+          }
+        }
+      },
+      "column_sizing": {
+        "auto_size": true,
+        "min_width": 10,
+        "max_width": 50,
+        "image_column_width": 15
+      },
+      "row_sizing": {
+        "default_height": 20,
+        "image_row_height": 100,
+        "auto_height": false
+      },
+      "styling": {
+        "header_style": "header",
+        "data_style": "data_row",
+        "alternate_row_colors": false
+      },
+      "image_handling": {
+        "max_images_per_row": 1,
+        "image_cell_padding": 2,
+        "fallback_to_url": true
+      },
+      "hyperlink_handling": {
+        "style": {
+          "color": "#0563C1",
+          "underline": true
+        }
+      }
+    },
+    "pdf": {
+      "document_structure": {
+        "page_size": "A4",
+        "page_margins": [40, 60, 40, 60],
+        "orientation": "portrait"
+      },
+      "header_footer": {
+        "include_header": true,
+        "include_footer": true,
+        "header_content": "Company logo and title",
+        "footer_content": "Page numbers and date"
+      },
+      "styling": {
+        "default_font": "Roboto",
+        "font_sizes": {
+          "header": 24,
+          "subheader": 16,
+          "label": 11,
+          "value": 12
+        }
+      },
+      "image_handling": {
+        "max_images_per_row": 2,
+        "image_spacing": 10,
+        "fallback_to_placeholder": true
+      },
+      "link_handling": {
+        "color": "#3B82F6",
+        "decoration": "underline"
+      },
+      "page_breaks": {
+        "avoid_orphans": true,
+        "keep_together": ["label", "value"]
+      }
+    }
+  },
+  "data_processing_rules": {
+    "null_undefined_handling": {
+      "excel": {
+        "null_value": "-",
+        "undefined_value": "-",
+        "empty_string": "-",
+        "empty_array": "-"
+      },
+      "pdf": {
+        "null_value": "N/A",
+        "undefined_value": "N/A",
+        "empty_string": "N/A",
+        "empty_array": "N/A"
+      }
+    },
+    "data_transformation": {
+      "nested_object_extraction": {
+        "method": "Use export_value path or extract common fields",
+        "common_paths": ["name", "title", "label", "username", "email", "_id"],
+        "fallback": "Stringify object or display '-'"
+      },
+      "array_processing": {
+        "method": "Join with separator or create list",
+        "separator": ", ",
+        "max_items": "No limit, but truncate if too long"
+      },
+      "date_formatting": {
+        "date_format": "YYYY-MM-DD",
+        "datetime_format": "YYYY-MM-DD HH:mm:ss",
+        "timezone": "Server timezone or UTC"
+      }
+    },
+    "error_handling": {
+      "image_load_failure": {
+        "excel": "Display image URL as text",
+        "pdf": "Display placeholder text 'Image not available'"
+      },
+      "document_not_found": {
+        "excel": "Display document name without hyperlink",
+        "pdf": "Display document name with note 'File not found'"
+      },
+      "data_type_mismatch": {
+        "action": "Attempt conversion, fallback to string representation"
+      },
+      "missing_field": {
+        "action": "Display null value representation"
+      }
+    }
+  },
+  "field_specific_rules": {
+    "user_avatar": {
+      "type": "image",
+      "excel": {
+        "method": "Embed image in cell",
+        "sizing": { "width": 50, "height": 50 }
+      },
+      "pdf": {
+        "method": "Embed image",
+        "sizing": { "width": 100, "height": 100 }
+      }
+    },
+    "machine_images": {
+      "type": "image_array",
+      "excel": {
+        "method": "Embed first image, list others",
+        "primary_sizing": { "width": 100, "height": 100 }
+      },
+      "pdf": {
+        "method": "Display all images in grid",
+        "layout": "2 columns",
+        "sizing": { "width": 150, "height": 150 }
+      }
+    },
+    "machine_documents": {
+      "type": "document_array",
+      "excel": {
+        "method": "List hyperlinks",
+        "max_display": 3
+      },
+      "pdf": {
+        "method": "Bullet list of links",
+        "show_type": true
+      }
+    },
+    "qc_files": {
+      "type": "document_array",
+      "excel": {
+        "method": "List hyperlinks",
+        "max_display": 5
+      },
+      "pdf": {
+        "method": "Bullet list of links",
+        "show_type": true,
+        "show_date": true
+      }
+    },
+    "metadata": {
+      "type": "json_object",
+      "excel": {
+        "method": "Stringify JSON",
+        "format": "json_string"
+      },
+      "pdf": {
+        "method": "Key-value pairs",
+        "format": "formatted_object"
+      }
+    }
+  },
+  "implementation_guidelines": {
+    "excel_export_workflow": [
+      "1. Create workbook and worksheet",
+      "2. Define column headers with header style",
+      "3. For each record:",
+      "   a. Process each field according to its type",
+      "   b. Apply appropriate formatting",
+      "   c. Handle images, documents, nested objects",
+      "   d. Apply status badges with colors",
+      "4. Auto-size columns",
+      "5. Freeze header row",
+      "6. Generate and return file"
+    ],
+    "pdf_export_workflow": [
+      "1. Create pdfmake document definition",
+      "2. Add header with logo and title",
+      "3. For each field:",
+      "   a. Add label with label style",
+      "   b. Add value with value style",
+      "   c. Handle images, documents, nested objects",
+      "   d. Apply status badges with colors",
+      "4. Add footer with page numbers",
+      "5. Generate and return PDF"
+    ],
+    "common_utilities": {
+      "formatDate": "Format date according to specified format",
+      "extractNestedValue": "Extract value from nested object using path",
+      "loadImageAsBase64": "Load image and convert to base64",
+      "loadImageAsBuffer": "Load image and convert to buffer",
+      "resolveFilePath": "Convert relative path to absolute path",
+      "formatStatusBadge": "Format status value with appropriate colors"
+    }
+  }
+}

@@ -1,0 +1,1164 @@
+{
+  "admin_dashboard_pages": [
+    {
+      "page_id": "dashboard",
+      "route": "/admin/dashboard",
+      "component": "DashboardComponent",
+      "has_table": false,
+      "has_pagination": false,
+      "has_search": false,
+      "description": "Main dashboard with statistics and previews",
+      "exportable": false,
+      "data_fields": []
+    },
+    {
+      "page_id": "user_management",
+      "route": "/admin/users",
+      "component": "UserManagementComponent",
+      "has_table": true,
+      "has_pagination": true,
+      "has_search": true,
+      "description": "User management with table, search, filters, and pagination",
+      "exportable": true,
+      "default_limit": 20,
+      "data_fields": [
+        {
+          "field_name": "_id",
+          "display_name": "User ID",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "User ID",
+          "pdf_label": "User ID"
+        },
+        {
+          "field_name": "username",
+          "display_name": "Username",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Username",
+          "pdf_label": "Username"
+        },
+        {
+          "field_name": "email",
+          "display_name": "Email",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Email",
+          "pdf_label": "Email"
+        },
+        {
+          "field_name": "role",
+          "display_name": "Role",
+          "type": "object",
+          "nested_fields": ["_id", "name"],
+          "exportable": true,
+          "excel_column": "Role",
+          "pdf_label": "Role",
+          "export_value": "role.name"
+        },
+        {
+          "field_name": "department",
+          "display_name": "Department",
+          "type": "object",
+          "nested_fields": ["_id", "name"],
+          "exportable": true,
+          "excel_column": "Department",
+          "pdf_label": "Department",
+          "export_value": "department.name"
+        },
+        {
+          "field_name": "isApproved",
+          "display_name": "Status",
+          "type": "boolean",
+          "exportable": true,
+          "excel_column": "Status",
+          "pdf_label": "Status",
+          "format": "status_badge",
+          "values": {
+            "true": "Approved",
+            "false": "Pending"
+          }
+        },
+        {
+          "field_name": "createdAt",
+          "display_name": "Created At",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Created Date",
+          "pdf_label": "Created Date",
+          "format": "date"
+        },
+        {
+          "field_name": "updatedAt",
+          "display_name": "Updated At",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Updated Date",
+          "pdf_label": "Updated Date",
+          "format": "date"
+        },
+        {
+          "field_name": "lastLogin",
+          "display_name": "Last Login",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Last Login",
+          "pdf_label": "Last Login",
+          "format": "date"
+        },
+        {
+          "field_name": "avatar",
+          "display_name": "Avatar",
+          "type": "image",
+          "exportable": true,
+          "excel_column": "Avatar",
+          "pdf_label": "Profile Picture",
+          "format": "image_url"
+        }
+      ],
+      "filters": [
+        "search",
+        "role",
+        "department",
+        "isApproved",
+        "status",
+        "dateFrom",
+        "dateTo"
+      ],
+      "sort_options": ["createdAt", "username", "email", "role", "department"]
+    },
+    {
+      "page_id": "machine_management",
+      "route": "/admin/machines",
+      "component": "MachineManagementComponent",
+      "has_table": true,
+      "has_pagination": true,
+      "has_search": true,
+      "description": "Machine management with table, search, filters, and pagination",
+      "exportable": true,
+      "default_limit": 20,
+      "data_fields": [
+        {
+          "field_name": "_id",
+          "display_name": "Machine ID",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Machine ID",
+          "pdf_label": "Machine ID"
+        },
+        {
+          "field_name": "name",
+          "display_name": "Machine Name",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Machine Name",
+          "pdf_label": "Machine Name"
+        },
+        {
+          "field_name": "category_id",
+          "display_name": "Category",
+          "type": "object",
+          "nested_fields": ["_id", "name", "description"],
+          "exportable": true,
+          "excel_column": "Category",
+          "pdf_label": "Category",
+          "export_value": "category_id.name"
+        },
+        {
+          "field_name": "subcategory_id",
+          "display_name": "Subcategory",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Subcategory",
+          "pdf_label": "Subcategory"
+        },
+        {
+          "field_name": "machine_sequence",
+          "display_name": "Sequence",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Machine Sequence",
+          "pdf_label": "Machine Sequence"
+        },
+        {
+          "field_name": "party_name",
+          "display_name": "Party Name",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Party Name",
+          "pdf_label": "Party Name"
+        },
+        {
+          "field_name": "location",
+          "display_name": "Location",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Location",
+          "pdf_label": "Location"
+        },
+        {
+          "field_name": "mobile_number",
+          "display_name": "Mobile Number",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Mobile Number",
+          "pdf_label": "Mobile Number"
+        },
+        {
+          "field_name": "dispatch_date",
+          "display_name": "Dispatch Date",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Dispatch Date",
+          "pdf_label": "Dispatch Date",
+          "format": "date"
+        },
+        {
+          "field_name": "images",
+          "display_name": "Images",
+          "type": "array",
+          "item_type": "image_url",
+          "exportable": true,
+          "excel_column": "Images",
+          "pdf_label": "Machine Images",
+          "format": "image_array",
+          "notes": "Multiple images per machine - embed first image in Excel, show all in PDF"
+        },
+        {
+          "field_name": "documents",
+          "display_name": "Documents",
+          "type": "array",
+          "item_type": "object",
+          "nested_fields": ["name", "file_path", "document_type", "uploaded_at"],
+          "exportable": true,
+          "excel_column": "Documents",
+          "pdf_label": "Documents",
+          "format": "document_links",
+          "notes": "Create hyperlinks in Excel, list with links in PDF"
+        },
+        {
+          "field_name": "created_by",
+          "display_name": "Created By",
+          "type": "object",
+          "nested_fields": ["_id", "username", "email"],
+          "exportable": true,
+          "excel_column": "Created By",
+          "pdf_label": "Created By",
+          "export_value": "created_by.username"
+        },
+        {
+          "field_name": "is_approved",
+          "display_name": "Status",
+          "type": "boolean",
+          "exportable": true,
+          "excel_column": "Status",
+          "pdf_label": "Status",
+          "format": "status_badge",
+          "values": {
+            "true": "Approved",
+            "false": "Pending"
+          }
+        },
+        {
+          "field_name": "metadata",
+          "display_name": "Metadata",
+          "type": "object",
+          "exportable": true,
+          "excel_column": "Metadata",
+          "pdf_label": "Metadata",
+          "format": "json_string"
+        },
+        {
+          "field_name": "createdAt",
+          "display_name": "Created At",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Created Date",
+          "pdf_label": "Created Date",
+          "format": "date"
+        },
+        {
+          "field_name": "updatedAt",
+          "display_name": "Updated At",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Updated Date",
+          "pdf_label": "Updated Date",
+          "format": "date"
+        }
+      ],
+      "filters": [
+        "search",
+        "category_id",
+        "is_approved",
+        "has_sequence",
+        "metadata_key",
+        "metadata_value",
+        "dispatch_date_from",
+        "dispatch_date_to",
+        "party_name",
+        "machine_sequence",
+        "location",
+        "mobile_number"
+      ],
+      "sort_options": [
+        "createdAt",
+        "name",
+        "category",
+        "dispatch_date",
+        "party_name",
+        "machine_sequence",
+        "location",
+        "mobile_number",
+        "created_by"
+      ]
+    },
+    {
+      "page_id": "machine_approvals",
+      "route": "/admin/machine-approvals",
+      "component": "AdminMachineApprovalsComponent",
+      "has_table": true,
+      "has_pagination": true,
+      "has_search": true,
+      "description": "Machine approval requests with table, search, filters, and pagination",
+      "exportable": true,
+      "default_limit": 20,
+      "data_fields": [
+        {
+          "field_name": "_id",
+          "display_name": "Approval ID",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Approval ID",
+          "pdf_label": "Approval ID"
+        },
+        {
+          "field_name": "machineId",
+          "display_name": "Machine",
+          "type": "object",
+          "nested_fields": ["_id", "name", "machine_sequence"],
+          "exportable": true,
+          "excel_column": "Machine",
+          "pdf_label": "Machine",
+          "export_value": "machineId.name"
+        },
+        {
+          "field_name": "approvalType",
+          "display_name": "Approval Type",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Type",
+          "pdf_label": "Approval Type",
+          "values": {
+            "MACHINE_CREATION": "Creation",
+            "MACHINE_EDIT": "Edit",
+            "MACHINE_DELETION": "Deletion"
+          }
+        },
+        {
+          "field_name": "status",
+          "display_name": "Status",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Status",
+          "pdf_label": "Status",
+          "format": "status_badge",
+          "values": {
+            "PENDING": "Pending",
+            "APPROVED": "Approved",
+            "REJECTED": "Rejected",
+            "CANCELLED": "Cancelled"
+          }
+        },
+        {
+          "field_name": "requestedBy",
+          "display_name": "Requested By",
+          "type": "object",
+          "nested_fields": ["_id", "username", "email"],
+          "exportable": true,
+          "excel_column": "Requested By",
+          "pdf_label": "Requested By",
+          "export_value": "requestedBy.username"
+        },
+        {
+          "field_name": "requestNotes",
+          "display_name": "Request Notes",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Request Notes",
+          "pdf_label": "Request Notes"
+        },
+        {
+          "field_name": "approvedBy",
+          "display_name": "Approved By",
+          "type": "object",
+          "nested_fields": ["_id", "username", "name"],
+          "exportable": true,
+          "excel_column": "Approved By",
+          "pdf_label": "Approved By",
+          "export_value": "approvedBy.username"
+        },
+        {
+          "field_name": "rejectedBy",
+          "display_name": "Rejected By",
+          "type": "object",
+          "nested_fields": ["_id", "username", "name"],
+          "exportable": true,
+          "excel_column": "Rejected By",
+          "pdf_label": "Rejected By",
+          "export_value": "rejectedBy.username"
+        },
+        {
+          "field_name": "approvalDate",
+          "display_name": "Approval Date",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Approval Date",
+          "pdf_label": "Approval Date",
+          "format": "date"
+        },
+        {
+          "field_name": "rejectionReason",
+          "display_name": "Rejection Reason",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Rejection Reason",
+          "pdf_label": "Rejection Reason"
+        },
+        {
+          "field_name": "createdAt",
+          "display_name": "Created At",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Created Date",
+          "pdf_label": "Created Date",
+          "format": "date"
+        }
+      ],
+      "filters": [
+        "search",
+        "status",
+        "approvalType",
+        "requestedBy",
+        "createdBy",
+        "machineName",
+        "dateFrom",
+        "dateTo"
+      ],
+      "sort_options": ["createdAt", "status", "approvalType"]
+    },
+    {
+      "page_id": "approval_management",
+      "route": "/admin/approvals",
+      "component": "ApprovalManagementComponent",
+      "has_table": true,
+      "has_pagination": false,
+      "has_search": false,
+      "description": "Approval management with tabs for user and dispatch approvals",
+      "exportable": true,
+      "tabs": [
+        {
+          "tab_name": "users",
+          "display_name": "User Approvals",
+          "data_fields": [
+            {
+              "field_name": "_id",
+              "display_name": "User ID",
+              "type": "string",
+              "exportable": true
+            },
+            {
+              "field_name": "username",
+              "display_name": "Username",
+              "type": "string",
+              "exportable": true
+            },
+            {
+              "field_name": "email",
+              "display_name": "Email",
+              "type": "string",
+              "exportable": true
+            },
+            {
+              "field_name": "role",
+              "display_name": "Role",
+              "type": "object",
+              "nested_fields": ["name"],
+              "exportable": true,
+              "export_value": "role.name"
+            },
+            {
+              "field_name": "createdAt",
+              "display_name": "Requested",
+              "type": "date",
+              "exportable": true,
+              "format": "date"
+            }
+          ]
+        },
+        {
+          "tab_name": "machines",
+          "display_name": "Dispatch Approvals",
+          "data_fields": [
+            {
+              "field_name": "_id",
+              "display_name": "Approval ID",
+              "type": "string",
+              "exportable": true
+            },
+            {
+              "field_name": "machineId",
+              "display_name": "Machine",
+              "type": "object",
+              "exportable": true
+            },
+            {
+              "field_name": "status",
+              "display_name": "Status",
+              "type": "string",
+              "exportable": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "page_id": "category_management",
+      "route": "/admin/categories",
+      "component": "CategoryManagementComponent",
+      "has_table": true,
+      "has_pagination": true,
+      "has_search": true,
+      "description": "Category management with table, search, filters, and pagination",
+      "exportable": true,
+      "default_limit": 20,
+      "data_fields": [
+        {
+          "field_name": "_id",
+          "display_name": "Category ID",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Category ID",
+          "pdf_label": "Category ID"
+        },
+        {
+          "field_name": "name",
+          "display_name": "Name",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Name",
+          "pdf_label": "Name"
+        },
+        {
+          "field_name": "slug",
+          "display_name": "Slug",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Slug",
+          "pdf_label": "Slug"
+        },
+        {
+          "field_name": "description",
+          "display_name": "Description",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Description",
+          "pdf_label": "Description"
+        },
+        {
+          "field_name": "level",
+          "display_name": "Level",
+          "type": "number",
+          "exportable": true,
+          "excel_column": "Level",
+          "pdf_label": "Level",
+          "values": {
+            "0": "Main Category",
+            "1": "Subcategory",
+            "2": "Sub-subcategory"
+          }
+        },
+        {
+          "field_name": "parent_id",
+          "display_name": "Parent",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Parent Category",
+          "pdf_label": "Parent Category"
+        },
+        {
+          "field_name": "sort_order",
+          "display_name": "Sort Order",
+          "type": "number",
+          "exportable": true,
+          "excel_column": "Sort Order",
+          "pdf_label": "Sort Order"
+        },
+        {
+          "field_name": "is_active",
+          "display_name": "Status",
+          "type": "boolean",
+          "exportable": true,
+          "excel_column": "Status",
+          "pdf_label": "Status",
+          "format": "status_badge",
+          "values": {
+            "true": "Active",
+            "false": "Inactive"
+          }
+        },
+        {
+          "field_name": "image_url",
+          "display_name": "Image",
+          "type": "image",
+          "exportable": true,
+          "excel_column": "Image",
+          "pdf_label": "Category Image",
+          "format": "image_url"
+        },
+        {
+          "field_name": "created_by",
+          "display_name": "Created By",
+          "type": "object",
+          "nested_fields": ["_id", "username", "email"],
+          "exportable": true,
+          "excel_column": "Created By",
+          "pdf_label": "Created By",
+          "export_value": "created_by.username"
+        },
+        {
+          "field_name": "created_at",
+          "display_name": "Created At",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Created Date",
+          "pdf_label": "Created Date",
+          "format": "date"
+        }
+      ],
+      "filters": ["search", "level", "includeInactive", "parentId"],
+      "sort_options": ["name", "level", "sort_order", "created_at"]
+    },
+    {
+      "page_id": "department_management",
+      "route": "/admin/departments",
+      "component": "DepartmentManagementComponent",
+      "has_table": false,
+      "has_pagination": false,
+      "has_search": false,
+      "description": "Department management - placeholder component",
+      "exportable": false,
+      "data_fields": []
+    },
+    {
+      "page_id": "role_management",
+      "route": "/admin/roles",
+      "component": "RoleManagementComponent",
+      "has_table": true,
+      "has_pagination": true,
+      "has_search": true,
+      "description": "Role management with table, search, filters, and pagination",
+      "exportable": true,
+      "default_limit": 10,
+      "data_fields": [
+        {
+          "field_name": "_id",
+          "display_name": "Role ID",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Role ID",
+          "pdf_label": "Role ID"
+        },
+        {
+          "field_name": "name",
+          "display_name": "Name",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Name",
+          "pdf_label": "Name"
+        },
+        {
+          "field_name": "description",
+          "display_name": "Description",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Description",
+          "pdf_label": "Description"
+        },
+        {
+          "field_name": "createdAt",
+          "display_name": "Created At",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Created Date",
+          "pdf_label": "Created Date",
+          "format": "date"
+        },
+        {
+          "field_name": "updatedAt",
+          "display_name": "Updated At",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Updated Date",
+          "pdf_label": "Updated Date",
+          "format": "date"
+        }
+      ],
+      "filters": ["search"],
+      "sort_options": ["name", "createdAt"]
+    },
+    {
+      "page_id": "permission_management",
+      "route": "/admin/permissions",
+      "component": "PermissionManagementComponent",
+      "has_table": true,
+      "has_pagination": true,
+      "has_search": true,
+      "description": "Permission management with table, search, filters, and pagination",
+      "exportable": true,
+      "default_limit": 20,
+      "data_fields": [
+        {
+          "field_name": "_id",
+          "display_name": "Permission ID",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Permission ID",
+          "pdf_label": "Permission ID"
+        },
+        {
+          "field_name": "resource",
+          "display_name": "Resource",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Resource",
+          "pdf_label": "Resource"
+        },
+        {
+          "field_name": "action",
+          "display_name": "Action",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Action",
+          "pdf_label": "Action"
+        },
+        {
+          "field_name": "roles",
+          "display_name": "Roles",
+          "type": "array",
+          "exportable": true,
+          "excel_column": "Roles",
+          "pdf_label": "Roles",
+          "format": "array_string"
+        },
+        {
+          "field_name": "createdAt",
+          "display_name": "Created At",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Created Date",
+          "pdf_label": "Created Date",
+          "format": "date"
+        }
+      ],
+      "filters": ["search", "resource", "action", "role"],
+      "sort_options": ["resource", "action", "createdAt"]
+    },
+    {
+      "page_id": "qc_entries",
+      "route": "/admin/qc-entries",
+      "component": "QcEntriesComponent",
+      "has_table": true,
+      "has_pagination": true,
+      "has_search": true,
+      "description": "QC entries management with table, search, filters, and pagination. Contains machine data, images, documents, and QC-specific fields",
+      "exportable": true,
+      "default_limit": 20,
+      "data_fields": [
+        {
+          "field_name": "_id",
+          "display_name": "QC Entry ID",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "QC Entry ID",
+          "pdf_label": "QC Entry ID"
+        },
+        {
+          "field_name": "machineId",
+          "display_name": "Machine",
+          "type": "object",
+          "nested_fields": ["_id", "name", "machine_sequence", "category_id", "images"],
+          "exportable": true,
+          "excel_column": "Machine",
+          "pdf_label": "Machine",
+          "export_value": "machineId.name"
+        },
+        {
+          "field_name": "name",
+          "display_name": "Machine Name",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Machine Name",
+          "pdf_label": "Machine Name"
+        },
+        {
+          "field_name": "category_id",
+          "display_name": "Category",
+          "type": "object",
+          "nested_fields": ["_id", "name"],
+          "exportable": true,
+          "excel_column": "Category",
+          "pdf_label": "Category",
+          "export_value": "category_id.name"
+        },
+        {
+          "field_name": "subcategory_id",
+          "display_name": "Subcategory",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Subcategory",
+          "pdf_label": "Subcategory"
+        },
+        {
+          "field_name": "machine_sequence",
+          "display_name": "Machine Sequence",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Machine Sequence",
+          "pdf_label": "Machine Sequence"
+        },
+        {
+          "field_name": "party_name",
+          "display_name": "Party Name",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Party Name",
+          "pdf_label": "Party Name"
+        },
+        {
+          "field_name": "location",
+          "display_name": "Location",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Location",
+          "pdf_label": "Location"
+        },
+        {
+          "field_name": "mobile_number",
+          "display_name": "Mobile Number",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Mobile Number",
+          "pdf_label": "Mobile Number"
+        },
+        {
+          "field_name": "dispatch_date",
+          "display_name": "Dispatch Date",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Dispatch Date",
+          "pdf_label": "Dispatch Date",
+          "format": "date"
+        },
+        {
+          "field_name": "images",
+          "display_name": "Machine Images",
+          "type": "array",
+          "item_type": "image_url",
+          "exportable": true,
+          "excel_column": "Images",
+          "pdf_label": "Machine Images",
+          "format": "image_array",
+          "notes": "Multiple images - embed first image in Excel, show all in PDF"
+        },
+        {
+          "field_name": "documents",
+          "display_name": "Machine Documents",
+          "type": "array",
+          "item_type": "object",
+          "nested_fields": ["name", "file_path", "document_type", "uploaded_at"],
+          "exportable": true,
+          "excel_column": "Machine Documents",
+          "pdf_label": "Machine Documents",
+          "format": "document_links",
+          "notes": "Create hyperlinks in Excel, list with links in PDF"
+        },
+        {
+          "field_name": "qcNotes",
+          "display_name": "QC Notes",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "QC Notes",
+          "pdf_label": "QC Notes"
+        },
+        {
+          "field_name": "qualityScore",
+          "display_name": "Quality Score",
+          "type": "number",
+          "exportable": true,
+          "excel_column": "Quality Score",
+          "pdf_label": "Quality Score",
+          "format": "number"
+        },
+        {
+          "field_name": "inspectionDate",
+          "display_name": "Inspection Date",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Inspection Date",
+          "pdf_label": "Inspection Date",
+          "format": "date"
+        },
+        {
+          "field_name": "qc_date",
+          "display_name": "QC Date",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "QC Date",
+          "pdf_label": "QC Date",
+          "format": "date"
+        },
+        {
+          "field_name": "nextInspectionDate",
+          "display_name": "Next Inspection Date",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Next Inspection Date",
+          "pdf_label": "Next Inspection Date",
+          "format": "date"
+        },
+        {
+          "field_name": "files",
+          "display_name": "QC Files",
+          "type": "array",
+          "item_type": "file_url",
+          "exportable": true,
+          "excel_column": "QC Files",
+          "pdf_label": "QC Files",
+          "format": "file_links",
+          "notes": "QC-specific uploaded files"
+        },
+        {
+          "field_name": "report_link",
+          "display_name": "Report Link",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Report Link",
+          "pdf_label": "Report Link",
+          "format": "hyperlink"
+        },
+        {
+          "field_name": "addedBy",
+          "display_name": "Added By",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Added By",
+          "pdf_label": "Added By"
+        },
+        {
+          "field_name": "approval_status",
+          "display_name": "Approval Status",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Approval Status",
+          "pdf_label": "Approval Status",
+          "format": "status_badge",
+          "values": {
+            "PENDING": "Pending",
+            "APPROVED": "Approved",
+            "REJECTED": "Rejected"
+          }
+        },
+        {
+          "field_name": "createdAt",
+          "display_name": "Created At",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Created Date",
+          "pdf_label": "Created Date",
+          "format": "date"
+        }
+      ],
+      "filters": [
+        "search",
+        "category_id",
+        "is_approved",
+        "metadata_key",
+        "metadata_value",
+        "dispatch_date_from",
+        "dispatch_date_to"
+      ],
+      "sort_options": ["createdAt", "name", "qc_date", "inspectionDate"]
+    },
+    {
+      "page_id": "sequence_management",
+      "route": "/admin/sequence-management",
+      "component": "SequenceManagementComponent",
+      "has_table": true,
+      "has_pagination": true,
+      "has_search": true,
+      "description": "Sequence configuration management with table, search, filters, and pagination",
+      "exportable": true,
+      "default_limit": 10,
+      "data_fields": [
+        {
+          "field_name": "_id",
+          "display_name": "Config ID",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Config ID",
+          "pdf_label": "Config ID"
+        },
+        {
+          "field_name": "category_id",
+          "display_name": "Category",
+          "type": "object",
+          "nested_fields": ["_id", "name", "slug"],
+          "exportable": true,
+          "excel_column": "Category",
+          "pdf_label": "Category",
+          "export_value": "category_id.name"
+        },
+        {
+          "field_name": "subcategory_id",
+          "display_name": "Subcategory",
+          "type": "object",
+          "nested_fields": ["_id", "name", "slug"],
+          "exportable": true,
+          "excel_column": "Subcategory",
+          "pdf_label": "Subcategory",
+          "export_value": "subcategory_id.name"
+        },
+        {
+          "field_name": "sequence_prefix",
+          "display_name": "Prefix",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Sequence Prefix",
+          "pdf_label": "Sequence Prefix"
+        },
+        {
+          "field_name": "current_sequence",
+          "display_name": "Current Sequence",
+          "type": "number",
+          "exportable": true,
+          "excel_column": "Current Sequence",
+          "pdf_label": "Current Sequence",
+          "format": "number"
+        },
+        {
+          "field_name": "starting_number",
+          "display_name": "Starting Number",
+          "type": "number",
+          "exportable": true,
+          "excel_column": "Starting Number",
+          "pdf_label": "Starting Number",
+          "format": "number"
+        },
+        {
+          "field_name": "format",
+          "display_name": "Format",
+          "type": "string",
+          "exportable": true,
+          "excel_column": "Format",
+          "pdf_label": "Format"
+        },
+        {
+          "field_name": "is_active",
+          "display_name": "Status",
+          "type": "boolean",
+          "exportable": true,
+          "excel_column": "Status",
+          "pdf_label": "Status",
+          "format": "status_badge",
+          "values": {
+            "true": "Active",
+            "false": "Inactive"
+          }
+        },
+        {
+          "field_name": "created_by",
+          "display_name": "Created By",
+          "type": "object",
+          "nested_fields": ["_id", "username", "email"],
+          "exportable": true,
+          "excel_column": "Created By",
+          "pdf_label": "Created By",
+          "export_value": "created_by.username"
+        },
+        {
+          "field_name": "created_at",
+          "display_name": "Created At",
+          "type": "date",
+          "exportable": true,
+          "excel_column": "Created Date",
+          "pdf_label": "Created Date",
+          "format": "date"
+        }
+      ],
+      "filters": ["search", "categoryId", "includeInactive"],
+      "sort_options": ["category_id", "created_at"]
+    }
+  ],
+  "export_requirements": {
+    "excel_export": {
+      "scope": "all_matching_records",
+      "description": "Export ALL records matching current filters, not just current page",
+      "features": [
+        "Include all data fields specified for each page",
+        "Embed images in Excel cells (first image for arrays)",
+        "Create hyperlinks for document file_paths",
+        "Apply consistent styling matching admin dashboard",
+        "Include filter information in header or separate sheet",
+        "Support for nested objects (flatten to readable format)",
+        "Format dates consistently",
+        "Apply status badges with colors"
+      ]
+    },
+    "pdf_export_individual": {
+      "scope": "single_record",
+      "description": "Export individual record as beautiful formatted PDF",
+      "features": [
+        "Include all data fields for the record",
+        "Display all images in PDF (not just first)",
+        "List all documents with clickable links",
+        "Beautiful layout with proper sections",
+        "Include company branding/logo",
+        "Proper formatting for dates, numbers, and text",
+        "Status badges with colors",
+        "Metadata displayed in readable format"
+      ]
+    },
+    "common_requirements": {
+      "image_handling": {
+        "excel": "Embed first image from array, show path for others",
+        "pdf": "Display all images with proper sizing"
+      },
+      "document_handling": {
+        "excel": "Create hyperlinks with document names",
+        "pdf": "List documents with clickable links"
+      },
+      "date_formatting": "Use consistent date format (e.g., 'YYYY-MM-DD HH:mm:ss')",
+      "status_formatting": "Use colored badges matching admin dashboard theme",
+      "nested_objects": "Flatten to readable format (e.g., 'role.name' instead of object)"
+    }
+  },
+  "implementation_notes": {
+    "backend_endpoints": {
+      "excel_export": "/api/admin/export/:pageId/excel",
+      "pdf_export": "/api/admin/export/:pageId/:recordId/pdf",
+      "query_params": "All current filter parameters should be passed to backend"
+    },
+    "frontend_integration": {
+      "excel_button": "Add 'Export to Excel' button in table header/filters section",
+      "pdf_button": "Add 'Export PDF' button in individual record actions",
+      "loading_state": "Show loading indicator during export generation",
+      "error_handling": "Handle errors gracefully with user-friendly messages"
+    },
+    "data_fetching": {
+      "excel": "Fetch all records matching filters (no pagination limit)",
+      "pdf": "Fetch single record with all related data populated"
+    }
+  }
+}
+

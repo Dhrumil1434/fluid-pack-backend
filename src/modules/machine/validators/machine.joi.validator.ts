@@ -164,6 +164,7 @@ export const updateMachineSchema = Joi.object({
     .messages({
       'array.base': 'Removed documents must be an array',
     }),
+  removedImages: Joi.array().items(Joi.string().uri()).optional(),
 
   party_name: Joi.string()
     .trim()

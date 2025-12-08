@@ -5,6 +5,7 @@ import connectDB from './db/index';
 import app from './app';
 import notificationEmitter from './modules/notification/services/notificationEmitter.service';
 import { ensureUploadDirectories } from './utils/ensureUploadDirs';
+import cloudinaryConfig from './config/cloudinary.config';
 dotenv.config();
 
 const PORT = parseInt(process.env['PORT'] || '5000', 10);
@@ -30,7 +31,26 @@ function getLocalIP(): string | null {
 // Ensure upload directories exist before starting server
 ensureUploadDirectories();
 
-connectDB()
+// Initialize Cloudinary
+try {
+  cloudinaryConfig.initialize();
+} catch (error) {
+  console.error('❌ Cloudinary initialization failed!', error);
+  process.exit(1);
+}
+
+// Verify Cloudinary connection
+cloudinaryConfig
+  .verifyConnection()
+  .then((isConnected) => {
+    if (!isConnected) {
+      console.error('❌ Cloudinary connection verification failed!');
+      process.exit(1);
+    }
+
+    // Connect to MongoDB
+    return connectDB();
+  })
   .then(() => {
     // Create HTTP server
     const httpServer = createServer(app);
@@ -52,5 +72,6 @@ connectDB()
     });
   })
   .catch((err) => {
-    console.error('❌ MongoDB connection failed!', err);
+    console.error('❌ Server startup failed!', err);
+    process.exit(1);
   });

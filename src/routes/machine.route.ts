@@ -19,7 +19,7 @@ import MachineController from '../modules/machine/machine.controller';
 import { verifyJWT } from '../middlewares/auth.middleware';
 import { AuthRole } from '../middlewares/auth-role.middleware';
 import {
-  uploadMachineImagesUpdate,
+  uploadMachineFilesUpdate,
   uploadMachineFiles,
   handleFileUploadError,
 } from '../middlewares/multer.middleware';
@@ -71,15 +71,18 @@ router.get(
   MachineController.getMachineById,
 );
 
-// Update machine with optional new images - Requires authentication
+// Update machine with optional new images and documents - Requires authentication
 router.put(
   '/:id',
   verifyJWT,
   checkPermission([ActionType.EDIT_MACHINE]),
-  uploadMachineImagesUpdate.array('images', 5), // Allow up to 5 new images
+  uploadMachineFilesUpdate.fields([
+    { name: 'images', maxCount: 5 },
+    { name: 'documents', maxCount: 10 },
+  ]),
   handleFileUploadError,
   validateParams(machineIdParamSchema),
-  parseJsonFields(['metadata', 'removedDocuments']), // Parse JSON strings to objects
+  parseJsonFields(['metadata', 'removedDocuments', 'removedImages']), // Parse JSON strings to objects
   validateRequest(updateMachineSchema),
   MachineController.updateMachine,
 );

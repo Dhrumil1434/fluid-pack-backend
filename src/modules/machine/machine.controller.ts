@@ -24,6 +24,7 @@ import {
   moveFilesToMachineDirectory,
   moveDocumentFilesToMachineDirectory,
   deleteMachineImages,
+  deleteMachineDocuments,
 } from '../../middlewares/multer.middleware';
 import MachineApprovalService from './services/machineApproval.service';
 import { ApprovalType } from '../../models/machineApproval.model';
@@ -498,14 +499,38 @@ class MachineController {
       }
 
       let imagePaths: string[] = [];
+      let documentPaths: string[] = [];
 
       try {
-        // Move uploaded files to machine directory if files were uploaded
-        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-          imagePaths = await moveFilesToMachineDirectory(
-            req.files as Express.Multer.File[],
-            paramsValidation.value.id,
-          );
+        // Handle uploaded files (both images and documents)
+        if (req.files) {
+          const files = req.files as {
+            [fieldname: string]: Express.Multer.File[];
+          };
+
+          // Handle image files
+          if (
+            files['images'] &&
+            Array.isArray(files['images']) &&
+            files['images'].length > 0
+          ) {
+            imagePaths = await moveFilesToMachineDirectory(
+              files['images'],
+              paramsValidation.value.id,
+            );
+          }
+
+          // Handle document files
+          if (
+            files['documents'] &&
+            Array.isArray(files['documents']) &&
+            files['documents'].length > 0
+          ) {
+            documentPaths = await moveDocumentFilesToMachineDirectory(
+              files['documents'],
+              paramsValidation.value.id,
+            );
+          }
         }
 
         // Handle dispatch_date: convert empty string to null for proper processing
@@ -518,18 +543,76 @@ class MachineController {
           bodyData['dispatch_date'] = null;
         }
 
+        // Extract removed images and documents before passing to service
+        const removedImages = (bodyData.removedImages as string[]) || [];
+        const removedDocuments = bodyData.removedDocuments || [];
+        const removedDocumentPaths = Array.isArray(removedDocuments)
+          ? removedDocuments
+              .map((doc: unknown) => {
+                const docObj = doc as Record<string, unknown>;
+                return docObj.file_path || doc;
+              })
+              .filter(Boolean)
+          : [];
+
         const updateData: Partial<UpdateMachineData> = {
           ...bodyData,
           updatedBy: req.user._id,
         };
+
+        // Handle images: merge new images with existing (after removal handled by service)
+        // The service will have already filtered out removed images from existingMachine.images
+        // So we just need to add new images if any
         if (imagePaths.length > 0) {
-          updateData.images = imagePaths;
+          // If service already set images (after filtering removed), merge with new ones
+          if (updateData.images && Array.isArray(updateData.images)) {
+            updateData.images = [...updateData.images, ...imagePaths];
+          } else {
+            // No existing images after removal, just use new ones
+            updateData.images = imagePaths;
+          }
         }
+
+        // Handle documents: pass new documents to service for merging
+        // Service will handle: removal (if any), preservation of existing, and merging of new documents
+        if (documentPaths.length > 0) {
+          // Convert document paths to document objects
+          const newDocuments = documentPaths.map((path) => ({
+            name: path.split('/').pop() || 'document',
+            file_path: path,
+          }));
+
+          // Service will merge new documents with existing ones (after removal if any)
+          updateData.documents = newDocuments;
+        }
+        // If no new documents, don't set updateData.documents - service will preserve existing
 
         const machine = await MachineService.update(
           paramsValidation.value.id,
           updateData,
         );
+
+        // Delete removed images from Cloudinary (after successful update)
+        if (removedImages.length > 0) {
+          deleteMachineImages(removedImages).catch((error) => {
+            console.error(
+              'Error deleting removed images from Cloudinary:',
+              error,
+            );
+            // Don't fail the request - deletion is a cleanup operation
+          });
+        }
+
+        // Delete removed documents from Cloudinary (after successful update)
+        if (removedDocumentPaths.length > 0) {
+          deleteMachineDocuments(removedDocumentPaths).catch((error) => {
+            console.error(
+              'Error deleting removed documents from Cloudinary:',
+              error,
+            );
+            // Don't fail the request - deletion is a cleanup operation
+          });
+        }
 
         const response = new ApiResponse(
           StatusCodes.OK,
@@ -541,6 +624,9 @@ class MachineController {
         // Clean up uploaded files if update fails
         if (imagePaths.length > 0) {
           deleteMachineImages(imagePaths);
+        }
+        if (documentPaths.length > 0) {
+          deleteMachineDocuments(documentPaths);
         }
         throw error;
       }

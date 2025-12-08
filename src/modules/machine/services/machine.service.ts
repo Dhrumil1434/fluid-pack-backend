@@ -57,6 +57,7 @@ export interface UpdateMachineData {
     file_path?: string;
     document_type?: string;
   }>;
+  removedImages?: string[]; // Array of image URLs to be removed
   is_approved?: boolean;
   updatedBy?: string;
 }
@@ -632,6 +633,17 @@ class MachineService {
             : data.machine_sequence.trim();
       }
 
+      // Handle image removal
+      if (data.removedImages && data.removedImages.length > 0) {
+        const currentImages = existingMachine.images || [];
+        // Filter out removed images from current images
+        const updatedImages = currentImages.filter(
+          (img) => !data.removedImages!.includes(img),
+        );
+        // Store the filtered images (new images will be merged by controller)
+        updateData.images = updatedImages;
+      }
+
       // Handle document removal
       if (data.removedDocuments && data.removedDocuments.length > 0) {
         const currentDocuments = existingMachine.documents || [];
@@ -644,11 +656,32 @@ class MachineService {
           (doc) => !removedFilePaths.includes(doc.file_path),
         );
 
+        // Set documents to the filtered list (remaining documents after removal)
+        // New documents will be merged by the controller after this update
         updateData.documents = updatedDocuments;
-
-        // Remove the removedDocuments field from updateData as it's not a database field
-        delete updateData.removedDocuments;
+        // Store removed document paths for Cloudinary deletion (will be handled in controller)
+        (updateData as Record<string, unknown>).__removedDocuments =
+          removedFilePaths;
+      } else {
+        // No documents are being removed
+        // If updateData.documents is explicitly provided (with new documents from controller), merge with existing
+        if (updateData.documents && Array.isArray(updateData.documents)) {
+          // New documents are being added - merge with existing documents
+          const existingDocuments = existingMachine.documents || [];
+          updateData.documents = [
+            ...existingDocuments,
+            ...updateData.documents,
+          ];
+        } else {
+          // No new documents and no removal - preserve existing documents
+          // Don't set documents field - MongoDB will preserve existing documents
+          delete updateData.documents;
+        }
       }
+
+      // Remove the removedDocuments and removedImages fields from updateData as they're not database fields
+      delete updateData.removedDocuments;
+      delete (updateData as Record<string, unknown>).removedImages;
 
       const machine = await Machine.findByIdAndUpdate(id, updateData, {
         new: true,
