@@ -164,7 +164,7 @@ export class ExportService {
       throw new Error('User not found');
     }
 
-    const content = [
+    const content: Content[] = [
       { text: 'User Details', style: 'header' },
       { text: '\n' },
       {
@@ -181,7 +181,7 @@ export class ExportService {
         text: [
           { text: 'Email: ', style: 'label' },
           {
-            text: (user as Record<string, unknown>)['email'] || 'N/A',
+            text: String((user as Record<string, unknown>)['email'] || 'N/A'),
             style: 'value',
           },
         ],
@@ -190,16 +190,17 @@ export class ExportService {
         text: [
           { text: 'Role: ', style: 'label' },
           {
-            text:
+            text: String(
               (
                 (user as Record<string, unknown>)['role'] as unknown as Record<
                   string,
                   unknown
                 >
               )?.['name'] ||
-              (typeof (user as Record<string, unknown>)['role'] === 'string'
-                ? (user as Record<string, unknown>)['role']
-                : 'N/A'),
+                (typeof (user as Record<string, unknown>)['role'] === 'string'
+                  ? (user as Record<string, unknown>)['role']
+                  : 'N/A'),
+            ),
             style: 'value',
           },
         ],
@@ -208,11 +209,12 @@ export class ExportService {
         text: [
           { text: 'Department: ', style: 'label' },
           {
-            text:
+            text: String(
               (user.department as unknown as Record<string, unknown>)?.[
                 'name'
               ] ||
-              (typeof user.department === 'string' ? user.department : 'N/A'),
+                (typeof user.department === 'string' ? user.department : 'N/A'),
+            ),
             style: 'value',
           },
         ],
@@ -222,7 +224,7 @@ export class ExportService {
           { text: 'Status: ', style: 'label' },
           pdf.formatStatusBadge(user.isApproved ? 'approved' : 'pending'),
         ],
-      },
+      } as Content,
       {
         text: [
           { text: 'Created Date: ', style: 'label' },
@@ -450,7 +452,7 @@ export class ExportService {
       throw new Error('Machine not found');
     }
 
-    const content = [
+    const content: Content[] = [
       { text: 'Machine Details', style: 'header' },
       { text: '\n' },
     ];
@@ -462,7 +464,7 @@ export class ExportService {
         { text: 'Name: ', style: 'label' },
         { text: machine.name || 'N/A', style: 'value' },
       ],
-    });
+    } as Content);
     content.push({
       text: [
         { text: 'Category: ', style: 'label' },
@@ -476,13 +478,13 @@ export class ExportService {
           style: 'value',
         },
       ],
-    });
+    } as Content);
     content.push({
       text: [
         { text: 'Machine Sequence: ', style: 'label' },
         { text: machine.machine_sequence || 'N/A', style: 'value' },
       ],
-    });
+    } as Content);
     content.push({
       text: [
         { text: 'Status: ', style: 'label' },
@@ -492,7 +494,7 @@ export class ExportService {
             : 'pending',
         ),
       ],
-    });
+    } as Content);
 
     // Contact Information
     content.push({ text: '\nContact Information', style: 'subheader' });
@@ -501,12 +503,14 @@ export class ExportService {
         { text: 'Party Name: ', style: 'label' },
         { text: machine.party_name || 'N/A', style: 'value' },
       ],
-    });
+    } as Content);
     content.push({
       text: [
         { text: 'Location: ', style: 'label' },
         {
-          text: (machine as Record<string, unknown>)['location'] || 'N/A',
+          text: String(
+            (machine as Record<string, unknown>)['location'] || 'N/A',
+          ),
           style: 'value',
         },
       ],
@@ -516,29 +520,31 @@ export class ExportService {
         { text: 'Mobile Number: ', style: 'label' },
         { text: machine.mobile_number || 'N/A', style: 'value' },
       ],
-    });
+    } as Content);
     content.push({
       text: [
         { text: 'Dispatch Date: ', style: 'label' },
         {
-          text: (machine as Record<string, unknown>)['dispatch_date']
-            ? pdf.formatDate(
-                (machine as Record<string, unknown>)['dispatch_date'] as
-                  | string
-                  | Date
-                  | null
-                  | undefined,
-              )
-            : 'N/A',
+          text: String(
+            (machine as Record<string, unknown>)['dispatch_date']
+              ? pdf.formatDate(
+                  (machine as Record<string, unknown>)['dispatch_date'] as
+                    | string
+                    | Date
+                    | null
+                    | undefined,
+                )
+              : 'N/A',
+          ),
           style: 'value',
         },
       ],
-    });
+    } as Content);
 
     // Images
     if (machine.images && machine.images.length > 0) {
       content.push({ text: '\nImages', style: 'subheader' });
-      const imageColumns: unknown[] = [];
+      const imageColumns: Content[] = [];
       for (let i = 0; i < Math.min(machine.images.length, 4); i++) {
         const imagePath = machine.images[i] as string;
         const imageData = await pdf.loadImage(imagePath);
@@ -555,14 +561,14 @@ export class ExportService {
       if (imageColumns.length > 0) {
         content.push({
           columns: imageColumns,
-        });
+        } as Content);
       }
     }
 
     // Documents
     if (machine.documents && machine.documents.length > 0) {
       content.push({ text: '\nDocuments', style: 'subheader' });
-      const docList: unknown[] = [];
+      const docList: Content[] = [];
       const machineDocs = (machine as Record<string, unknown>)[
         'documents'
       ] as unknown[];
@@ -583,7 +589,7 @@ export class ExportService {
           margin: [0, 2, 0, 2],
         });
       }
-      content.push({ ul: docList });
+      content.push({ ul: docList } as Content);
     }
 
     // Metadata
@@ -722,7 +728,7 @@ export class ExportService {
       throw new Error('Category not found');
     }
 
-    const content = [
+    const content: Content[] = [
       { text: 'Category Details', style: 'header' },
       { text: '\n' },
     ];
@@ -739,7 +745,7 @@ export class ExportService {
       text: [
         { text: 'Name: ', style: 'label' },
         {
-          text: (category as Record<string, unknown>)['name'] || 'N/A',
+          text: String((category as Record<string, unknown>)['name'] || 'N/A'),
           style: 'value',
         },
       ],
@@ -748,7 +754,7 @@ export class ExportService {
       text: [
         { text: 'Slug: ', style: 'label' },
         {
-          text: (category as Record<string, unknown>)['slug'] || 'N/A',
+          text: String((category as Record<string, unknown>)['slug'] || 'N/A'),
           style: 'value',
         },
       ],
@@ -758,9 +764,9 @@ export class ExportService {
         text: [
           { text: 'Description: ', style: 'label' },
           {
-            text: (category as Record<string, unknown>)[
-              'description'
-            ] as string,
+            text: String(
+              (category as Record<string, unknown>)['description'] || '',
+            ),
             style: 'value',
           },
         ],
@@ -786,10 +792,11 @@ export class ExportService {
       text: [
         { text: 'Parent Category: ', style: 'label' },
         {
-          text:
+          text: String(
             (category.parent_id as unknown as Record<string, unknown>)?.[
               'name'
             ] || 'None (Root Category)',
+          ),
           style: 'value',
         },
       ],
@@ -805,7 +812,7 @@ export class ExportService {
         { text: 'Status: ', style: 'label' },
         pdf.formatStatusBadge(category.is_active ? 'active' : 'inactive'),
       ],
-    });
+    } as Content);
 
     // SEO Information
     if (category.seo_title || category.seo_description) {
@@ -824,7 +831,7 @@ export class ExportService {
             { text: 'SEO Description: ', style: 'label' },
             { text: category.seo_description, style: 'value' },
           ],
-        });
+        } as Content);
       }
     }
 
@@ -844,7 +851,7 @@ export class ExportService {
             { text: 'Image URL: ', style: 'label' },
             { text: category.image_url, style: 'value' },
           ],
-        });
+        } as Content);
       }
     }
 
@@ -861,7 +868,7 @@ export class ExportService {
           style: 'value',
         },
       ],
-    });
+    } as Content);
     content.push({
       text: [
         { text: 'Created Date: ', style: 'label' },
@@ -876,7 +883,7 @@ export class ExportService {
           style: 'value',
         },
       ],
-    });
+    } as Content);
     if ((category as Record<string, unknown>)['updated_at']) {
       content.push({
         text: [
@@ -892,7 +899,7 @@ export class ExportService {
             style: 'value',
           },
         ],
-      });
+      } as Content);
     }
 
     const docDefinition: TDocumentDefinitions = {
@@ -1844,7 +1851,7 @@ export class ExportService {
       throw new Error('QC entry not found');
     }
 
-    const content = [
+    const content: Content[] = [
       { text: 'QC Entry Details', style: 'header' },
       { text: '\n' },
     ];
@@ -1861,7 +1868,7 @@ export class ExportService {
       text: [
         { text: 'Machine Name: ', style: 'label' },
         {
-          text: (qcEntry as Record<string, unknown>)['name'] || 'N/A',
+          text: String((qcEntry as Record<string, unknown>)['name'] || 'N/A'),
           style: 'value',
         },
       ],
@@ -1870,8 +1877,9 @@ export class ExportService {
       text: [
         { text: 'Machine Sequence: ', style: 'label' },
         {
-          text:
+          text: String(
             (qcEntry as Record<string, unknown>)['machine_sequence'] || 'N/A',
+          ),
           style: 'value',
         },
       ],
@@ -1880,10 +1888,11 @@ export class ExportService {
       text: [
         { text: 'Category: ', style: 'label' },
         {
-          text:
+          text: String(
             (qcEntry['category_id'] as unknown as Record<string, unknown>)?.[
               'name'
             ] || 'N/A',
+          ),
           style: 'value',
         },
       ],
@@ -1895,7 +1904,7 @@ export class ExportService {
           (qcEntry.approval_status || 'PENDING').toLowerCase(),
         ),
       ],
-    });
+    } as Content);
 
     // Contact Information
     content.push({ text: '\nContact Information', style: 'subheader' });
@@ -2019,10 +2028,10 @@ export class ExportService {
         try {
           const imageData = await pdf.loadImage(imageUrl);
           content.push({
-            image: imageData,
+            image: imageData ?? undefined,
             width: 200,
             margin: [0, 5, 0, 10],
-          });
+          } as Content);
         } catch {
           content.push({
             text: [
@@ -2044,7 +2053,7 @@ export class ExportService {
     // Documents
     if (qcEntry.documents && qcEntry.documents.length > 0) {
       content.push({ text: '\nMachine Documents', style: 'subheader' });
-      const docList: unknown[] = [];
+      const docList: Content[] = [];
       qcEntry.documents.forEach((doc: unknown) => {
         const docRecord = doc as Record<string, unknown>;
         docList.push({
@@ -2094,12 +2103,13 @@ export class ExportService {
       text: [
         { text: 'Added By: ', style: 'label' },
         {
-          text:
+          text: String(
             (
               (qcEntry as Record<string, unknown>)[
                 'added_by'
               ] as unknown as Record<string, unknown>
             )?.['username'] || 'N/A',
+          ),
           style: 'value',
         },
       ],
@@ -2254,7 +2264,7 @@ export class ExportService {
       throw new Error('Machine approval not found');
     }
 
-    const content = [
+    const content: Content[] = [
       { text: 'Machine Approval Details', style: 'header' },
       { text: '\n' },
     ];
@@ -2275,10 +2285,11 @@ export class ExportService {
       text: [
         { text: 'Machine: ', style: 'label' },
         {
-          text:
+          text: String(
             (approval.machineId as unknown as Record<string, unknown>)?.[
               'name'
             ] || 'N/A',
+          ),
           style: 'value',
         },
       ],
@@ -2287,10 +2298,11 @@ export class ExportService {
       text: [
         { text: 'Machine Sequence: ', style: 'label' },
         {
-          text:
+          text: String(
             (approval['machineId'] as unknown as Record<string, unknown>)?.[
               'machine_sequence'
             ] || 'N/A',
+          ),
           style: 'value',
         },
       ],
@@ -2299,7 +2311,9 @@ export class ExportService {
       text: [
         { text: 'Approval Type: ', style: 'label' },
         {
-          text: (approval as Record<string, unknown>)['approvalType'] || 'N/A',
+          text: String(
+            (approval as Record<string, unknown>)['approvalType'] || 'N/A',
+          ),
           style: 'value',
         },
       ],
@@ -2309,7 +2323,7 @@ export class ExportService {
         { text: 'Status: ', style: 'label' },
         pdf.formatStatusBadge((approval.status || 'PENDING').toLowerCase()),
       ],
-    });
+    } as Content);
 
     // Request Information
     content.push({ text: '\nRequest Information', style: 'subheader' });
@@ -2317,22 +2331,24 @@ export class ExportService {
       text: [
         { text: 'Requested By: ', style: 'label' },
         {
-          text:
+          text: String(
             (approval['requestedBy'] as unknown as Record<string, unknown>)?.[
               'username'
             ] || 'N/A',
+          ),
           style: 'value',
         },
       ],
-    });
+    } as Content);
     content.push({
       text: [
         { text: 'Requested Email: ', style: 'label' },
         {
-          text:
+          text: String(
             (approval['requestedBy'] as unknown as Record<string, unknown>)?.[
               'email'
             ] || 'N/A',
+          ),
           style: 'value',
         },
       ],
@@ -2342,9 +2358,9 @@ export class ExportService {
         text: [
           { text: 'Request Notes: ', style: 'label' },
           {
-            text: (approval as Record<string, unknown>)[
-              'requestNotes'
-            ] as string,
+            text: String(
+              (approval as Record<string, unknown>)['requestNotes'] || '',
+            ),
             style: 'value',
           },
         ],
@@ -2373,10 +2389,11 @@ export class ExportService {
         text: [
           { text: 'Approved By: ', style: 'label' },
           {
-            text:
+            text: String(
               (approval['approvedBy'] as unknown as Record<string, unknown>)?.[
                 'username'
               ] || 'N/A',
+            ),
             style: 'value',
           },
         ],
@@ -2406,24 +2423,25 @@ export class ExportService {
         text: [
           { text: 'Rejected By: ', style: 'label' },
           {
-            text:
+            text: String(
               (
                 (approval as Record<string, unknown>)[
                   'rejectedBy'
                 ] as unknown as Record<string, unknown>
               )?.['username'] || 'N/A',
+            ),
             style: 'value',
           },
         ],
-      });
+      } as Content);
       if (approval['rejectionReason']) {
         content.push({
           text: [
             { text: 'Rejection Reason: ', style: 'label' },
             {
-              text: (approval as Record<string, unknown>)[
-                'rejectionReason'
-              ] as string,
+              text: String(
+                (approval as Record<string, unknown>)['rejectionReason'] || '',
+              ),
               style: 'value',
             },
           ],
@@ -2691,7 +2709,7 @@ export class ExportService {
           .join(', ')
       : 'None';
 
-    const content = [
+    const content: Content[] = [
       { text: 'Permission Configuration Details', style: 'header' },
       { text: '\n' },
       {
@@ -2725,7 +2743,7 @@ export class ExportService {
             permission.permission?.toLowerCase() || 'denied',
           ),
         ],
-      },
+      } as Content,
       {
         text: [
           { text: 'Roles: ', style: 'label' },
@@ -2755,7 +2773,7 @@ export class ExportService {
           { text: 'Status: ', style: 'label' },
           pdf.formatStatusBadge(permission.isActive ? 'active' : 'inactive'),
         ],
-      },
+      } as Content,
       {
         text: [
           { text: 'Priority: ', style: 'label' },
@@ -2778,13 +2796,14 @@ export class ExportService {
         text: [
           { text: 'Created By: ', style: 'label' },
           {
-            text:
+            text: String(
               (permission.createdBy as unknown as Record<string, unknown>)?.[
                 'username'
               ] ||
-              (typeof permission.createdBy === 'string'
-                ? permission.createdBy
-                : 'N/A'),
+                (typeof permission.createdBy === 'string'
+                  ? permission.createdBy
+                  : 'N/A'),
+            ),
             style: 'value',
           },
         ],
