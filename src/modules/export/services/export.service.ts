@@ -12,7 +12,11 @@ import { QCApproval } from '../../../models/qcApproval.model';
 import { PermissionConfig } from '../../../models/permissionConfig.model';
 import { SequenceManagement } from '../../../models/category.model';
 import path from 'path';
-import { TDocumentDefinitions } from 'pdfmake/interfaces';
+import type {
+  TDocumentDefinitions,
+  Content,
+  StyleDictionary,
+} from 'pdfmake/interfaces';
 
 /**
  * Export Service
@@ -160,7 +164,7 @@ export class ExportService {
       throw new Error('User not found');
     }
 
-    const content: unknown[] = [
+    const content = [
       { text: 'User Details', style: 'header' },
       { text: '\n' },
       {
@@ -237,8 +241,8 @@ export class ExportService {
     ];
 
     const docDefinition: TDocumentDefinitions = {
-      content,
-      styles,
+      content: content as Content[],
+      styles: styles as StyleDictionary,
       defaultStyle: {
         font: 'Roboto',
       },
@@ -446,7 +450,7 @@ export class ExportService {
       throw new Error('Machine not found');
     }
 
-    const content: unknown[] = [
+    const content = [
       { text: 'Machine Details', style: 'header' },
       { text: '\n' },
     ];
@@ -596,8 +600,8 @@ export class ExportService {
     }
 
     const docDefinition: TDocumentDefinitions = {
-      content,
-      styles,
+      content: content as Content[],
+      styles: styles as StyleDictionary,
       defaultStyle: {
         font: 'Roboto',
       },
@@ -718,7 +722,7 @@ export class ExportService {
       throw new Error('Category not found');
     }
 
-    const content: unknown[] = [
+    const content = [
       { text: 'Category Details', style: 'header' },
       { text: '\n' },
     ];
@@ -830,10 +834,10 @@ export class ExportService {
       try {
         const imageData = await pdf.loadImage(category.image_url);
         content.push({
-          image: imageData,
+          image: imageData ?? undefined,
           width: 200,
           margin: [0, 5, 0, 10],
-        });
+        } as Content);
       } catch {
         content.push({
           text: [
@@ -892,8 +896,8 @@ export class ExportService {
     }
 
     const docDefinition: TDocumentDefinitions = {
-      content,
-      styles,
+      content: content as Content[],
+      styles: styles as StyleDictionary,
       defaultStyle: {
         font: 'Roboto',
       },
@@ -967,14 +971,12 @@ export class ExportService {
                 | Date,
             ).toLocaleString()
           : '-',
-        updatedAt: (role as Record<string, unknown>)['updatedAt']
-          ? new Date(
-              (role as Record<string, unknown>)['updatedAt'] as
-                | string
-                | number
-                | Date,
-            ).toLocaleString()
-          : '-',
+        updatedAt: (() => {
+          const updatedAt = (role as Record<string, unknown>)['updatedAt'];
+          return updatedAt && updatedAt !== null && updatedAt !== undefined
+            ? new Date(updatedAt as string | number | Date).toLocaleString()
+            : '-';
+        })(),
       };
 
       excel.addRow(rowData);
@@ -1842,7 +1844,7 @@ export class ExportService {
       throw new Error('QC entry not found');
     }
 
-    const content: unknown[] = [
+    const content = [
       { text: 'QC Entry Details', style: 'header' },
       { text: '\n' },
     ];
@@ -2083,7 +2085,7 @@ export class ExportService {
           margin: [0, 2, 0, 2],
         });
       });
-      content.push(...fileList);
+      content.push(...(fileList as Content[]));
     }
 
     // Metadata
@@ -2125,8 +2127,8 @@ export class ExportService {
     }
 
     const docDefinition: TDocumentDefinitions = {
-      content,
-      styles,
+      content: content as Content[],
+      styles: styles as StyleDictionary,
       defaultStyle: {
         font: 'Roboto',
       },
@@ -2252,7 +2254,7 @@ export class ExportService {
       throw new Error('Machine approval not found');
     }
 
-    const content: unknown[] = [
+    const content = [
       { text: 'Machine Approval Details', style: 'header' },
       { text: '\n' },
     ];
@@ -2447,8 +2449,8 @@ export class ExportService {
     }
 
     const docDefinition: TDocumentDefinitions = {
-      content,
-      styles,
+      content: content as Content[],
+      styles: styles as StyleDictionary,
       defaultStyle: {
         font: 'Roboto',
       },
@@ -2689,7 +2691,7 @@ export class ExportService {
           .join(', ')
       : 'None';
 
-    const content: unknown[] = [
+    const content = [
       { text: 'Permission Configuration Details', style: 'header' },
       { text: '\n' },
       {
@@ -2801,8 +2803,8 @@ export class ExportService {
     ];
 
     const docDefinition: TDocumentDefinitions = {
-      content,
-      styles,
+      content: content as Content[],
+      styles: styles as StyleDictionary,
       defaultStyle: {
         font: 'Roboto',
       },
@@ -3052,8 +3054,8 @@ export class ExportService {
     ];
 
     const docDefinition: TDocumentDefinitions = {
-      content,
-      styles,
+      content: content as Content[],
+      styles: styles as StyleDictionary,
       defaultStyle: {
         font: 'Roboto',
       },
