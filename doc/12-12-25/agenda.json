@@ -1,0 +1,421 @@
+{
+  "feature": "SO (Sales Order) Management and Machine Entry Refactoring",
+  "date": "2024-12-12",
+  "description": "Implement SO schema to separate machine basic information from machine entry, allowing multiple SO records with same machine name and enabling better data normalization",
+  "objectives": [
+    "Create new SO schema with machine basic information",
+    "Remove basic fields from machine entry forms",
+    "Create SO management page in admin dashboard",
+    "Modify machine creation to use SO selection dropdown",
+    "Maintain backward compatibility with existing machine records"
+  ],
+  "tasks": {
+    "backend": {
+      "1_create_so_model": {
+        "title": "Create SO Model and Schema",
+        "description": "Create new SO model with fields: name, category_id, subcategory_id, party_name, mobile_number, documents (array, max 10), description, is_active, created_by, updatedBy, deletedAt, timestamps",
+        "files": ["back-end/src/models/so.model.ts"],
+        "fields": {
+          "name": {
+            "type": "String",
+            "required": true,
+            "trim": true,
+            "maxlength": 100
+          },
+          "category_id": {
+            "type": "ObjectId",
+            "ref": "Category",
+            "required": true
+          },
+          "subcategory_id": {
+            "type": "ObjectId",
+            "ref": "Category",
+            "default": null
+          },
+          "party_name": {
+            "type": "String",
+            "required": true,
+            "trim": true,
+            "maxlength": 100
+          },
+          "mobile_number": {
+            "type": "String",
+            "required": true,
+            "trim": true,
+            "maxlength": 20
+          },
+          "documents": {
+            "type": "Array",
+            "maxItems": 10,
+            "schema": {
+              "name": "String",
+              "file_path": "String",
+              "document_type": "String",
+              "uploaded_at": "Date"
+            }
+          },
+          "description": {
+            "type": "String",
+            "trim": true,
+            "default": ""
+          },
+          "is_active": {
+            "type": "Boolean",
+            "default": true
+          },
+          "created_by": {
+            "type": "ObjectId",
+            "ref": "User",
+            "required": true
+          },
+          "updatedBy": {
+            "type": "ObjectId",
+            "ref": "User"
+          },
+          "deletedAt": {
+            "type": "Date",
+            "default": null
+          }
+        },
+        "indexes": [
+          "name",
+          "category_id",
+          "subcategory_id",
+          "party_name",
+          "is_active",
+          "deletedAt",
+          "created_by"
+        ]
+      },
+      "2_create_so_service": {
+        "title": "Create SO Service",
+        "description": "Implement CRUD operations for SO: create, getAll (with pagination and filters), getById, update, softDelete, restore, activate, deactivate",
+        "files": ["back-end/src/modules/so/services/so.service.ts"],
+        "methods": [
+          "create",
+          "getAll",
+          "getById",
+          "update",
+          "softDelete",
+          "restore",
+          "activate",
+          "deactivate",
+          "getActiveSOs"
+        ]
+      },
+      "3_create_so_validator": {
+        "title": "Create SO Validators",
+        "description": "Create Joi validators for SO create and update operations",
+        "files": ["back-end/src/modules/so/validators/so.joi.validator.ts"],
+        "validations": {
+          "create": [
+            "name (required, min 2, max 100)",
+            "category_id (required, ObjectId)",
+            "subcategory_id (optional, ObjectId)",
+            "party_name (required, min 2, max 100)",
+            "mobile_number (required, min 10, max 20, pattern)",
+            "documents (optional, max 10)",
+            "description (optional, max 1000)"
+          ],
+          "update": ["All fields optional", "Same validations as create"]
+        }
+      },
+      "4_create_so_controller": {
+        "title": "Create SO Controller",
+        "description": "Implement SO controller with endpoints for CRUD operations",
+        "files": ["back-end/src/modules/so/so.controller.ts"],
+        "endpoints": [
+          "POST /api/so - Create SO",
+          "GET /api/so - Get all SOs (with pagination, filters)",
+          "GET /api/so/active - Get active SOs only (for dropdown)",
+          "GET /api/so/:id - Get SO by ID",
+          "PUT /api/so/:id - Update SO",
+          "DELETE /api/so/:id - Soft delete SO",
+          "PATCH /api/so/:id/activate - Activate SO",
+          "PATCH /api/so/:id/deactivate - Deactivate SO"
+        ]
+      },
+      "5_create_so_routes": {
+        "title": "Create SO Routes",
+        "description": "Create routes file with authentication and permission middleware",
+        "files": ["back-end/src/routes/so.route.ts"],
+        "middleware": [
+          "verifyJWT",
+          "checkPermission (for admin operations)",
+          "uploadFiles (for documents)",
+          "validateRequest"
+        ]
+      },
+      "6_update_machine_model": {
+        "title": "Update Machine Model",
+        "description": "Remove fields from machine schema: name, category_id, subcategory_id, party_name, mobile_number. Add so_id reference field. Keep machine_sequence (auto-generated, not user input)",
+        "files": ["back-end/src/models/machine.model.ts"],
+        "removed_fields": [
+          "name",
+          "category_id",
+          "subcategory_id",
+          "party_name",
+          "mobile_number"
+        ],
+        "added_fields": {
+          "so_id": {
+            "type": "ObjectId",
+            "ref": "SO",
+            "required": true
+          }
+        },
+        "kept_fields": [
+          "machine_sequence (auto-generated)",
+          "location",
+          "dispatch_date",
+          "images",
+          "documents",
+          "metadata",
+          "created_by",
+          "is_approved",
+          "updatedBy",
+          "deletedAt"
+        ]
+      },
+      "7_update_machine_service": {
+        "title": "Update Machine Service",
+        "description": "Update machine service to use SO reference instead of direct fields. Validate SO exists and is active before creating machine. Auto-generate sequence on creation.",
+        "files": ["back-end/src/modules/machine/services/machine.service.ts"],
+        "changes": [
+          "Update CreateMachineData interface to use so_id instead of removed fields",
+          "Validate SO exists and is_active before machine creation",
+          "Populate SO data when fetching machines",
+          "Auto-generate machine_sequence on creation (not user input)"
+        ]
+      },
+      "8_update_machine_validator": {
+        "title": "Update Machine Validators",
+        "description": "Update machine validators to require so_id instead of removed fields",
+        "files": [
+          "back-end/src/modules/machine/validators/machine.joi.validator.ts"
+        ],
+        "changes": [
+          "Remove name, category_id, subcategory_id, party_name, mobile_number from create schema",
+          "Add so_id (required, ObjectId) to create schema",
+          "Keep location, dispatch_date, images, documents, metadata validations"
+        ]
+      },
+      "9_update_machine_controller": {
+        "title": "Update Machine Controller",
+        "description": "Update machine controller to handle SO reference and populate SO data in responses",
+        "files": ["back-end/src/modules/machine/machine.controller.ts"],
+        "changes": [
+          "Update create endpoint to accept so_id",
+          "Populate SO data in getAll and getById responses",
+          "Include SO information in machine responses"
+        ]
+      },
+      "10_create_migration_script": {
+        "title": "Create Migration Script (Optional)",
+        "description": "Create migration script to handle existing machines - either create SO records for them or mark them as legacy",
+        "files": ["back-end/src/scripts/migrate-machines-to-so.migration.ts"],
+        "strategy": "Create SO records from existing machine data, then update machines with so_id reference"
+      }
+    },
+    "frontend": {
+      "1_create_so_model": {
+        "title": "Create SO Frontend Model",
+        "description": "Create TypeScript interfaces for SO",
+        "files": ["front-end/src/app/core/models/so.model.ts"],
+        "interfaces": ["SO", "CreateSORequest", "UpdateSORequest", "SOFilters"]
+      },
+      "2_create_so_service": {
+        "title": "Create SO Service",
+        "description": "Create Angular service for SO API calls",
+        "files": ["front-end/src/app/core/services/so.service.ts"],
+        "methods": [
+          "createSO",
+          "getAllSOs",
+          "getActiveSOs",
+          "getSOById",
+          "updateSO",
+          "deleteSO",
+          "activateSO",
+          "deactivateSO"
+        ]
+      },
+      "3_create_so_management_component": {
+        "title": "Create SO Management Component",
+        "description": "Create SO management page with CRUD operations, similar to machine management page",
+        "files": [
+          "front-end/src/app/modules/admin/components/so-management/so-management.component.ts",
+          "front-end/src/app/modules/admin/components/so-management/so-management.component.html"
+        ],
+        "features": [
+          "List all SOs with pagination",
+          "Search and filter (by name, category, party_name, is_active)",
+          "Create SO modal with all fields including document upload (max 10)",
+          "Edit SO modal",
+          "View SO details",
+          "Delete SO (with confirmation)",
+          "Activate/Deactivate SO",
+          "Table columns: Name, Category, Subcategory, Party Name, Mobile, Status, Actions"
+        ]
+      },
+      "4_add_so_route": {
+        "title": "Add SO Management Route",
+        "description": "Add route for SO management page",
+        "files": ["front-end/src/app/modules/admin/admin.routes.ts"],
+        "route": "/admin/so-management"
+      },
+      "5_update_admin_sidebar": {
+        "title": "Update Admin Sidebar",
+        "description": "Add SO Management menu item to admin sidebar",
+        "files": [
+          "front-end/src/app/modules/admin/components/shared/admin-sidebar/admin-sidebar.component.ts"
+        ],
+        "location": "Under Machine Management or as separate top-level item",
+        "menu_item": {
+          "label": "SO Management",
+          "icon": "pi pi-file-edit",
+          "route": "/admin/so-management"
+        }
+      },
+      "6_update_machine_model": {
+        "title": "Update Machine Frontend Model",
+        "description": "Update machine interfaces to use so_id and remove removed fields",
+        "files": ["front-end/src/app/core/models/machine.model.ts"],
+        "changes": [
+          "Remove name, category_id, subcategory_id, party_name, mobile_number from Machine interface",
+          "Add so_id field",
+          "Add so populated field (optional, for display)",
+          "Update CreateMachineRequest interface"
+        ]
+      },
+      "7_update_machine_service": {
+        "title": "Update Machine Service",
+        "description": "Update machine service to use so_id in create requests",
+        "files": ["front-end/src/app/core/services/machine.service.ts"],
+        "changes": [
+          "Update createMachineForm to accept so_id instead of removed fields",
+          "Remove removed fields from method signature"
+        ]
+      },
+      "8_update_technician_create_machine": {
+        "title": "Update Technician Create Machine Modal",
+        "description": "Replace removed fields with SO selection dropdown. Keep location, dispatch_date, images, documents, metadata fields.",
+        "files": [
+          "front-end/src/app/modules/dispatch/components/create-machine-modal/create-machine-modal.component.ts"
+        ],
+        "changes": [
+          "Remove name, category_id, subcategory_id, party_name, mobile_number, machine_sequence input fields",
+          "Add searchable SO dropdown (fetch active SOs)",
+          "Display SO details (name, category, party) when selected",
+          "Keep location, dispatch_date, images, documents, metadata fields",
+          "Update form validation",
+          "Update submit handler to send so_id"
+        ],
+        "ui_notes": [
+          "SO dropdown should be searchable/filterable",
+          "Show SO name, category, and party name in dropdown options",
+          "Display selected SO details below dropdown"
+        ]
+      },
+      "9_update_admin_create_machine": {
+        "title": "Update Admin Create Machine Modal",
+        "description": "Same changes as technician modal - replace removed fields with SO dropdown",
+        "files": [
+          "front-end/src/app/modules/admin/components/machine-management/machine-management.component.ts"
+        ],
+        "changes": [
+          "Same as technician modal changes",
+          "Remove fields from form",
+          "Add SO dropdown",
+          "Keep remaining fields"
+        ]
+      },
+      "10_update_machine_table_display": {
+        "title": "Update Machine Table Display",
+        "description": "Update machine tables to show SO information instead of removed fields. Display SO name, category, party from populated SO data.",
+        "files": [
+          "front-end/src/app/modules/admin/components/machine-management/machine-management.component.ts",
+          "front-end/src/app/modules/dispatch/pages/technician-machines.component.ts"
+        ],
+        "changes": [
+          "Replace name column with SO name (from so.name)",
+          "Replace category column with SO category (from so.category_id.name)",
+          "Replace subcategory column with SO subcategory (from so.subcategory_id.name)",
+          "Replace party_name column with SO party_name (from so.party_name)",
+          "Remove mobile_number column or show from SO",
+          "Keep location, dispatch_date, machine_sequence, images, documents columns"
+        ]
+      },
+      "11_update_machine_view_modal": {
+        "title": "Update Machine View Modal",
+        "description": "Update view modal to show SO information instead of removed fields",
+        "files": [
+          "front-end/src/app/modules/admin/components/machine-management/machine-management.component.ts"
+        ],
+        "changes": [
+          "Display SO information section",
+          "Show SO name, category, subcategory, party_name, mobile_number from SO",
+          "Keep machine-specific fields: location, dispatch_date, sequence, images, documents"
+        ]
+      }
+    }
+  },
+  "data_normalization": {
+    "so_uniqueness": {
+      "description": "Multiple SO records can have same machine name, category, subcategory, and party_name. This is intentional for handling multiple orders of same machine type.",
+      "differentiation": "SO records are differentiated by: _id, created_at, description, and potentially other metadata",
+      "search_strategy": "When searching SOs in dropdown, show all matching SOs with additional context (creation date, description snippet) to help user select correct one"
+    },
+    "machine_so_relationship": {
+      "description": "One SO can be used by multiple machines (one-to-many relationship)",
+      "example": "Same SO (machine name + party) can be used for multiple machine entries with different locations, dispatch dates, etc."
+    }
+  },
+  "validation_rules": {
+    "so_creation": [
+      "Name: required, 2-100 chars",
+      "Category: required, must exist",
+      "Subcategory: optional, must belong to category if provided",
+      "Party Name: required, 2-100 chars",
+      "Mobile Number: required, 10-20 chars, valid format",
+      "Documents: optional, max 10 files",
+      "Description: optional, max 1000 chars"
+    ],
+    "machine_creation": [
+      "SO: required, must exist and be active",
+      "Location: required, 2-100 chars",
+      "Dispatch Date: optional, valid date",
+      "Images: optional, max 5-10 files",
+      "Documents: optional, max 10 files",
+      "Metadata: optional, key-value pairs"
+    ]
+  },
+  "testing_checklist": [
+    "Create SO with all fields",
+    "Create SO without optional fields",
+    "Create machine with SO reference",
+    "Verify machine sequence auto-generation",
+    "Search SOs in dropdown",
+    "Filter SOs by category, party_name",
+    "Activate/Deactivate SO",
+    "Verify active SOs only show in machine creation dropdown",
+    "Update machine with new SO",
+    "View machine with populated SO data",
+    "Delete SO (soft delete)",
+    "Verify machines with deleted SO are handled properly"
+  ],
+  "migration_considerations": {
+    "existing_machines": {
+      "strategy": "Create SO records from existing machine data, then update machines with so_id",
+      "script": "back-end/src/scripts/migrate-machines-to-so.migration.ts",
+      "backup": "Backup database before migration",
+      "rollback": "Keep original fields in machine model temporarily, remove after migration verified"
+    }
+  },
+  "notes": [
+    "Machine sequence field is removed from user input but auto-generation still happens",
+    "SO documents are separate from machine documents",
+    "SO description field can be used for additional context about the order",
+    "is_active flag on SO allows admin to control which SOs are available for machine creation",
+    "Consider adding SO number/code field for better identification if needed"
+  ]
+}

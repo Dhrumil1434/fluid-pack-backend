@@ -1,0 +1,1435 @@
+{
+  "document": "Detailed Phase Integration Guide - SO Management Feature",
+  "version": "1.0.0",
+  "date": "2024-12-12",
+  "description": "Comprehensive step-by-step implementation guide with patterns, consistency rules, and integration strategies",
+  "overview": {
+    "purpose": "This document provides detailed implementation steps, code patterns, UI consistency rules, and backend design patterns to ensure smooth and perfect integration of the SO Management feature",
+    "approach": "Phased implementation starting with backend foundation, then frontend, followed by integration and migration",
+    "principles": [
+      "Follow existing codebase patterns strictly",
+      "Maintain UI consistency with existing admin pages",
+      "Use consistent backend design patterns",
+      "Ensure backward compatibility during migration",
+      "Test each phase before moving to next"
+    ]
+  },
+  "consistency_rules": {
+    "backend": {
+      "service_pattern": {
+        "description": "All services must follow the existing static class pattern",
+        "rules": [
+          "Use static methods for all service operations",
+          "Return typed interfaces (e.g., ISO, IMachine)",
+          "Use ApiError for all error handling",
+          "Use StatusCodes from http-status-codes",
+          "Validate inputs before database operations",
+          "Use try-catch blocks with proper error propagation",
+          "Populate references when returning data",
+          "Use soft delete pattern (deletedAt field)",
+          "Include timestamps (createdAt, updatedAt)"
+        ],
+        "example_structure": "class SOService { static async create(data: CreateSOData): Promise<ISO> { try { // validation // business logic // save return populatedSO; } catch (error) { if (error instanceof ApiError) throw error; throw new ApiError(...); } } }"
+      },
+      "controller_pattern": {
+        "description": "Controllers must follow asyncHandler pattern and return ApiResponse",
+        "rules": [
+          "Use asyncHandler wrapper for all route handlers",
+          "Return ApiResponse with success, data, message",
+          "Extract user from request (req.user)",
+          "Call service methods with proper error handling",
+          "Use proper HTTP status codes",
+          "Sanitize responses before sending"
+        ],
+        "example_structure": "export const createSO = asyncHandler(async (req: Request, res: Response) => { const userId = req.user?._id; const so = await SOService.create({ ...req.body, created_by: userId }); res.status(StatusCodes.CREATED).json(new ApiResponse(true, so, 'SO created successfully')); });"
+      },
+      "validator_pattern": {
+        "description": "Use Joi validators with consistent schema structure",
+        "rules": [
+          "Create separate schemas for create and update",
+          "Use Joi.object() with proper validations",
+          "Export schemas as named exports",
+          "Use custom messages for validation errors",
+          "Validate ObjectId format for references",
+          "Use optional() for update schemas"
+        ],
+        "example_structure": "export const createSOSchema = Joi.object({ name: Joi.string().min(2).max(100).required().trim(), category_id: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).required(), // ... });"
+      },
+      "model_pattern": {
+        "description": "Models must follow Mongoose schema pattern with proper indexes",
+        "rules": [
+          "Define interface extending Document",
+          "Create schema with proper types and validations",
+          "Add indexes for frequently queried fields",
+          "Add soft delete support (deletedAt)",
+          "Add timestamps option",
+          "Add virtuals for computed properties",
+          "Add pre/post hooks if needed",
+          "Export model as default"
+        ],
+        "example_structure": "export interface ISO extends Document { name: string; category_id: ObjectId; // ... } const soSchema = new Schema<ISO>({ ... }, { timestamps: true }); soSchema.index({ name: 1 }); export const SO = mongoose.model<ISO>('SO', soSchema);"
+      },
+      "route_pattern": {
+        "description": "Routes must follow middleware chain pattern",
+        "rules": [
+          "Use verifyJWT for authentication",
+          "Use checkPermission for authorization",
+          "Use uploadFiles middleware for file uploads",
+          "Use parseJsonFields for JSON fields in multipart",
+          "Use validateRequest with Joi schema",
+          "Use handleFileUploadError for file errors",
+          "Order: auth -> permission -> upload -> parse -> validate -> controller"
+        ],
+        "example_structure": "router.post('/', verifyJWT, checkPermission([ActionType.CREATE_SO]), uploadSOFiles.fields([{ name: 'documents', maxCount: 10 }]), handleFileUploadError, parseJsonFields([]), validateRequest(createSOSchema), SOController.createSO);"
+      },
+      "error_handling": {
+        "description": "Consistent error handling pattern",
+        "rules": [
+          "Use ERROR_MESSAGES constants file",
+          "Create error constants following existing pattern",
+          "Use ApiError with proper action, statusCode, errorCode, message",
+          "Include error details in errors array",
+          "Use appropriate HTTP status codes",
+          "Log errors for debugging"
+        ],
+        "error_constants_structure": "export const ERROR_MESSAGES = { SO: { ACTION: { CREATE: 'CREATE_SO', UPDATE: 'UPDATE_SO', // ... }, NOT_FOUND: { code: 'SO_NOT_FOUND', message: 'SO not found' }, // ... } };"
+      }
+    },
+    "frontend": {
+      "component_structure": {
+        "description": "Admin management components must follow consistent structure",
+        "rules": [
+          "Use standalone components",
+          "Import CommonModule, FormsModule, ReactiveFormsModule",
+          "Use AdminSidebarComponent, PageHeaderComponent, ListFiltersComponent, ListTableShellComponent",
+          "Use ToastModule for notifications",
+          "Use MessageService for toast messages",
+          "Follow template structure: sidebar -> header -> filters -> table -> modals",
+          "Use consistent class names and styling"
+        ],
+        "component_structure_example": "@Component({ selector: 'app-so-management', standalone: true, imports: [CommonModule, FormsModule, ReactiveFormsModule, AdminSidebarComponent, PageHeaderComponent, ListFiltersComponent, ListTableShellComponent, TablePaginationComponent, ToastModule], providers: [MessageService], template: `...` })"
+      },
+      "service_pattern": {
+        "description": "Frontend services must follow BaseApiService pattern",
+        "rules": [
+          "Inject BaseApiService",
+          "Use Observable return types",
+          "Handle errors in component, not service",
+          "Use proper TypeScript interfaces",
+          "Follow existing method naming conventions",
+          "Return Observable<ApiResponse<T>>"
+        ],
+        "service_example": "@Injectable({ providedIn: 'root' }) export class SOService { constructor(private baseApiService: BaseApiService) {} createSO(data: CreateSORequest): Observable<ApiResponse<SO>> { return this.baseApiService.post<SO>('/so', data); } }"
+      },
+      "form_validation": {
+        "description": "Use ReactiveFormsModule with FormBuilder",
+        "rules": [
+          "Use FormBuilder to create form groups",
+          "Add validators for required fields",
+          "Use custom validators for complex validation",
+          "Mark fields as touched on blur/input",
+          "Show validation errors below fields",
+          "Disable submit button when form invalid",
+          "Use consistent error message styling"
+        ],
+        "form_example": "this.form = this.fb.group({ name: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(100)]], category_id: ['', [Validators.required, Validators.pattern(/^[0-9a-fA-F]{24}$/)]], // ... });"
+      },
+      "ui_consistency": {
+        "modal_styling": {
+          "description": "All modals must use consistent styling",
+          "rules": [
+            "Background overlay: fixed inset-0 bg-black/40",
+            "Modal container: relative bg-bg border border-neutral-300 rounded-xl shadow-medium",
+            "Modal header: flex items-center justify-between p-4 border-b border-neutral-200",
+            "Modal body: flex-1 overflow-y-auto p-4",
+            "Modal footer: flex items-center justify-end gap-2 p-4 border-t border-neutral-200",
+            "Close button: p-2 text-text-muted hover:bg-neutral-100 rounded-md",
+            "Form inputs: w-full border rounded px-3 py-2",
+            "Error messages: text-xs text-error",
+            "Buttons: px-3 py-2 rounded-md with consistent colors"
+          ]
+        },
+        "table_styling": {
+          "description": "Tables must follow consistent styling",
+          "rules": [
+            "Table: min-w-full text-sm",
+            "Header: bg-gray-50 text-left border-b border-gray-200",
+            "Header cells: px-4 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wider",
+            "Body rows: hover:bg-gray-50 transition-colors duration-150",
+            "Body cells: px-4 py-3 whitespace-nowrap",
+            "Action buttons: inline-flex items-center px-3 py-1.5 text-xs font-medium with consistent color classes",
+            "Empty state: px-4 py-12 text-center text-gray-500 with icon and message"
+          ]
+        },
+        "button_styling": {
+          "description": "Buttons must use consistent color and size classes",
+          "rules": [
+            "Primary: bg-primary text-white hover:bg-primary/90",
+            "Secondary: border border-neutral-300 text-text hover:bg-neutral-50",
+            "Info: text-info bg-info/10 border border-info/20 hover:bg-info/20",
+            "Error: text-error bg-error/10 border border-error/20 hover:bg-error/20",
+            "Success: text-success bg-success/10 border border-success/20 hover:bg-success/20",
+            "Size: px-3 py-2 for standard, px-4 py-2 for larger",
+            "Icons: text-sm with proper spacing (mr-1 or gap-2)"
+          ]
+        },
+        "filter_styling": {
+          "description": "Filters must use consistent styling",
+          "rules": [
+            "Inputs: px-3 py-2 border border-neutral-300 rounded-md",
+            "Selects: px-3 py-2 border border-neutral-300 rounded-md",
+            "Autocomplete dropdown: absolute z-50 w-full mt-1 bg-white border border-neutral-300 rounded-md shadow-lg max-h-48 overflow-y-auto",
+            "Autocomplete items: px-3 py-2 hover:bg-neutral-100 cursor-pointer text-sm"
+          ]
+        },
+        "color_scheme": {
+          "description": "Use consistent color variables",
+          "colors": {
+            "primary": "Primary brand color",
+            "error": "Red for errors/destructive actions",
+            "success": "Green for success states",
+            "info": "Blue for informational actions",
+            "warning": "Yellow/amber for warnings",
+            "text": "Main text color",
+            "text-muted": "Muted text color",
+            "bg": "Background color",
+            "bg-soft": "Soft background for hover states"
+          }
+        }
+      },
+      "state_management": {
+        "description": "Component state management patterns",
+        "rules": [
+          "Use class properties for component state",
+          "Use loading flags for async operations",
+          "Use separate flags for different modals (formVisible, viewVisible, confirmVisible)",
+          "Track selected items with Set or array",
+          "Use pagination state (page, limit, total, pages)",
+          "Use filters object for filter state",
+          "Reset state properly when closing modals"
+        ]
+      }
+    }
+  },
+  "implementation_phases": {
+    "phase_1_backend_foundation": {
+      "title": "Phase 1: Backend Foundation",
+      "description": "Create SO model, service, validator, controller, and routes",
+      "estimated_time": "2-3 days",
+      "dependencies": [],
+      "steps": {
+        "step_1_1_create_error_constants": {
+          "order": 1,
+          "title": "Create SO Error Constants",
+          "file": "back-end/src/modules/so/so.error.constant.ts",
+          "description": "Create error constants file following existing pattern",
+          "implementation": {
+            "pattern_to_follow": "Follow pattern from back-end/src/modules/machine/machine.error.constant.ts",
+            "required_constants": [
+              "SO.ACTION.CREATE",
+              "SO.ACTION.UPDATE",
+              "SO.ACTION.DELETE",
+              "SO.ACTION.GET",
+              "SO.NOT_FOUND",
+              "SO.ALREADY_EXISTS",
+              "SO.INVALID_CATEGORY",
+              "SO.INVALID_SUBCATEGORY",
+              "SO.INACTIVE_SO"
+            ],
+            "code_example": "export const ERROR_MESSAGES = { SO: { ACTION: { CREATE: 'CREATE_SO', UPDATE: 'UPDATE_SO', DELETE: 'DELETE_SO', GET: 'GET_SO', ACTIVATE: 'ACTIVATE_SO', DEACTIVATE: 'DEACTIVATE_SO' }, NOT_FOUND: { code: 'SO_NOT_FOUND', message: 'SO not found' }, ALREADY_EXISTS: { code: 'SO_ALREADY_EXISTS', message: 'SO with this name already exists' }, INVALID_CATEGORY: { code: 'INVALID_CATEGORY', message: 'Invalid category' }, INVALID_SUBCATEGORY: { code: 'INVALID_SUBCATEGORY', message: 'Subcategory does not belong to the selected category' }, INACTIVE_SO: { code: 'INACTIVE_SO', message: 'SO is not active' } } };"
+          },
+          "testing": "Verify constants are exported correctly"
+        },
+        "step_1_2_create_so_model": {
+          "order": 2,
+          "title": "Create SO Model",
+          "file": "back-end/src/models/so.model.ts",
+          "description": "Create SO Mongoose model with all required fields",
+          "implementation": {
+            "pattern_to_follow": "Follow pattern from back-end/src/models/machine.model.ts",
+            "interface_structure": {
+              "name": "ISO extends Document",
+              "fields": [
+                "name: string (required, trim, maxlength 100)",
+                "category_id: ObjectId (required, ref: 'Category')",
+                "subcategory_id: ObjectId (optional, ref: 'Category', default null)",
+                "party_name: string (required, trim, maxlength 100)",
+                "mobile_number: string (required, trim, maxlength 20)",
+                "documents: IDocument[] (optional, max 10 items)",
+                "description: string (optional, trim, default '')",
+                "is_active: boolean (default true)",
+                "created_by: ObjectId (required, ref: 'User')",
+                "updatedBy: ObjectId (optional, ref: 'User')",
+                "deletedAt: Date (optional, default null)"
+              ]
+            },
+            "schema_configuration": {
+              "timestamps": true,
+              "indexes": [
+                "{ name: 1 }",
+                "{ category_id: 1 }",
+                "{ subcategory_id: 1 }",
+                "{ party_name: 1 }",
+                "{ is_active: 1 }",
+                "{ deletedAt: 1 }",
+                "{ created_by: 1 }",
+                "{ category_id: 1, is_active: 1, deletedAt: 1 } (compound)"
+              ]
+            },
+            "middleware": {
+              "pre_find": "Exclude deleted documents by default (deletedAt: null)",
+              "methods": [
+                "softDelete(deletedBy: ObjectId)",
+                "restore(restoredBy: ObjectId)"
+              ],
+              "statics": ["findWithDeleted()", "findDeleted()"]
+            },
+            "code_structure": "Follow exact structure from machine.model.ts but adapt for SO fields"
+          },
+          "testing": "Test model creation, indexes, soft delete, and population"
+        },
+        "step_1_3_create_so_service": {
+          "order": 3,
+          "title": "Create SO Service",
+          "file": "back-end/src/modules/so/services/so.service.ts",
+          "description": "Implement SO service with all CRUD operations",
+          "implementation": {
+            "pattern_to_follow": "Follow pattern from back-end/src/modules/machine/services/machine.service.ts",
+            "interfaces": {
+              "CreateSOData": {
+                "name": "string",
+                "category_id": "string",
+                "subcategory_id": "string (optional)",
+                "party_name": "string",
+                "mobile_number": "string",
+                "documents": "Array<{name, file_path, document_type}> (optional)",
+                "description": "string (optional)",
+                "created_by": "string"
+              },
+              "UpdateSOData": "All fields optional, same structure as CreateSOData",
+              "SOFilters": {
+                "name": "string (optional)",
+                "category_id": "string (optional)",
+                "subcategory_id": "string (optional)",
+                "party_name": "string (optional)",
+                "is_active": "boolean (optional)",
+                "search": "string (optional)",
+                "sortBy": "string (optional)",
+                "sortOrder": "'asc' | 'desc' (optional)"
+              }
+            },
+            "methods": {
+              "create": {
+                "description": "Create new SO",
+                "steps": [
+                  "Validate category exists and is active",
+                  "Validate subcategory if provided (belongs to category)",
+                  "Create SO document",
+                  "Populate category, subcategory, created_by",
+                  "Return populated SO"
+                ],
+                "error_handling": "Throw ApiError for validation failures"
+              },
+              "getAll": {
+                "description": "Get all SOs with pagination and filters",
+                "steps": [
+                  "Build query with filters",
+                  "Apply soft delete filter (deletedAt: null)",
+                  "Apply search if provided",
+                  "Apply sorting",
+                  "Execute paginated query",
+                  "Populate references",
+                  "Return paginated result"
+                ],
+                "return_type": "{ sos: ISO[], total: number, page: number, pages: number, limit: number }"
+              },
+              "getById": {
+                "description": "Get SO by ID",
+                "steps": [
+                  "Find SO by ID (not deleted)",
+                  "Populate references",
+                  "Throw error if not found",
+                  "Return SO"
+                ]
+              },
+              "update": {
+                "description": "Update SO",
+                "steps": [
+                  "Find SO by ID",
+                  "Validate category/subcategory if updated",
+                  "Update fields",
+                  "Set updatedBy",
+                  "Save and populate",
+                  "Return updated SO"
+                ]
+              },
+              "softDelete": {
+                "description": "Soft delete SO",
+                "steps": [
+                  "Find SO by ID",
+                  "Call softDelete method",
+                  "Return void"
+                ]
+              },
+              "restore": {
+                "description": "Restore soft deleted SO",
+                "steps": [
+                  "Find deleted SO",
+                  "Call restore method",
+                  "Return restored SO"
+                ]
+              },
+              "activate": {
+                "description": "Activate SO",
+                "steps": [
+                  "Find SO by ID",
+                  "Set is_active = true",
+                  "Set updatedBy",
+                  "Save and return"
+                ]
+              },
+              "deactivate": {
+                "description": "Deactivate SO",
+                "steps": [
+                  "Find SO by ID",
+                  "Set is_active = false",
+                  "Set updatedBy",
+                  "Save and return"
+                ]
+              },
+              "getActiveSOs": {
+                "description": "Get only active SOs (for dropdown)",
+                "steps": [
+                  "Find SOs where is_active = true and deletedAt = null",
+                  "Populate category and subcategory",
+                  "Return array of SOs",
+                  "Optional: limit results if too many"
+                ]
+              }
+            },
+            "code_structure": "Use static class pattern, try-catch blocks, ApiError for errors"
+          },
+          "testing": "Test all service methods with various inputs and edge cases"
+        },
+        "step_1_4_create_so_validator": {
+          "order": 4,
+          "title": "Create SO Validators",
+          "file": "back-end/src/modules/so/validators/so.joi.validator.ts",
+          "description": "Create Joi validation schemas for SO",
+          "implementation": {
+            "pattern_to_follow": "Follow pattern from back-end/src/modules/machine/validators/machine.joi.validator.ts",
+            "schemas": {
+              "createSOSchema": {
+                "name": "Joi.string().min(2).max(100).required().trim()",
+                "category_id": "Joi.string().pattern(/^[0-9a-fA-F]{24}$/).required()",
+                "subcategory_id": "Joi.string().pattern(/^[0-9a-fA-F]{24}$/).optional().allow(null, '')",
+                "party_name": "Joi.string().min(2).max(100).required().trim()",
+                "mobile_number": "Joi.string().min(10).max(20).pattern(/^[+]?[(]?[0-9]{1,4}[)]?[-\\s.]?[(]?[0-9]{1,4}[)]?[-\\s.]?[0-9]{1,9}$/).required()",
+                "description": "Joi.string().max(1000).optional().allow('', null).trim()",
+                "documents": "Joi.array().max(10).optional()"
+              },
+              "updateSOSchema": {
+                "description": "All fields optional, same validations as create",
+                "pattern": "Use .optional() for all fields"
+              }
+            },
+            "export_pattern": "Export as named exports: export const createSOSchema, updateSOSchema"
+          },
+          "testing": "Test validation with valid and invalid inputs"
+        },
+        "step_1_5_create_so_controller": {
+          "order": 5,
+          "title": "Create SO Controller",
+          "file": "back-end/src/modules/so/so.controller.ts",
+          "description": "Create SO controller with all endpoints",
+          "implementation": {
+            "pattern_to_follow": "Follow pattern from back-end/src/modules/machine/machine.controller.ts",
+            "endpoints": {
+              "createSO": {
+                "method": "POST",
+                "handler": "asyncHandler(async (req, res) => { const userId = req.user?._id; const files = req.files as { documents?: Express.Multer.File[] }; const documents = processDocuments(files.documents); const so = await SOService.create({ ...req.body, documents, created_by: userId }); res.status(StatusCodes.CREATED).json(new ApiResponse(true, so, 'SO created successfully')); })"
+              },
+              "getAllSOs": {
+                "method": "GET",
+                "handler": "Extract query params (page, limit, filters), call SOService.getAll, return paginated response"
+              },
+              "getActiveSOs": {
+                "method": "GET",
+                "path": "/active",
+                "handler": "Call SOService.getActiveSOs, return array response"
+              },
+              "getSOById": {
+                "method": "GET",
+                "path": "/:id",
+                "handler": "Extract id from params, call SOService.getById, return single response"
+              },
+              "updateSO": {
+                "method": "PUT",
+                "path": "/:id",
+                "handler": "Extract id and userId, process files if any, call SOService.update, return updated response"
+              },
+              "deleteSO": {
+                "method": "DELETE",
+                "path": "/:id",
+                "handler": "Extract id and userId, call SOService.softDelete, return success response"
+              },
+              "activateSO": {
+                "method": "PATCH",
+                "path": "/:id/activate",
+                "handler": "Extract id and userId, call SOService.activate, return success response"
+              },
+              "deactivateSO": {
+                "method": "PATCH",
+                "path": "/:id/deactivate",
+                "handler": "Extract id and userId, call SOService.deactivate, return success response"
+              }
+            },
+            "helper_functions": {
+              "processDocuments": "Convert Multer files to document array format",
+              "sanitizeSO": "Sanitize SO response if needed"
+            }
+          },
+          "testing": "Test all endpoints with Postman/Thunder Client"
+        },
+        "step_1_6_create_so_routes": {
+          "order": 6,
+          "title": "Create SO Routes",
+          "file": "back-end/src/routes/so.route.ts",
+          "description": "Create routes file with proper middleware chain",
+          "implementation": {
+            "pattern_to_follow": "Follow pattern from back-end/src/routes/machine.route.ts",
+            "middleware_setup": {
+              "uploadSOFiles": "Configure multer for documents (max 10 files)",
+              "file_types": ".pdf,.doc,.docx,.txt,.xls,.xlsx"
+            },
+            "routes": {
+              "POST /": [
+                "verifyJWT",
+                "checkPermission([ActionType.CREATE_SO])",
+                "uploadSOFiles.fields([{name: 'documents', maxCount: 10}])",
+                "handleFileUploadError",
+                "parseJsonFields([])",
+                "validateRequest(createSOSchema)",
+                "SOController.createSO"
+              ],
+              "GET /": [
+                "verifyJWT",
+                "checkPermission([ActionType.VIEW_SO])",
+                "SOController.getAllSOs"
+              ],
+              "GET /active": ["verifyJWT", "SOController.getActiveSOs"],
+              "GET /:id": [
+                "verifyJWT",
+                "checkPermission([ActionType.VIEW_SO])",
+                "SOController.getSOById"
+              ],
+              "PUT /:id": [
+                "verifyJWT",
+                "checkPermission([ActionType.UPDATE_SO])",
+                "uploadSOFiles.fields([{name: 'documents', maxCount: 10}])",
+                "handleFileUploadError",
+                "parseJsonFields([])",
+                "validateRequest(updateSOSchema)",
+                "SOController.updateSO"
+              ],
+              "DELETE /:id": [
+                "verifyJWT",
+                "checkPermission([ActionType.DELETE_SO])",
+                "SOController.deleteSO"
+              ],
+              "PATCH /:id/activate": [
+                "verifyJWT",
+                "checkPermission([ActionType.UPDATE_SO])",
+                "SOController.activateSO"
+              ],
+              "PATCH /:id/deactivate": [
+                "verifyJWT",
+                "checkPermission([ActionType.UPDATE_SO])",
+                "SOController.deactivateSO"
+              ]
+            }
+          },
+          "testing": "Test routes are registered and middleware works correctly"
+        },
+        "step_1_7_register_routes": {
+          "order": 7,
+          "title": "Register SO Routes in App",
+          "file": "back-end/src/app.ts",
+          "description": "Register SO routes in main app file",
+          "implementation": {
+            "pattern_to_follow": "Find where machine routes are registered and add SO routes similarly",
+            "code": "app.use('/api/so', soRoutes);"
+          },
+          "testing": "Verify routes are accessible at /api/so"
+        }
+      },
+      "completion_criteria": [
+        "All backend files created and follow patterns",
+        "All endpoints tested and working",
+        "Error handling works correctly",
+        "File upload works for documents",
+        "Validation works for all inputs"
+      ]
+    },
+    "phase_2_frontend_foundation": {
+      "title": "Phase 2: Frontend Foundation",
+      "description": "Create SO models, service, and basic components",
+      "estimated_time": "2-3 days",
+      "dependencies": ["phase_1_backend_foundation"],
+      "steps": {
+        "step_2_1_create_so_model": {
+          "order": 1,
+          "title": "Create SO Frontend Model",
+          "file": "front-end/src/app/core/models/so.model.ts",
+          "description": "Create TypeScript interfaces for SO",
+          "implementation": {
+            "pattern_to_follow": "Follow pattern from front-end/src/app/core/models/machine.model.ts",
+            "interfaces": {
+              "SO": {
+                "_id": "string",
+                "name": "string",
+                "category_id": "{ _id: string, name: string, description?: string }",
+                "subcategory_id": "{ _id: string, name: string, description?: string } | null",
+                "party_name": "string",
+                "mobile_number": "string",
+                "documents": "SODocument[]",
+                "description": "string",
+                "is_active": "boolean",
+                "created_by": "{ _id: string, username: string, email: string }",
+                "updatedBy": "{ _id: string, username: string, email: string } | null",
+                "createdAt": "string",
+                "updatedAt": "string"
+              },
+              "SODocument": {
+                "name": "string",
+                "file_path": "string",
+                "document_type": "string",
+                "uploaded_at": "string"
+              },
+              "CreateSORequest": {
+                "name": "string",
+                "category_id": "string",
+                "subcategory_id": "string | null",
+                "party_name": "string",
+                "mobile_number": "string",
+                "description": "string | null",
+                "documents": "File[] (optional)"
+              },
+              "UpdateSORequest": "All fields optional, same as CreateSORequest",
+              "SOFilters": {
+                "name": "string | undefined",
+                "category_id": "string | undefined",
+                "party_name": "string | undefined",
+                "is_active": "boolean | undefined",
+                "search": "string | undefined",
+                "sortBy": "string | undefined",
+                "sortOrder": "'asc' | 'desc' | undefined"
+              }
+            }
+          },
+          "testing": "Verify interfaces compile correctly"
+        },
+        "step_2_2_create_so_service": {
+          "order": 2,
+          "title": "Create SO Service",
+          "file": "front-end/src/app/core/services/so.service.ts",
+          "description": "Create Angular service for SO API calls",
+          "implementation": {
+            "pattern_to_follow": "Follow pattern from front-end/src/app/core/services/machine.service.ts",
+            "methods": {
+              "createSO": "Use FormData for multipart, return Observable<ApiResponse<SO>>",
+              "getAllSOs": "Use query params, return Observable<ApiResponse<{sos: SO[], total: number, page: number, pages: number, limit: number}>>",
+              "getActiveSOs": "Return Observable<ApiResponse<SO[]>>",
+              "getSOById": "Return Observable<ApiResponse<SO>>",
+              "updateSO": "Use FormData if files, return Observable<ApiResponse<SO>>",
+              "deleteSO": "Return Observable<ApiResponse<void>>",
+              "activateSO": "Return Observable<ApiResponse<SO>>",
+              "deactivateSO": "Return Observable<ApiResponse<SO>>"
+            },
+            "code_structure": "Inject BaseApiService, use post/get/put/delete/patch methods"
+          },
+          "testing": "Test service methods return correct observables"
+        },
+        "step_2_3_create_so_management_component_structure": {
+          "order": 3,
+          "title": "Create SO Management Component Structure",
+          "file": "front-end/src/app/modules/admin/components/so-management/so-management.component.ts",
+          "description": "Create component shell with basic structure",
+          "implementation": {
+            "pattern_to_follow": "Follow exact structure from machine-management.component.ts",
+            "component_setup": {
+              "imports": [
+                "CommonModule",
+                "FormsModule",
+                "ReactiveFormsModule",
+                "AdminSidebarComponent",
+                "PageHeaderComponent",
+                "ListFiltersComponent",
+                "ListTableShellComponent",
+                "TablePaginationComponent",
+                "ToastModule"
+              ],
+              "providers": ["MessageService"],
+              "properties": [
+                "sidebarCollapsed: boolean",
+                "sos: SO[]",
+                "total, pages, page, limit: number",
+                "filters: SOFilters",
+                "formVisible, viewVisible, confirmVisible: boolean",
+                "editing: boolean",
+                "selected: SO | null",
+                "loading, submitting: boolean",
+                "categories: Category[]",
+                "subcategories: Category[]"
+              ],
+              "methods_stubs": [
+                "ngOnInit()",
+                "reload()",
+                "openCreate()",
+                "openEdit(so: SO)",
+                "openView(so: SO)",
+                "closeForm()",
+                "submitForm()",
+                "confirmDelete(so: SO)",
+                "doDelete()",
+                "onPageChange(page: number)",
+                "onLimitChange(limit: number)"
+              ]
+            }
+          },
+          "testing": "Verify component compiles and basic structure works"
+        }
+      },
+      "completion_criteria": [
+        "Models and service created",
+        "Component structure created",
+        "Basic component renders without errors"
+      ]
+    },
+    "phase_3_so_management_ui": {
+      "title": "Phase 3: SO Management UI Implementation",
+      "description": "Implement full SO management page with CRUD operations",
+      "estimated_time": "3-4 days",
+      "dependencies": ["phase_2_frontend_foundation"],
+      "steps": {
+        "step_3_1_implement_table_display": {
+          "order": 1,
+          "title": "Implement SO Table Display",
+          "description": "Create table with all SO columns and actions",
+          "implementation": {
+            "pattern_to_follow": "Follow exact table structure from machine-management.component.ts",
+            "table_columns": [
+              "Checkbox (for bulk selection)",
+              "Name",
+              "Category",
+              "Subcategory",
+              "Party Name",
+              "Mobile Number",
+              "Status (is_active)",
+              "Documents Count",
+              "Created By",
+              "Created Date",
+              "Actions (View, Edit, Delete, Activate/Deactivate)"
+            ],
+            "table_styling": "Use exact classes from machine management table",
+            "action_buttons": {
+              "view": "text-info bg-info/10 border border-info/20",
+              "edit": "text-primary bg-primary/10 border border-primary/20",
+              "delete": "text-error bg-error/10 border border-error/20",
+              "activate": "text-success bg-success/10 border border-success/20 (if inactive)",
+              "deactivate": "text-warning bg-warning/10 border border-warning/20 (if active)"
+            }
+          }
+        },
+        "step_3_2_implement_filters": {
+          "order": 2,
+          "title": "Implement Filters",
+          "description": "Add search and filter functionality",
+          "implementation": {
+            "pattern_to_follow": "Follow filter structure from machine-management.component.ts",
+            "filters": {
+              "search": "Search by name, party_name",
+              "category_id": "Dropdown with categories",
+              "is_active": "Dropdown (All, Active, Inactive)",
+              "party_name": "Autocomplete input",
+              "sortBy": "Dropdown (name, category, party_name, createdAt)",
+              "sortOrder": "Dropdown (asc, desc)"
+            },
+            "autocomplete": "Implement autocomplete for party_name similar to machine management"
+          }
+        },
+        "step_3_3_implement_create_modal": {
+          "order": 3,
+          "title": "Implement Create SO Modal",
+          "description": "Create modal form for adding new SO",
+          "implementation": {
+            "pattern_to_follow": "Follow modal structure from machine-management.component.ts create modal",
+            "form_fields": [
+              "Name (required, text input)",
+              "Category (required, dropdown)",
+              "Subcategory (optional, dropdown, depends on category)",
+              "Party Name (required, text input)",
+              "Mobile Number (required, tel input)",
+              "Description (optional, textarea)",
+              "Documents (optional, file upload, max 10, drag & drop)"
+            ],
+            "form_validation": "Use ReactiveFormsModule with validators",
+            "document_upload": "Follow document upload pattern from machine management (drag & drop, preview, remove)",
+            "modal_styling": "Use exact modal classes from machine management"
+          }
+        },
+        "step_3_4_implement_edit_modal": {
+          "order": 4,
+          "title": "Implement Edit SO Modal",
+          "description": "Create modal form for editing SO",
+          "implementation": {
+            "pattern_to_follow": "Same as create modal but pre-populate form",
+            "differences": [
+              "Load SO data on open",
+              "Show existing documents with remove option",
+              "Allow adding new documents",
+              "Update instead of create on submit"
+            ]
+          }
+        },
+        "step_3_5_implement_view_modal": {
+          "order": 5,
+          "title": "Implement View SO Modal",
+          "description": "Create read-only modal for viewing SO details",
+          "implementation": {
+            "pattern_to_follow": "Follow view modal structure from machine-management.component.ts",
+            "sections": [
+              "Basic Info (name, category, subcategory, party, mobile)",
+              "Description",
+              "Documents (with download/preview)",
+              "Status (is_active)",
+              "Metadata (created by, updated by, dates)"
+            ],
+            "styling": "Use grid layout (md:grid-cols-2) for fields"
+          }
+        },
+        "step_3_6_implement_delete_confirmation": {
+          "order": 6,
+          "title": "Implement Delete Confirmation",
+          "description": "Add delete confirmation modal",
+          "implementation": {
+            "pattern_to_follow": "Follow delete confirmation modal from machine-management.component.ts",
+            "features": [
+              "Show SO name in confirmation message",
+              "Cancel and Delete buttons",
+              "Loading state during deletion"
+            ]
+          }
+        },
+        "step_3_7_implement_pagination": {
+          "order": 7,
+          "title": "Implement Pagination",
+          "description": "Add pagination component",
+          "implementation": {
+            "pattern_to_follow": "Use TablePaginationComponent like machine management",
+            "integration": "Handle pageChange and limitChange events"
+          }
+        },
+        "step_3_8_add_route_and_sidebar": {
+          "order": 8,
+          "title": "Add Route and Sidebar Menu",
+          "description": "Register route and add menu item",
+          "implementation": {
+            "route": {
+              "file": "front-end/src/app/modules/admin/admin.routes.ts",
+              "path": "/admin/so-management",
+              "component": "SoManagementComponent"
+            },
+            "sidebar": {
+              "file": "front-end/src/app/modules/admin/components/shared/admin-sidebar/admin-sidebar.component.ts",
+              "location": "Under Machine Management children array",
+              "menu_item": {
+                "label": "SO Management",
+                "icon": "pi pi-file-edit",
+                "route": "/admin/so-management"
+              }
+            }
+          }
+        }
+      },
+      "completion_criteria": [
+        "All CRUD operations working",
+        "Filters and search working",
+        "Pagination working",
+        "All modals styled consistently",
+        "Route and sidebar menu added"
+      ]
+    },
+    "phase_4_machine_model_update": {
+      "title": "Phase 4: Update Machine Model for SO Reference",
+      "description": "Update machine model, service, validator, and controller to use SO",
+      "estimated_time": "2-3 days",
+      "dependencies": ["phase_1_backend_foundation"],
+      "steps": {
+        "step_4_1_update_machine_model": {
+          "order": 1,
+          "title": "Update Machine Model",
+          "file": "back-end/src/models/machine.model.ts",
+          "description": "Remove fields and add so_id reference",
+          "implementation": {
+            "removed_fields": [
+              "name",
+              "category_id",
+              "subcategory_id",
+              "party_name",
+              "mobile_number"
+            ],
+            "added_fields": {
+              "so_id": {
+                "type": "ObjectId",
+                "ref": "SO",
+                "required": true,
+                "index": true
+              }
+            },
+            "kept_fields": [
+              "machine_sequence",
+              "location",
+              "dispatch_date",
+              "images",
+              "documents",
+              "metadata",
+              "created_by",
+              "is_approved",
+              "updatedBy",
+              "deletedAt"
+            ],
+            "indexes": [
+              "Add { so_id: 1 }",
+              "Add { so_id: 1, is_approved: 1, deletedAt: 1 } (compound)",
+              "Remove indexes for removed fields"
+            ],
+            "population": "Update pre-find middleware to populate so_id by default"
+          },
+          "migration_note": "Keep old fields temporarily for migration, mark as optional"
+        },
+        "step_4_2_update_machine_service": {
+          "order": 2,
+          "title": "Update Machine Service",
+          "file": "back-end/src/modules/machine/services/machine.service.ts",
+          "description": "Update service to use SO reference",
+          "implementation": {
+            "interface_updates": {
+              "CreateMachineData": {
+                "remove": [
+                  "name",
+                  "category_id",
+                  "subcategory_id",
+                  "party_name",
+                  "mobile_number"
+                ],
+                "add": ["so_id: string (required)"]
+              }
+            },
+            "create_method_updates": {
+              "steps": [
+                "Validate SO exists and is_active",
+                "Remove category/subcategory validation (get from SO)",
+                "Remove name validation (get from SO)",
+                "Auto-generate machine_sequence (remove user input)",
+                "Create machine with so_id",
+                "Populate so_id when returning"
+              ]
+            },
+            "getAll_method_updates": {
+              "steps": [
+                "Populate so_id in query",
+                "Update filters to use so.name, so.category_id, etc.",
+                "Return machines with populated SO data"
+              ]
+            },
+            "getById_method_updates": "Populate so_id",
+            "update_method_updates": "Remove updates to removed fields, keep so_id update if needed"
+          }
+        },
+        "step_4_3_update_machine_validator": {
+          "order": 3,
+          "title": "Update Machine Validator",
+          "file": "back-end/src/modules/machine/validators/machine.joi.validator.ts",
+          "description": "Update validation schemas",
+          "implementation": {
+            "createMachineSchema": {
+              "remove": [
+                "name",
+                "category_id",
+                "subcategory_id",
+                "party_name",
+                "mobile_number",
+                "machine_sequence (user input)"
+              ],
+              "add": [
+                "so_id: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).required()"
+              ],
+              "keep": [
+                "location",
+                "dispatch_date",
+                "images",
+                "documents",
+                "metadata"
+              ]
+            },
+            "updateMachineSchema": "Remove removed fields, keep so_id optional for update"
+          }
+        },
+        "step_4_4_update_machine_controller": {
+          "order": 4,
+          "title": "Update Machine Controller",
+          "file": "back-end/src/modules/machine/machine.controller.ts",
+          "description": "Update controller to handle SO reference",
+          "implementation": {
+            "createMachine": "Accept so_id instead of removed fields",
+            "getAllMachines": "Populate so_id in response",
+            "getMachineById": "Populate so_id in response",
+            "updateMachine": "Remove removed fields from update data"
+          }
+        }
+      },
+      "completion_criteria": [
+        "Machine model updated",
+        "Service methods updated and tested",
+        "Validators updated",
+        "Controller updated",
+        "All endpoints work with SO reference"
+      ]
+    },
+    "phase_5_frontend_machine_update": {
+      "title": "Phase 5: Update Frontend Machine Components",
+      "description": "Update machine models, service, and components to use SO",
+      "estimated_time": "3-4 days",
+      "dependencies": [
+        "phase_4_machine_model_update",
+        "phase_3_so_management_ui"
+      ],
+      "steps": {
+        "step_5_1_update_machine_model": {
+          "order": 1,
+          "title": "Update Machine Frontend Model",
+          "file": "front-end/src/app/core/models/machine.model.ts",
+          "description": "Update interfaces to use SO",
+          "implementation": {
+            "Machine_interface": {
+              "remove": [
+                "name",
+                "category_id",
+                "subcategory_id",
+                "party_name",
+                "mobile_number"
+              ],
+              "add": [
+                "so_id: string",
+                "so?: { _id: string, name: string, category_id: {...}, subcategory_id: {...}, party_name: string, mobile_number: string } (populated)"
+              ]
+            },
+            "CreateMachineRequest": {
+              "remove": [
+                "name",
+                "category_id",
+                "subcategory_id",
+                "party_name",
+                "mobile_number",
+                "machine_sequence"
+              ],
+              "add": ["so_id: string"],
+              "keep": [
+                "location",
+                "dispatch_date",
+                "images",
+                "documents",
+                "metadata"
+              ]
+            }
+          }
+        },
+        "step_5_2_update_machine_service": {
+          "order": 2,
+          "title": "Update Machine Service",
+          "file": "front-end/src/app/core/services/machine.service.ts",
+          "description": "Update service methods",
+          "implementation": {
+            "createMachineForm": {
+              "remove": "Removed fields from FormData",
+              "add": "so_id to FormData",
+              "keep": "location, dispatch_date, images, documents, metadata"
+            }
+          }
+        },
+        "step_5_3_update_technician_create_machine": {
+          "order": 3,
+          "title": "Update Technician Create Machine Modal",
+          "file": "front-end/src/app/modules/dispatch/components/create-machine-modal/create-machine-modal.component.ts",
+          "description": "Replace removed fields with SO dropdown",
+          "implementation": {
+            "form_updates": {
+              "remove_fields": [
+                "Name input",
+                "Category dropdown",
+                "Subcategory dropdown",
+                "Party Name input",
+                "Mobile Number input",
+                "Machine Sequence input (keep display only)"
+              ],
+              "add_fields": {
+                "SO_Dropdown": {
+                  "type": "Searchable dropdown/select",
+                  "data_source": "Call SOService.getActiveSOs()",
+                  "display": "Show SO name, category name, party name in options",
+                  "value": "so_id",
+                  "validation": "Required",
+                  "on_change": "Display selected SO details below dropdown"
+                },
+                "SO_Details_Display": {
+                  "show_when": "SO selected",
+                  "fields": [
+                    "Name",
+                    "Category",
+                    "Subcategory",
+                    "Party Name",
+                    "Mobile Number"
+                  ],
+                  "styling": "Card or info box below dropdown"
+                }
+              },
+              "keep_fields": [
+                "Location",
+                "Dispatch Date",
+                "Images",
+                "Documents",
+                "Metadata"
+              ]
+            },
+            "form_validation": "Update validators to require so_id",
+            "submit_handler": "Send so_id instead of removed fields",
+            "ui_pattern": "Follow dropdown pattern from category selection but for SO"
+          }
+        },
+        "step_5_4_update_admin_create_machine": {
+          "order": 4,
+          "title": "Update Admin Create Machine Modal",
+          "file": "front-end/src/app/modules/admin/components/machine-management/machine-management.component.ts",
+          "description": "Same updates as technician modal",
+          "implementation": {
+            "same_as": "step_5_3_update_technician_create_machine",
+            "additional": "Keep is_approved checkbox for admin"
+          }
+        },
+        "step_5_5_update_machine_table_display": {
+          "order": 5,
+          "title": "Update Machine Table Display",
+          "files": [
+            "front-end/src/app/modules/admin/components/machine-management/machine-management.component.ts",
+            "front-end/src/app/modules/dispatch/pages/technician-machines.component.ts"
+          ],
+          "description": "Update table to show SO data",
+          "implementation": {
+            "column_updates": {
+              "Name": "Change to show m.so?.name or m.so_id (if not populated)",
+              "Category": "Change to show m.so?.category_id?.name",
+              "Subcategory": "Change to show m.so?.subcategory_id?.name",
+              "Party": "Change to show m.so?.party_name",
+              "Mobile": "Remove or show m.so?.mobile_number",
+              "Keep": "Location, Dispatch Date, Sequence, Images, Documents, Created By, Approved"
+            },
+            "null_handling": "Show '-' if SO not populated or null",
+            "styling": "Keep same table styling"
+          }
+        },
+        "step_5_6_update_machine_view_modal": {
+          "order": 6,
+          "title": "Update Machine View Modal",
+          "file": "front-end/src/app/modules/admin/components/machine-management/machine-management.component.ts",
+          "description": "Update view modal to show SO information",
+          "implementation": {
+            "section_structure": {
+              "SO_Information": {
+                "title": "SO Information",
+                "fields": [
+                  "Name: m.so?.name",
+                  "Category: m.so?.category_id?.name",
+                  "Subcategory: m.so?.subcategory_id?.name",
+                  "Party Name: m.so?.party_name",
+                  "Mobile Number: m.so?.mobile_number"
+                ]
+              },
+              "Machine_Information": {
+                "title": "Machine Information",
+                "fields": [
+                  "Location: m.location",
+                  "Dispatch Date: m.dispatch_date",
+                  "Sequence: m.machine_sequence",
+                  "Images: m.images",
+                  "Documents: m.documents",
+                  "Metadata: m.metadata"
+                ]
+              }
+            },
+            "styling": "Use grid layout, separate sections clearly"
+          }
+        }
+      },
+      "completion_criteria": [
+        "Machine models updated",
+        "Machine service updated",
+        "Create machine modals updated with SO dropdown",
+        "Machine tables show SO data",
+        "View modal shows SO information",
+        "All forms validate correctly"
+      ]
+    },
+    "phase_6_migration": {
+      "title": "Phase 6: Data Migration",
+      "description": "Migrate existing machines to use SO references",
+      "estimated_time": "1-2 days",
+      "dependencies": [
+        "phase_4_machine_model_update",
+        "phase_5_frontend_machine_update"
+      ],
+      "steps": {
+        "step_6_1_create_migration_script": {
+          "order": 1,
+          "title": "Create Migration Script",
+          "file": "back-end/src/scripts/migrate-machines-to-so.migration.ts",
+          "description": "Create script to migrate existing machines",
+          "implementation": {
+            "strategy": {
+              "step_1": "Find all machines without so_id",
+              "step_2": "For each machine, check if SO exists with same name, category, party_name",
+              "step_3": "If SO exists, use it; if not, create new SO",
+              "step_4": "Update machine with so_id",
+              "step_5": "Log migration results"
+            },
+            "so_creation_logic": {
+              "group_by": "name + category_id + party_name",
+              "create_so": "For each unique combination, create one SO",
+              "link_machines": "Link all machines with same combination to that SO"
+            },
+            "error_handling": "Handle errors gracefully, continue with next machine",
+            "logging": "Log created SOs, updated machines, errors"
+          },
+          "testing": "Test on development database first"
+        },
+        "step_6_2_run_migration": {
+          "order": 2,
+          "title": "Run Migration",
+          "description": "Execute migration script",
+          "implementation": {
+            "pre_migration": [
+              "Backup database",
+              "Test on development/staging first",
+              "Verify all machines have required fields"
+            ],
+            "execution": "Run script: ts-node src/scripts/migrate-machines-to-so.migration.ts",
+            "post_migration": [
+              "Verify all machines have so_id",
+              "Verify SOs are created correctly",
+              "Test machine endpoints",
+              "Test frontend displays"
+            ]
+          }
+        },
+        "step_6_3_remove_old_fields": {
+          "order": 3,
+          "title": "Remove Old Fields (Optional)",
+          "description": "After migration verified, remove old fields from model",
+          "implementation": {
+            "note": "Only do this after thorough testing and confirmation",
+            "steps": [
+              "Remove fields from machine model interface",
+              "Remove fields from machine schema",
+              "Update any remaining references",
+              "Test thoroughly"
+            ]
+          },
+          "timing": "Do this in a separate release after migration is stable"
+        }
+      },
+      "completion_criteria": [
+        "Migration script created and tested",
+        "All existing machines have so_id",
+        "SOs created correctly",
+        "No data loss",
+        "All functionality works with migrated data"
+      ]
+    },
+    "phase_7_testing_and_validation": {
+      "title": "Phase 7: Testing and Validation",
+      "description": "Comprehensive testing of all features",
+      "estimated_time": "2-3 days",
+      "dependencies": ["phase_6_migration"],
+      "steps": {
+        "step_7_1_backend_testing": {
+          "order": 1,
+          "title": "Backend API Testing",
+          "description": "Test all SO and machine endpoints",
+          "test_cases": {
+            "so_endpoints": [
+              "Create SO with all fields",
+              "Create SO without optional fields",
+              "Create SO with documents",
+              "Get all SOs with pagination",
+              "Get all SOs with filters",
+              "Get active SOs only",
+              "Get SO by ID",
+              "Update SO",
+              "Delete SO (soft delete)",
+              "Activate SO",
+              "Deactivate SO",
+              "Error cases (invalid category, etc.)"
+            ],
+            "machine_endpoints": [
+              "Create machine with SO reference",
+              "Create machine with invalid SO",
+              "Create machine with inactive SO",
+              "Get machines with populated SO",
+              "Update machine",
+              "Verify sequence auto-generation"
+            ]
+          }
+        },
+        "step_7_2_frontend_testing": {
+          "order": 2,
+          "title": "Frontend Component Testing",
+          "description": "Test all UI components and interactions",
+          "test_cases": {
+            "so_management": [
+              "Create SO form validation",
+              "Edit SO form",
+              "View SO details",
+              "Delete SO confirmation",
+              "Activate/Deactivate SO",
+              "Filter and search SOs",
+              "Pagination",
+              "Document upload",
+              "Table display"
+            ],
+            "machine_management": [
+              "Create machine with SO selection",
+              "SO dropdown search and selection",
+              "SO details display",
+              "Machine table with SO data",
+              "View machine with SO info",
+              "Edit machine",
+              "All existing machine features still work"
+            ]
+          }
+        },
+        "step_7_3_integration_testing": {
+          "order": 3,
+          "title": "Integration Testing",
+          "description": "Test end-to-end workflows",
+          "test_scenarios": [
+            "Create SO -> Create machine with that SO -> View machine",
+            "Deactivate SO -> Try to create machine (should fail or show warning)",
+            "Update SO -> Verify machine displays updated SO data",
+            "Delete SO -> Verify machines with that SO are handled",
+            "Search machines by SO name",
+            "Filter machines by SO category"
+          ]
+        },
+        "step_7_4_ui_consistency_check": {
+          "order": 4,
+          "title": "UI Consistency Check",
+          "description": "Verify all UI follows consistent patterns",
+          "checklist": [
+            "All modals use same styling",
+            "All tables use same styling",
+            "All buttons use consistent colors and sizes",
+            "All forms use consistent validation display",
+            "All filters use consistent styling",
+            "All error messages use consistent styling",
+            "All loading states use consistent indicators"
+          ]
+        }
+      },
+      "completion_criteria": [
+        "All test cases pass",
+        "No console errors",
+        "UI is consistent",
+        "All workflows work correctly",
+        "Performance is acceptable"
+      ]
+    }
+  },
+  "integration_points": {
+    "backend_frontend": {
+      "api_contracts": {
+        "description": "Ensure API responses match frontend expectations",
+        "so_endpoints": {
+          "GET /api/so": "Returns { success: true, data: { sos: SO[], total: number, page: number, pages: number, limit: number } }",
+          "GET /api/so/active": "Returns { success: true, data: SO[] }",
+          "POST /api/so": "Returns { success: true, data: SO, message: string }",
+          "SO_object": "Must include populated category_id, subcategory_id, created_by"
+        },
+        "machine_endpoints": {
+          "GET /api/machines": "Returns machines with populated so_id (SO object)",
+          "POST /api/machines": "Accepts so_id instead of removed fields"
+        }
+      }
+    },
+    "component_integration": {
+      "so_dropdown_in_machine_creation": {
+        "description": "SO dropdown must integrate seamlessly with machine creation",
+        "requirements": [
+          "Load active SOs on modal open",
+          "Search/filter SOs in dropdown",
+          "Display SO details when selected",
+          "Validate SO selection",
+          "Handle SO not found errors"
+        ]
+      }
+    }
+  },
+  "rollback_strategy": {
+    "description": "Plan for rolling back changes if issues occur",
+    "steps": [
+      "Keep old machine fields in model (marked optional) during migration",
+      "Maintain backward compatibility in API responses",
+      "Keep migration script for re-running if needed",
+      "Document all changes for easy reversal",
+      "Test rollback procedure on staging first"
+    ]
+  },
+  "performance_considerations": {
+    "backend": [
+      "Add indexes for so_id in machine model",
+      "Use efficient population queries",
+      "Cache active SOs if frequently accessed",
+      "Optimize SO search queries"
+    ],
+    "frontend": [
+      "Lazy load SO dropdown data",
+      "Debounce search inputs",
+      "Use pagination for large SO lists",
+      "Cache active SOs in service"
+    ]
+  },
+  "documentation_updates": {
+    "required_updates": [
+      "Update API documentation with new SO endpoints",
+      "Update machine API documentation (removed fields, new so_id)",
+      "Update frontend component documentation",
+      "Create user guide for SO management",
+      "Update migration guide"
+    ]
+  },
+  "success_criteria": {
+    "functional": [
+      "All SO CRUD operations work correctly",
+      "Machine creation uses SO selection",
+      "Machine tables display SO information",
+      "All existing machine features still work",
+      "Migration completed successfully"
+    ],
+    "non_functional": [
+      "UI is consistent with existing pages",
+      "Code follows existing patterns",
+      "No performance degradation",
+      "All tests pass",
+      "No breaking changes to existing functionality"
+    ]
+  }
+}

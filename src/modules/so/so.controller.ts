@@ -1,0 +1,397 @@
+// controllers/so.controller.ts
+import { Request, Response } from 'express';
+import { StatusCodes } from 'http-status-codes';
+import SOService, {
+  CreateSOData,
+  UpdateSOData,
+  SOFilters,
+} from './services/so.service';
+import { createSOSchema, updateSOSchema } from './validators/so.joi.validator';
+import { asyncHandler } from '../../utils/asyncHandler';
+import { ApiResponse } from '../../utils/ApiResponse';
+import { ApiError } from '../../utils/ApiError';
+import { deleteMachineDocuments } from '../../middlewares/multer.middleware';
+
+export interface AuthenticatedRequest extends Request {
+  user?: {
+    _id: string;
+    email: string;
+    username: string;
+    role: string;
+    department: string;
+  };
+}
+
+// Helper function to extract Cloudinary URLs from files
+const extractCloudinaryUrls = (files: Express.Multer.File[]): string[] => {
+  return files
+    .map((file) => {
+      const cloudinaryFile = file as Express.Multer.File & {
+        cloudinary?: { secure_url: string; url: string };
+      };
+      return (
+        cloudinaryFile.cloudinary?.secure_url ||
+        cloudinaryFile.cloudinary?.url ||
+        ''
+      );
+    })
+    .filter((url) => url !== '');
+};
+
+// Helper function to process documents from multer files
+const processDocuments = (
+  files: Express.Multer.File[] | undefined,
+): Array<{
+  name: string;
+  file_path: string;
+  document_type?: string;
+}> => {
+  if (!files || files.length === 0) {
+    return [];
+  }
+
+  return files.map((file) => {
+    const cloudinaryFile = file as Express.Multer.File & {
+      cloudinary?: { secure_url: string; url: string };
+    };
+    const filePath =
+      cloudinaryFile.cloudinary?.secure_url ||
+      cloudinaryFile.cloudinary?.url ||
+      file.path;
+
+    return {
+      name: file.originalname,
+      file_path: filePath,
+      document_type: file.mimetype,
+    };
+  });
+};
+
+class SOController {
+  /**
+   * Create a new SO
+   * POST /api/so
+   */
+  static createSO = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      // Parse body for validation
+      const rawBody = req.body as Record<string, unknown>;
+      const bodyForValidation: Record<string, unknown> = { ...rawBody };
+
+      // Handle description: convert empty string to null
+      if (rawBody['description'] === '' || rawBody['description'] === null) {
+        bodyForValidation['description'] = null;
+      }
+
+      const { error, value } = createSOSchema.validate(bodyForValidation);
+      if (error) {
+        // Clean up uploaded files if validation fails
+        if (req.files) {
+          const files = req.files as {
+            [fieldname: string]: Express.Multer.File[];
+          };
+          if (files['documents']) {
+            const documentPaths = extractCloudinaryUrls(files['documents']);
+            await deleteMachineDocuments(documentPaths);
+          }
+        }
+        throw new ApiError(
+          'CREATE_SO_VALIDATION',
+          StatusCodes.BAD_REQUEST,
+          'VALIDATION_ERROR',
+          error.details?.[0]?.message || 'Validation error',
+        );
+      }
+
+      if (!req.user) {
+        // Clean up uploaded files if authentication fails
+        if (req.files) {
+          const files = req.files as {
+            [fieldname: string]: Express.Multer.File[];
+          };
+          if (files['documents']) {
+            const documentPaths = extractCloudinaryUrls(files['documents']);
+            await deleteMachineDocuments(documentPaths);
+          }
+        }
+        throw new ApiError(
+          'CREATE_SO',
+          StatusCodes.UNAUTHORIZED,
+          'USER_NOT_AUTHENTICATED',
+          'User authentication required',
+        );
+      }
+
+      // Process uploaded documents
+      const documentFiles: Express.Multer.File[] = [];
+      if (req.files) {
+        const files = req.files as {
+          [fieldname: string]: Express.Multer.File[];
+        };
+        if (files['documents'] && Array.isArray(files['documents'])) {
+          documentFiles.push(...files['documents']);
+        }
+      }
+
+      // Process documents
+      const documents = processDocuments(documentFiles);
+
+      // Create SO
+      const createData: CreateSOData = {
+        ...value,
+        documents,
+        created_by: req.user._id,
+      };
+
+      const so = await SOService.create(createData);
+
+      const response = new ApiResponse(true, so, 'SO created successfully');
+      res.status(StatusCodes.CREATED).json(response);
+    },
+  );
+
+  /**
+   * Get all SOs with pagination and filters
+   * GET /api/so
+   */
+  static getAllSOs = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const page = Number.parseInt((req.query['page'] as string) || '1', 10);
+      const limit = Number.parseInt((req.query['limit'] as string) || '10', 10);
+
+      const filters: SOFilters = {
+        name: req.query['name'] as string | undefined,
+        category_id: req.query['category_id'] as string | undefined,
+        subcategory_id: req.query['subcategory_id'] as string | undefined,
+        party_name: req.query['party_name'] as string | undefined,
+        is_active:
+          req.query['is_active'] === 'true'
+            ? true
+            : req.query['is_active'] === 'false'
+              ? false
+              : undefined,
+        created_by: req.query['created_by'] as string | undefined,
+        search: req.query['search'] as string | undefined,
+        sortBy: req.query['sortBy'] as
+          | 'createdAt'
+          | 'name'
+          | 'category'
+          | 'party_name'
+          | 'created_by'
+          | undefined,
+        sortOrder: (req.query['sortOrder'] as 'asc' | 'desc') || 'desc',
+      };
+
+      const result = await SOService.getAll(page, limit, filters);
+
+      const response = new ApiResponse(
+        true,
+        {
+          sos: result.sos,
+          total: result.total,
+          page,
+          pages: result.pages,
+          limit,
+        },
+        'SOs retrieved successfully',
+      );
+      res.status(StatusCodes.OK).json(response);
+    },
+  );
+
+  /**
+   * Get active SOs only (for dropdown)
+   * GET /api/so/active
+   */
+  static getActiveSOs = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const sos = await SOService.getActiveSOs();
+
+      const response = new ApiResponse(
+        true,
+        sos,
+        'Active SOs retrieved successfully',
+      );
+      res.status(StatusCodes.OK).json(response);
+    },
+  );
+
+  /**
+   * Get SO by ID
+   * GET /api/so/:id
+   */
+  static getSOById = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { id } = req.params;
+
+      const so = await SOService.getById(id);
+
+      const response = new ApiResponse(true, so, 'SO retrieved successfully');
+      res.status(StatusCodes.OK).json(response);
+    },
+  );
+
+  /**
+   * Update SO
+   * PUT /api/so/:id
+   */
+  static updateSO = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { id } = req.params;
+
+      if (!req.user) {
+        throw new ApiError(
+          'UPDATE_SO',
+          StatusCodes.UNAUTHORIZED,
+          'USER_NOT_AUTHENTICATED',
+          'User authentication required',
+        );
+      }
+
+      // Parse body for validation
+      const rawBody = req.body as Record<string, unknown>;
+      const bodyForValidation: Record<string, unknown> = { ...rawBody };
+
+      // Handle description: convert empty string to null
+      if (rawBody['description'] === '' || rawBody['description'] === null) {
+        bodyForValidation['description'] = null;
+      }
+
+      const { error, value } = updateSOSchema.validate(bodyForValidation);
+      if (error) {
+        // Clean up uploaded files if validation fails
+        if (req.files) {
+          const files = req.files as {
+            [fieldname: string]: Express.Multer.File[];
+          };
+          if (files['documents']) {
+            const documentPaths = extractCloudinaryUrls(files['documents']);
+            await deleteMachineDocuments(documentPaths);
+          }
+        }
+        throw new ApiError(
+          'UPDATE_SO_VALIDATION',
+          StatusCodes.BAD_REQUEST,
+          'VALIDATION_ERROR',
+          error.details?.[0]?.message || 'Validation error',
+        );
+      }
+
+      // Get existing SO to merge documents
+      const existingSO = await SOService.getById(id);
+
+      // Process uploaded documents
+      const documentFiles: Express.Multer.File[] = [];
+      if (req.files) {
+        const files = req.files as {
+          [fieldname: string]: Express.Multer.File[];
+        };
+        if (files['documents'] && Array.isArray(files['documents'])) {
+          documentFiles.push(...files['documents']);
+        }
+      }
+
+      // Process new documents
+      const newDocuments = processDocuments(documentFiles);
+
+      // Merge with existing documents if documents are being updated
+      let finalDocuments = existingSO.documents || [];
+      if (value.documents !== undefined || newDocuments.length > 0) {
+        // If new documents are uploaded, add them to existing ones
+        if (newDocuments.length > 0) {
+          finalDocuments = [...finalDocuments, ...newDocuments];
+        }
+        // If documents array is explicitly provided in body, use it
+        if (value.documents !== undefined) {
+          finalDocuments = value.documents;
+        }
+      }
+
+      // Update SO
+      const updateData: UpdateSOData = {
+        ...value,
+        documents: finalDocuments,
+        updatedBy: req.user._id,
+      };
+
+      const so = await SOService.update(id, updateData);
+
+      const response = new ApiResponse(true, so, 'SO updated successfully');
+      res.status(StatusCodes.OK).json(response);
+    },
+  );
+
+  /**
+   * Soft delete SO
+   * DELETE /api/so/:id
+   */
+  static deleteSO = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { id } = req.params;
+
+      if (!req.user) {
+        throw new ApiError(
+          'DELETE_SO',
+          StatusCodes.UNAUTHORIZED,
+          'USER_NOT_AUTHENTICATED',
+          'User authentication required',
+        );
+      }
+
+      await SOService.softDelete(id, req.user._id);
+
+      const response = new ApiResponse(true, null, 'SO deleted successfully');
+      res.status(StatusCodes.OK).json(response);
+    },
+  );
+
+  /**
+   * Activate SO
+   * PATCH /api/so/:id/activate
+   */
+  static activateSO = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { id } = req.params;
+
+      if (!req.user) {
+        throw new ApiError(
+          'ACTIVATE_SO',
+          StatusCodes.UNAUTHORIZED,
+          'USER_NOT_AUTHENTICATED',
+          'User authentication required',
+        );
+      }
+
+      const so = await SOService.activate(id, req.user._id);
+
+      const response = new ApiResponse(true, so, 'SO activated successfully');
+      res.status(StatusCodes.OK).json(response);
+    },
+  );
+
+  /**
+   * Deactivate SO
+   * PATCH /api/so/:id/deactivate
+   */
+  static deactivateSO = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { id } = req.params;
+
+      if (!req.user) {
+        throw new ApiError(
+          'DEACTIVATE_SO',
+          StatusCodes.UNAUTHORIZED,
+          'USER_NOT_AUTHENTICATED',
+          'User authentication required',
+        );
+      }
+
+      const so = await SOService.deactivate(id, req.user._id);
+
+      const response = new ApiResponse(true, so, 'SO deactivated successfully');
+      res.status(StatusCodes.OK).json(response);
+    },
+  );
+}
+
+export default SOController;

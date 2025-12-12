@@ -46,8 +46,8 @@ export class ExportService {
     ];
 
     // Add filter/sort header first and get the data start row
-    const sortBy = filters.sortBy || 'createdAt';
-    const sortOrder = filters.sortOrder || 'desc';
+    const sortBy = (filters['sortBy'] as string) || 'createdAt';
+    const sortOrder = (filters['sortOrder'] as string) || 'desc';
     const dataStartRow = excel.addFilterSortHeader(
       filters,
       sortBy,
@@ -61,43 +61,63 @@ export class ExportService {
 
     // Fetch all users matching filters (no pagination)
     const query: Record<string, unknown> = {};
-    if (filters.search) {
-      query.$or = [
-        { username: { $regex: filters.search, $options: 'i' } },
-        { email: { $regex: filters.search, $options: 'i' } },
+    if (filters['search']) {
+      query['$or'] = [
+        { username: { $regex: filters['search'], $options: 'i' } },
+        { email: { $regex: filters['search'], $options: 'i' } },
       ];
     }
-    if (filters.role) query.role = filters.role;
-    if (filters.department) query.department = filters.department;
-    if (typeof filters.isApproved === 'boolean') {
-      query.isApproved = filters.isApproved;
+    if (filters['role']) query['role'] = filters['role'];
+    if (filters['department']) query['department'] = filters['department'];
+    if (typeof filters['isApproved'] === 'boolean') {
+      query['isApproved'] = filters['isApproved'];
     }
 
     // Apply sorting (already set above)
-    const sort: Record<string, number> = {};
+    const sort: Record<string, 1 | -1> = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const users = await User.find(query)
       .populate('role', 'name')
       .populate('department', 'name')
-      .sort(sort)
+      .sort(sort as { [key: string]: 1 | -1 })
       .lean();
 
     // Add data rows
     for (const user of users) {
       const rowData: Record<string, unknown> = {
-        _id: user._id?.toString() || '-',
-        username: user.username || '-',
-        email: user.email || '-',
+        _id: (user as Record<string, unknown>)['_id']?.toString() || '-',
+        username: (user as Record<string, unknown>)['username'] || '-',
+        email: (user as Record<string, unknown>)['email'] || '-',
         role:
-          (user.role as Record<string, unknown>)?.name ||
-          (typeof user.role === 'string' ? user.role : '-'),
+          (
+            (user as Record<string, unknown>)['role'] as unknown as Record<
+              string,
+              unknown
+            >
+          )?.['name'] ||
+          (typeof (user as Record<string, unknown>)['role'] === 'string'
+            ? (user as Record<string, unknown>)['role']
+            : '-'),
         department:
-          (user.department as Record<string, unknown>)?.name ||
-          (typeof user.department === 'string' ? user.department : '-'),
-        status: user.isApproved ? 'Approved' : 'Pending',
-        createdAt: user.createdAt
-          ? new Date(user.createdAt).toLocaleString()
+          (
+            (user as Record<string, unknown>)[
+              'department'
+            ] as unknown as Record<string, unknown>
+          )?.['name'] ||
+          (typeof (user as Record<string, unknown>)['department'] === 'string'
+            ? (user as Record<string, unknown>)['department']
+            : '-'),
+        status: (user as Record<string, unknown>)['isApproved']
+          ? 'Approved'
+          : 'Pending',
+        createdAt: (user as Record<string, unknown>)['createdAt']
+          ? new Date(
+              (user as Record<string, unknown>)['createdAt'] as
+                | string
+                | number
+                | Date,
+            ).toLocaleString()
           : '-',
         updatedAt: user.updatedAt
           ? new Date(user.updatedAt).toLocaleString()
@@ -116,12 +136,7 @@ export class ExportService {
     }
 
     // Add export info sheet with filters and sort
-    excel.addExportInfoSheet(
-      filters,
-      filters.sortBy || 'createdAt',
-      filters.sortOrder || 'desc',
-      users.length,
-    );
+    excel.addExportInfoSheet(filters, sortBy, sortOrder, users.length);
 
     await excel.generateAndSend(
       res,
@@ -161,7 +176,10 @@ export class ExportService {
       {
         text: [
           { text: 'Email: ', style: 'label' },
-          { text: user.email || 'N/A', style: 'value' },
+          {
+            text: (user as Record<string, unknown>)['email'] || 'N/A',
+            style: 'value',
+          },
         ],
       },
       {
@@ -169,8 +187,15 @@ export class ExportService {
           { text: 'Role: ', style: 'label' },
           {
             text:
-              (user.role as Record<string, unknown>)?.name ||
-              (typeof user.role === 'string' ? user.role : 'N/A'),
+              (
+                (user as Record<string, unknown>)['role'] as unknown as Record<
+                  string,
+                  unknown
+                >
+              )?.['name'] ||
+              (typeof (user as Record<string, unknown>)['role'] === 'string'
+                ? (user as Record<string, unknown>)['role']
+                : 'N/A'),
             style: 'value',
           },
         ],
@@ -180,7 +205,9 @@ export class ExportService {
           { text: 'Department: ', style: 'label' },
           {
             text:
-              (user.department as Record<string, unknown>)?.name ||
+              (user.department as unknown as Record<string, unknown>)?.[
+                'name'
+              ] ||
               (typeof user.department === 'string' ? user.department : 'N/A'),
             style: 'value',
           },
@@ -196,7 +223,13 @@ export class ExportService {
         text: [
           { text: 'Created Date: ', style: 'label' },
           {
-            text: pdf.formatDate(user.createdAt),
+            text: pdf.formatDate(
+              (user as Record<string, unknown>)['createdAt'] as
+                | string
+                | Date
+                | null
+                | undefined,
+            ),
             style: 'value',
           },
         ],
@@ -245,8 +278,8 @@ export class ExportService {
     ];
 
     // Add filter/sort header first and get the data start row
-    const sortBy = filters.sortBy || 'createdAt';
-    const sortOrder = filters.sortOrder || 'desc';
+    const sortBy = (filters['sortBy'] as string) || 'createdAt';
+    const sortOrder = (filters['sortOrder'] as string) || 'desc';
     const dataStartRow = excel.addFilterSortHeader(
       filters,
       sortBy,
@@ -260,15 +293,15 @@ export class ExportService {
 
     // Build query
     const query: Record<string, unknown> = { deletedAt: null };
-    if (filters.category_id) query.category_id = filters.category_id;
-    if (typeof filters.is_approved === 'boolean') {
-      query.is_approved = filters.is_approved;
+    if (filters['category_id']) query['category_id'] = filters['category_id'];
+    if (typeof filters['is_approved'] === 'boolean') {
+      query['is_approved'] = filters['is_approved'];
     }
-    if (filters.search) {
-      query.$or = [
-        { name: { $regex: filters.search, $options: 'i' } },
-        { party_name: { $regex: filters.search, $options: 'i' } },
-        { location: { $regex: filters.search, $options: 'i' } },
+    if (filters['search']) {
+      query['$or'] = [
+        { name: { $regex: filters['search'], $options: 'i' } },
+        { party_name: { $regex: filters['search'], $options: 'i' } },
+        { location: { $regex: filters['search'], $options: 'i' } },
       ];
     }
 
@@ -281,27 +314,52 @@ export class ExportService {
     // Add data rows
     for (const machine of machines) {
       const rowData: Record<string, unknown> = {
-        _id: machine._id?.toString() || '-',
-        name: machine.name || '-',
-        category: (machine.category_id as Record<string, unknown>)?.name || '-',
-        sequence: machine.machine_sequence || '-',
-        party_name: machine.party_name || '-',
-        location: machine.location || '-',
-        mobile: machine.mobile_number || '-',
-        dispatch_date: machine.dispatch_date
-          ? new Date(machine.dispatch_date).toLocaleDateString()
+        _id: (machine as Record<string, unknown>)['_id']?.toString() || '-',
+        name: (machine as Record<string, unknown>)['name'] || '-',
+        category:
+          (
+            (machine as Record<string, unknown>)[
+              'category_id'
+            ] as unknown as Record<string, unknown>
+          )?.['name'] || '-',
+        sequence:
+          (machine as Record<string, unknown>)['machine_sequence'] || '-',
+        party_name: (machine as Record<string, unknown>)['party_name'] || '-',
+        location: (machine as Record<string, unknown>)['location'] || '-',
+        mobile: (machine as Record<string, unknown>)['mobile_number'] || '-',
+        dispatch_date: (machine as Record<string, unknown>)['dispatch_date']
+          ? new Date(
+              (machine as Record<string, unknown>)['dispatch_date'] as
+                | string
+                | number
+                | Date,
+            ).toLocaleDateString()
           : '-',
-        images: machine.images?.length
-          ? `${machine.images.length} image(s)`
+        images: ((machine as Record<string, unknown>)['images'] as unknown[])
+          ?.length
+          ? `${((machine as Record<string, unknown>)['images'] as unknown[]).length} image(s)`
           : '-',
-        documents: machine.documents?.length
-          ? `${machine.documents.length} document(s)`
+        documents: (
+          (machine as Record<string, unknown>)['documents'] as unknown[]
+        )?.length
+          ? `${((machine as Record<string, unknown>)['documents'] as unknown[]).length} document(s)`
           : '-',
-        status: machine.is_approved ? 'Approved' : 'Pending',
+        status: (machine as Record<string, unknown>)['is_approved']
+          ? 'Approved'
+          : 'Pending',
         created_by:
-          (machine.created_by as Record<string, unknown>)?.username || '-',
-        createdAt: machine.createdAt
-          ? new Date(machine.createdAt).toLocaleString()
+          (
+            (machine as Record<string, unknown>)[
+              'created_by'
+            ] as unknown as Record<string, unknown>
+          )?.['username'] || '-',
+        createdAt: (machine as Record<string, unknown>)['createdAt']
+          ? new Date(
+              (machine as Record<string, unknown>)['createdAt'] as
+                | string
+                | number
+                | Date,
+            ).toLocaleString()
           : '-',
       };
 
@@ -316,27 +374,45 @@ export class ExportService {
       );
 
       // Add first image if available
-      if (machine.images && machine.images.length > 0) {
+      const machineImages = (machine as Record<string, unknown>)[
+        'images'
+      ] as unknown[];
+      if (machineImages && machineImages.length > 0) {
         try {
-          await excel.addImage(rowNumber, 'images', machine.images[0], {
-            width: 100,
-            height: 100,
-          });
+          await excel.addImage(
+            rowNumber,
+            'images',
+            machineImages[0] as string,
+            {
+              width: 100,
+              height: 100,
+            },
+          );
         } catch (error) {
           console.error('Error adding image:', error);
         }
       }
 
       // Add document hyperlinks
-      if (machine.documents && machine.documents.length > 0) {
-        const firstDoc = machine.documents[0];
-        const docPath = path.isAbsolute(firstDoc.file_path)
-          ? firstDoc.file_path
-          : path.join(process.cwd(), 'public', firstDoc.file_path);
+      const machineDocuments = (machine as Record<string, unknown>)[
+        'documents'
+      ] as unknown[];
+      if (machineDocuments && machineDocuments.length > 0) {
+        const firstDoc = machineDocuments[0] as Record<string, unknown>;
+        if (!firstDoc) {
+          continue;
+        }
+        const docPath = path.isAbsolute((firstDoc['file_path'] as string) || '')
+          ? (firstDoc['file_path'] as string)
+          : path.join(
+              process.cwd(),
+              'public',
+              (firstDoc['file_path'] as string) || '',
+            );
         excel.addHyperlink(
           rowNumber,
           'documents',
-          firstDoc.name || 'Document',
+          (firstDoc['name'] as string) || 'Document',
           `file:///${docPath}`,
         );
       }
@@ -387,7 +463,12 @@ export class ExportService {
       text: [
         { text: 'Category: ', style: 'label' },
         {
-          text: (machine.category_id as Record<string, unknown>)?.name || 'N/A',
+          text:
+            (
+              (machine as Record<string, unknown>)[
+                'category_id'
+              ] as unknown as Record<string, unknown>
+            )?.['name'] || 'N/A',
           style: 'value',
         },
       ],
@@ -401,7 +482,11 @@ export class ExportService {
     content.push({
       text: [
         { text: 'Status: ', style: 'label' },
-        pdf.formatStatusBadge(machine.is_approved ? 'approved' : 'pending'),
+        pdf.formatStatusBadge(
+          (machine as Record<string, unknown>)['is_approved']
+            ? 'approved'
+            : 'pending',
+        ),
       ],
     });
 
@@ -416,7 +501,10 @@ export class ExportService {
     content.push({
       text: [
         { text: 'Location: ', style: 'label' },
-        { text: machine.location || 'N/A', style: 'value' },
+        {
+          text: (machine as Record<string, unknown>)['location'] || 'N/A',
+          style: 'value',
+        },
       ],
     });
     content.push({
@@ -429,8 +517,14 @@ export class ExportService {
       text: [
         { text: 'Dispatch Date: ', style: 'label' },
         {
-          text: machine.dispatch_date
-            ? pdf.formatDate(machine.dispatch_date)
+          text: (machine as Record<string, unknown>)['dispatch_date']
+            ? pdf.formatDate(
+                (machine as Record<string, unknown>)['dispatch_date'] as
+                  | string
+                  | Date
+                  | null
+                  | undefined,
+              )
             : 'N/A',
           style: 'value',
         },
@@ -442,7 +536,7 @@ export class ExportService {
       content.push({ text: '\nImages', style: 'subheader' });
       const imageColumns: unknown[] = [];
       for (let i = 0; i < Math.min(machine.images.length, 4); i++) {
-        const imagePath = machine.images[i];
+        const imagePath = machine.images[i] as string;
         const imageData = await pdf.loadImage(imagePath);
         if (imageData) {
           imageColumns.push({
@@ -465,12 +559,20 @@ export class ExportService {
     if (machine.documents && machine.documents.length > 0) {
       content.push({ text: '\nDocuments', style: 'subheader' });
       const docList: unknown[] = [];
-      for (const doc of machine.documents) {
-        const docPath = path.isAbsolute(doc.file_path)
-          ? doc.file_path
-          : path.join(process.cwd(), 'public', doc.file_path);
+      const machineDocs = (machine as Record<string, unknown>)[
+        'documents'
+      ] as unknown[];
+      for (const doc of machineDocs) {
+        const docObj = doc as Record<string, unknown>;
+        const docPath = path.isAbsolute((docObj['file_path'] as string) || '')
+          ? (docObj['file_path'] as string)
+          : path.join(
+              process.cwd(),
+              'public',
+              (docObj['file_path'] as string) || '',
+            );
         docList.push({
-          text: doc.name || 'Document',
+          text: (docObj['name'] as string) || 'Document',
           link: `file:///${docPath}`,
           color: '#3B82F6',
           decoration: 'underline',
@@ -530,8 +632,8 @@ export class ExportService {
     ];
 
     // Add filter/sort header first and get the data start row
-    const sortBy = filters.sortBy || 'sort_order';
-    const sortOrder = filters.sortOrder || 'asc';
+    const sortBy = (filters['sortBy'] as string) || 'sort_order';
+    const sortOrder = (filters['sortOrder'] as string) || 'asc';
     const dataStartRow = excel.addFilterSortHeader(
       filters,
       sortBy,
@@ -544,13 +646,13 @@ export class ExportService {
     excel.setColumns(columns, dataStartRow);
 
     const query: Record<string, unknown> = { deletedAt: { $exists: false } };
-    if (filters.search) {
-      query.$or = [
-        { name: { $regex: filters.search, $options: 'i' } },
-        { description: { $regex: filters.search, $options: 'i' } },
+    if (filters['search']) {
+      query['$or'] = [
+        { name: { $regex: filters['search'], $options: 'i' } },
+        { description: { $regex: filters['search'], $options: 'i' } },
       ];
     }
-    if (filters.level !== undefined) query.level = filters.level;
+    if (filters['level'] !== undefined) query['level'] = filters['level'];
 
     // Apply sorting (already set above)
     const sort: Record<string, number> = {};
@@ -558,7 +660,7 @@ export class ExportService {
 
     const categories = await Category.find(query)
       .populate('createdBy', 'username email')
-      .sort(sort)
+      .sort(sort as { [key: string]: 1 | -1 })
       .lean();
 
     for (const category of categories) {
@@ -570,7 +672,9 @@ export class ExportService {
         sort_order: category.sort_order || 0,
         status: category.is_active ? 'Active' : 'Inactive',
         created_by:
-          (category.createdBy as Record<string, unknown>)?.username || '-',
+          (category.created_by as unknown as Record<string, unknown>)?.[
+            'username'
+          ] || '-',
         createdAt: category.created_at
           ? new Date(category.created_at).toLocaleString()
           : '-',
@@ -580,7 +684,9 @@ export class ExportService {
       excel.applyStatusStyle(
         rowNumber,
         'status',
-        category.is_active ? 'active' : 'inactive',
+        (category as Record<string, unknown>)['is_active']
+          ? 'active'
+          : 'inactive',
       );
     }
 
@@ -628,20 +734,31 @@ export class ExportService {
     content.push({
       text: [
         { text: 'Name: ', style: 'label' },
-        { text: category.name || 'N/A', style: 'value' },
+        {
+          text: (category as Record<string, unknown>)['name'] || 'N/A',
+          style: 'value',
+        },
       ],
     });
     content.push({
       text: [
         { text: 'Slug: ', style: 'label' },
-        { text: category.slug || 'N/A', style: 'value' },
+        {
+          text: (category as Record<string, unknown>)['slug'] || 'N/A',
+          style: 'value',
+        },
       ],
     });
-    if (category.description) {
+    if ((category as Record<string, unknown>)['description']) {
       content.push({
         text: [
           { text: 'Description: ', style: 'label' },
-          { text: category.description, style: 'value' },
+          {
+            text: (category as Record<string, unknown>)[
+              'description'
+            ] as string,
+            style: 'value',
+          },
         ],
       });
     }
@@ -650,13 +767,13 @@ export class ExportService {
         { text: 'Level: ', style: 'label' },
         {
           text:
-            category.level === 0
+            (category as Record<string, unknown>)['level'] === 0
               ? 'Main Category'
-              : category.level === 1
+              : (category as Record<string, unknown>)['level'] === 1
                 ? 'Subcategory'
-                : category.level === 2
+                : (category as Record<string, unknown>)['level'] === 2
                   ? 'Sub-subcategory'
-                  : `Level ${category.level}`,
+                  : `Level ${(category as Record<string, unknown>)['level']}`,
           style: 'value',
         },
       ],
@@ -666,8 +783,9 @@ export class ExportService {
         { text: 'Parent Category: ', style: 'label' },
         {
           text:
-            (category.parent_id as Record<string, unknown>)?.name ||
-            'None (Root Category)',
+            (category.parent_id as unknown as Record<string, unknown>)?.[
+              'name'
+            ] || 'None (Root Category)',
           style: 'value',
         },
       ],
@@ -733,7 +851,9 @@ export class ExportService {
         { text: 'Created By: ', style: 'label' },
         {
           text:
-            (category.created_by as Record<string, unknown>)?.username || 'N/A',
+            (category.created_by as unknown as Record<string, unknown>)?.[
+              'username'
+            ] || 'N/A',
           style: 'value',
         },
       ],
@@ -742,17 +862,29 @@ export class ExportService {
       text: [
         { text: 'Created Date: ', style: 'label' },
         {
-          text: pdf.formatDate(category.created_at),
+          text: pdf.formatDate(
+            (category as Record<string, unknown>)['created_at'] as
+              | string
+              | Date
+              | null
+              | undefined,
+          ),
           style: 'value',
         },
       ],
     });
-    if (category.updated_at) {
+    if ((category as Record<string, unknown>)['updated_at']) {
       content.push({
         text: [
           { text: 'Updated Date: ', style: 'label' },
           {
-            text: pdf.formatDate(category.updated_at),
+            text: pdf.formatDate(
+              (category as Record<string, unknown>)['updated_at'] as
+                | string
+                | Date
+                | null
+                | undefined,
+            ),
             style: 'value',
           },
         ],
@@ -793,8 +925,8 @@ export class ExportService {
     ];
 
     // Add filter/sort header first and get the data start row
-    const sortBy = filters.sortBy || 'name';
-    const sortOrder = filters.sortOrder || 'asc';
+    const sortBy: string = (filters['sortBy'] as string) || 'name';
+    const sortOrder: string = (filters['sortOrder'] as string) || 'asc';
     const dataStartRow = excel.addFilterSortHeader(
       filters,
       sortBy,
@@ -807,29 +939,41 @@ export class ExportService {
     excel.setColumns(columns, dataStartRow);
 
     const query: Record<string, unknown> = {};
-    if (filters.search) {
-      query.$or = [
-        { name: { $regex: filters.search, $options: 'i' } },
-        { description: { $regex: filters.search, $options: 'i' } },
+    if (filters['search']) {
+      query['$or'] = [
+        { name: { $regex: filters['search'], $options: 'i' } },
+        { description: { $regex: filters['search'], $options: 'i' } },
       ];
     }
 
     // Apply sorting (already set above)
-    const sort: Record<string, number> = {};
+    const sort: Record<string, 1 | -1> = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-    const roles = await Role.find(query).sort(sort).lean();
+    const roles = await Role.find(query)
+      .sort(sort as { [key: string]: 1 | -1 })
+      .lean();
 
     for (const role of roles) {
       const rowData: Record<string, unknown> = {
         _id: role._id?.toString() || '-',
         name: role.name || '-',
         description: role.description || '-',
-        createdAt: role.createdAt
-          ? new Date(role.createdAt).toLocaleString()
+        createdAt: (role as Record<string, unknown>)['createdAt']
+          ? new Date(
+              (role as Record<string, unknown>)['createdAt'] as
+                | string
+                | number
+                | Date,
+            ).toLocaleString()
           : '-',
-        updatedAt: role.updatedAt
-          ? new Date(role.updatedAt).toLocaleString()
+        updatedAt: (role as Record<string, unknown>)['updatedAt']
+          ? new Date(
+              (role as Record<string, unknown>)['updatedAt'] as
+                | string
+                | number
+                | Date,
+            ).toLocaleString()
           : '-',
       };
 
@@ -1074,8 +1218,8 @@ export class ExportService {
     ];
 
     // Add filter/sort header first and get the data start row
-    const sortBy = filters.sortBy || 'createdAt';
-    const sortOrder = filters.sortOrder || 'desc';
+    const sortBy = (filters['sortBy'] as string) || 'createdAt';
+    const sortOrder = (filters['sortOrder'] as string) || 'desc';
     const dataStartRow = excel.addFilterSortHeader(
       filters,
       sortBy,
@@ -1111,56 +1255,58 @@ export class ExportService {
     const query: Record<string, unknown> = {};
 
     // Handle category filter - need to find machines with this category first
-    if (filters.category_id) {
+    if (filters['category_id']) {
       const machinesWithCategory = await Machine.find({
-        category_id: filters.category_id,
+        category_id: filters['category_id'],
       })
         .select('_id')
         .lean();
       const machineIds = machinesWithCategory.map((m) => m._id);
-      query.machineId = { $in: machineIds };
+      query['machineId'] = { $in: machineIds };
     }
 
-    if (filters.search) {
+    if (filters['search']) {
       // Search in machine names, party names, QC notes
       const machinesMatchingSearch = await Machine.find({
         $or: [
-          { name: { $regex: filters.search, $options: 'i' } },
-          { party_name: { $regex: filters.search, $options: 'i' } },
+          { name: { $regex: filters['search'], $options: 'i' } },
+          { party_name: { $regex: filters['search'], $options: 'i' } },
         ],
       })
         .select('_id')
         .lean();
       const machineIds = machinesMatchingSearch.map((m) => m._id);
 
-      query.$or = [
+      query['$or'] = [
         { machineId: { $in: machineIds } },
-        { 'proposedChanges.name': { $regex: filters.search, $options: 'i' } },
+        {
+          'proposedChanges.name': { $regex: filters['search'], $options: 'i' },
+        },
         {
           'proposedChanges.party_name': {
-            $regex: filters.search,
+            $regex: filters['search'],
             $options: 'i',
           },
         },
-        { qcNotes: { $regex: filters.search, $options: 'i' } },
-        { requestNotes: { $regex: filters.search, $options: 'i' } },
+        { qcNotes: { $regex: filters['search'], $options: 'i' } },
+        { requestNotes: { $regex: filters['search'], $options: 'i' } },
       ];
     }
 
-    if (filters.status) {
-      query.status = filters.status;
+    if (filters['status']) {
+      query['status'] = filters['status'];
     }
 
-    if (filters.approvalType) {
-      query.approvalType = filters.approvalType;
+    if (filters['approvalType']) {
+      query['approvalType'] = filters['approvalType'];
     }
 
-    if (filters.is_approved !== undefined) {
+    if (filters['is_approved'] !== undefined) {
       // Map is_approved boolean to status
-      if (filters.is_approved === true) {
-        query.status = 'APPROVED';
-      } else if (filters.is_approved === false) {
-        query.status = { $in: ['PENDING', 'REJECTED'] };
+      if (filters['is_approved'] === true) {
+        query['status'] = 'APPROVED';
+      } else if (filters['is_approved'] === false) {
+        query['status'] = { $in: ['PENDING', 'REJECTED'] };
       }
     }
 
@@ -1184,7 +1330,14 @@ export class ExportService {
 
     // Fetch machine approvals to get complete approval information
     const machineIds = qcApprovals
-      .map((approval) => (approval.machineId as Record<string, unknown>)?._id)
+      .map(
+        (approval) =>
+          (
+            (approval as Record<string, unknown>)[
+              'machineId'
+            ] as unknown as Record<string, unknown>
+          )?.['_id'],
+      )
       .filter(Boolean);
 
     const machineApprovals = await MachineApproval.find({
@@ -1200,14 +1353,25 @@ export class ExportService {
     const machineApprovalMap = new Map(); // machineId -> latest approval
     machineApprovals.forEach((approval) => {
       const machineId = (
-        approval.machineId as Record<string, unknown>
+        approval.machineId as unknown as Record<string, unknown>
       )?.toString();
       if (machineId) {
         // Keep the latest approval for each machine
         const existing = machineApprovalMap.get(machineId);
         if (
           !existing ||
-          new Date(approval.createdAt || 0) > new Date(existing.createdAt || 0)
+          new Date(
+            ((approval as Record<string, unknown>)['createdAt'] as
+              | string
+              | number
+              | Date) || 0,
+          ) >
+            new Date(
+              ((existing as Record<string, unknown>)['createdAt'] as
+                | string
+                | number
+                | Date) || 0,
+            )
         ) {
           machineApprovalMap.set(machineId, approval);
         }
@@ -1216,7 +1380,9 @@ export class ExportService {
 
     // Get base URL for document links
     const baseUrl =
-      process.env.CLIENT_URL || process.env.BASE_URL || 'http://localhost:5000';
+      process.env['CLIENT_URL'] ||
+      process.env['BASE_URL'] ||
+      'http://localhost:5000';
 
     // Helper function to get document URLs and names for hyperlinks
     const getDocumentLinks = (
@@ -1224,8 +1390,16 @@ export class ExportService {
     ): Array<{ name: string; url: string }> => {
       if (!documents || documents.length === 0) return [];
       return documents.map((doc) => {
-        const path = doc.file_path || doc.path || doc;
-        const name = doc.name || doc.originalName || doc.filename || 'Document';
+        const docObj = doc as Record<string, unknown>;
+        const path =
+          (docObj['file_path'] as string) ||
+          (docObj['path'] as string) ||
+          (doc as string);
+        const name =
+          (docObj['name'] as string) ||
+          (docObj['originalName'] as string) ||
+          (docObj['filename'] as string) ||
+          'Document';
         // Ensure URL is properly formatted - if it's already a full Cloudinary URL, use it directly
         let url = path;
         if (!path.startsWith('http://') && !path.startsWith('https://')) {
@@ -1247,22 +1421,23 @@ export class ExportService {
 
     // Helper function to get image URLs for hyperlinks
     const getImageLinks = (
-      images: string[],
+      images: unknown[],
     ): Array<{ name: string; url: string }> => {
       if (!images || images.length === 0) return [];
       return images.map((img, index) => {
+        const imgStr = img as string;
         // Ensure URL is properly formatted
-        let url = img;
-        if (!img.startsWith('http://') && !img.startsWith('https://')) {
+        let url = imgStr;
+        if (!imgStr.startsWith('http://') && !imgStr.startsWith('https://')) {
           // Check if it contains cloudinary.com (might be malformed)
-          if (img.includes('cloudinary.com')) {
+          if (imgStr.includes('cloudinary.com')) {
             // Fix malformed URL
-            url = img
+            url = imgStr
               .replace(/\\/g, '/')
               .replace(/https?:\//, (match) => match.replace(':', '://'));
           } else {
             // Local file path - construct URL
-            url = `${baseUrl}/${img.replace(/^\//, '')}`;
+            url = `${baseUrl}/${imgStr.replace(/^\//, '')}`;
           }
         }
         return { name: `Image ${index + 1}`, url };
@@ -1271,22 +1446,25 @@ export class ExportService {
 
     // Helper function to get file URLs for hyperlinks
     const getFileLinks = (
-      files: string[],
+      files: unknown[],
     ): Array<{ name: string; url: string }> => {
       if (!files || files.length === 0) return [];
       return files.map((file, index) => {
+        const fileStr = file as string;
         // Ensure URL is properly formatted
-        let url = file;
-        if (!file.startsWith('http://') && !file.startsWith('https://')) {
+        let url = fileStr;
+        if (!fileStr.startsWith('http://') && !fileStr.startsWith('https://')) {
           // Check if it contains cloudinary.com (might be malformed)
-          if (file.includes('cloudinary.com')) {
+          if (fileStr.includes('cloudinary.com')) {
             // Fix malformed URL
-            url = file
+            url = fileStr
               .replace(/\\/g, '/')
-              .replace(/https?:\//, (match) => match.replace(':', '://'));
+              .replace(/https?:\//, (match: string) =>
+                match.replace(':', '://'),
+              );
           } else {
             // Local file path - construct URL
-            url = `${baseUrl}/${file.replace(/^\//, '')}`;
+            url = `${baseUrl}/${fileStr.replace(/^\//, '')}`;
           }
         }
         return { name: `File ${index + 1}`, url };
@@ -1294,41 +1472,56 @@ export class ExportService {
     };
 
     for (const approval of qcApprovals) {
-      const machine = approval.machineId as Record<string, unknown>;
-      const qcEntry = approval.qcEntryId as Record<string, unknown>;
-      const proposedChanges = approval.proposedChanges || {};
+      const machine = (approval as Record<string, unknown>)[
+        'machineId'
+      ] as unknown as Record<string, unknown>;
+      const qcEntry = approval.qcEntryId as unknown as Record<string, unknown>;
+      const proposedChanges =
+        ((approval as Record<string, unknown>)['proposedChanges'] as Record<
+          string,
+          unknown
+        >) || {};
 
       // Get machine data (from machine or proposedChanges)
-      const machineName = machine?.name || proposedChanges.name || '-';
+      const machineName = machine?.['name'] || proposedChanges['name'] || '-';
       const machineSequence =
-        machine?.machine_sequence || proposedChanges.machine_sequence || '-';
+        machine?.['machine_sequence'] ||
+        proposedChanges['machine_sequence'] ||
+        '-';
       const category =
-        machine?.category_id?.name ||
-        (proposedChanges.category_id ? 'N/A' : '-');
+        (machine?.['category_id'] as unknown as Record<string, unknown>)?.[
+          'name'
+        ] || (proposedChanges['category_id'] ? 'N/A' : '-');
       const subcategory =
-        machine?.subcategory_id?.name ||
-        (proposedChanges.subcategory_id ? 'N/A' : '-');
+        (machine?.['subcategory_id'] as unknown as Record<string, unknown>)?.[
+          'name'
+        ] || (proposedChanges['subcategory_id'] ? 'N/A' : '-');
       const partyName =
-        machine?.party_name || proposedChanges.party_name || '-';
-      const location = machine?.location || proposedChanges.location || '-';
+        machine?.['party_name'] || proposedChanges['party_name'] || '-';
+      const location =
+        machine?.['location'] || proposedChanges['location'] || '-';
       const mobileNumber =
-        machine?.mobile_number || proposedChanges.mobile_number || '-';
-      const dispatchDate = machine?.dispatch_date
-        ? new Date(machine.dispatch_date).toLocaleDateString()
-        : proposedChanges.dispatch_date
-          ? new Date(proposedChanges.dispatch_date).toLocaleDateString()
+        machine?.['mobile_number'] || proposedChanges['mobile_number'] || '-';
+      const dispatchDate = machine?.['dispatch_date']
+        ? new Date(
+            machine['dispatch_date'] as string | number | Date,
+          ).toLocaleDateString()
+        : proposedChanges['dispatch_date']
+          ? new Date(
+              proposedChanges['dispatch_date'] as string | number | Date,
+            ).toLocaleDateString()
           : '-';
 
       // Machine documents and images (for hyperlink embedding)
-      const machineDocuments = machine?.documents || [];
-      const machineImages = machine?.images || [];
+      const machineDocuments = (machine?.['documents'] as unknown[]) || [];
+      const machineImages = (machine?.['images'] as string[]) || [];
       const machineDocumentLinks = getDocumentLinks(machineDocuments);
       const machineImageLinks = getImageLinks(machineImages);
 
       // QC data
       const qcSequence =
-        qcEntry?.machine_sequence ||
-        approval.proposedChanges?.machine_sequence ||
+        qcEntry?.['machine_sequence'] ||
+        approval.proposedChanges?.['machine_sequence'] ||
         '-';
       const qcNotes = approval.qcNotes || approval.requestNotes || '-';
       const qualityScore = approval.qualityScore || '-';
@@ -1341,32 +1534,54 @@ export class ExportService {
 
       // QC documents and files (for hyperlink embedding)
       const qcDocuments = approval.documents || [];
-      const qcFiles = qcEntry?.files || approval.proposedChanges?.files || [];
-      const qcDocumentLinks = getDocumentLinks(qcDocuments);
-      const qcFileLinks = getFileLinks(qcFiles);
+      const qcFilesRaw =
+        (qcEntry as Record<string, unknown>)?.['files'] ||
+        proposedChanges['files'] ||
+        [];
+      const qcFiles = Array.isArray(qcFilesRaw) ? qcFilesRaw : [];
+      const qcDocumentLinks = getDocumentLinks(qcDocuments as unknown[]);
+      const qcFileLinks = getFileLinks(qcFiles as unknown[]);
 
       // Get machine creation data
       const machineCreatedBy =
-        (machine?.created_by as Record<string, unknown>)?.username ||
-        (machine?.created_by as Record<string, unknown>)?.email ||
+        (machine?.['created_by'] as unknown as Record<string, unknown>)?.[
+          'username'
+        ] ||
+        (machine?.['created_by'] as unknown as Record<string, unknown>)?.[
+          'email'
+        ] ||
         '-';
 
       // Get machine approval data
-      const machineApproval = machineApprovalMap.get(machine?._id?.toString());
+      const machineApproval = machineApprovalMap.get(
+        machine?.['_id']?.toString(),
+      );
       const machineApprovalStatus =
-        machineApproval?.status ||
-        (machine?.is_approved ? 'APPROVED' : 'PENDING');
+        machineApproval?.['status'] ||
+        (machine?.['is_approved'] ? 'APPROVED' : 'PENDING');
       const machineRequestedBy =
-        (machineApproval?.requestedBy as Record<string, unknown>)?.username ||
-        (machineApproval?.requestedBy as Record<string, unknown>)?.email ||
+        (
+          machineApproval?.['requestedBy'] as unknown as Record<string, unknown>
+        )?.['username'] ||
+        (
+          machineApproval?.['requestedBy'] as unknown as Record<string, unknown>
+        )?.['email'] ||
         '-';
       const machineApprovedBy =
-        (machineApproval?.approvedBy as Record<string, unknown>)?.username ||
-        (machineApproval?.approvedBy as Record<string, unknown>)?.email ||
+        (
+          machineApproval?.['approvedBy'] as unknown as Record<string, unknown>
+        )?.['username'] ||
+        (
+          machineApproval?.['approvedBy'] as unknown as Record<string, unknown>
+        )?.['email'] ||
         '-';
       const machineRejectedBy =
-        (machineApproval?.rejectedBy as Record<string, unknown>)?.username ||
-        (machineApproval?.rejectedBy as Record<string, unknown>)?.email ||
+        (
+          machineApproval?.['rejectedBy'] as unknown as Record<string, unknown>
+        )?.['username'] ||
+        (
+          machineApproval?.['rejectedBy'] as unknown as Record<string, unknown>
+        )?.['email'] ||
         '-';
       const machineApprovalDate = machineApproval?.approvalDate
         ? new Date(machineApproval.approvalDate).toLocaleString()
@@ -1375,12 +1590,18 @@ export class ExportService {
 
       // Get QC Entry data
       const qcEntryCreatedBy =
-        (qcEntry?.added_by as Record<string, unknown>)?.username ||
-        (qcEntry?.added_by as Record<string, unknown>)?.email ||
+        (qcEntry?.['added_by'] as unknown as Record<string, unknown>)?.[
+          'username'
+        ] ||
+        (qcEntry?.['added_by'] as unknown as Record<string, unknown>)?.[
+          'email'
+        ] ||
         '-';
-      const qcEntrySequence = qcEntry?.machine_sequence || '-';
-      const qcEntryCreatedAt = qcEntry?.createdAt
-        ? new Date(qcEntry.createdAt).toLocaleString()
+      const qcEntrySequence = qcEntry?.['machine_sequence'] || '-';
+      const qcEntryCreatedAt = qcEntry?.['createdAt']
+        ? new Date(
+            qcEntry['createdAt'] as string | number | Date,
+          ).toLocaleString()
         : '-';
 
       const rowData: Record<string, unknown> = {
@@ -1394,8 +1615,10 @@ export class ExportService {
         mobileNumber: mobileNumber,
         dispatchDate: dispatchDate,
         machineCreatedBy: machineCreatedBy,
-        machineCreatedAt: machine?.createdAt
-          ? new Date(machine.createdAt).toLocaleString()
+        machineCreatedAt: machine?.['createdAt']
+          ? new Date(
+              machine['createdAt'] as string | number | Date,
+            ).toLocaleString()
           : '-',
         machineImages:
           machineImageLinks.length > 0
@@ -1434,19 +1657,30 @@ export class ExportService {
             ? qcFileLinks.map((link) => link.name).join(', ')
             : '-',
         qcRequestedBy:
-          (approval.requestedBy as Record<string, unknown>)?.username || '-',
-        qcApprovalType: approval.approvalType || '-',
-        qcApprovalStatus: approval.status || 'PENDING',
+          (approval['requestedBy'] as unknown as Record<string, unknown>)?.[
+            'username'
+          ] || '-',
+        qcApprovalType: approval['approvalType'] || '-',
+        qcApprovalStatus: approval['status'] || 'PENDING',
         qcApprovedBy:
-          (approval.approvedBy as Record<string, unknown>)?.username || '-',
+          (approval['approvedBy'] as unknown as Record<string, unknown>)?.[
+            'username'
+          ] || '-',
         qcRejectedBy:
-          (approval.rejectedBy as Record<string, unknown>)?.username || '-',
+          (approval['rejectedBy'] as unknown as Record<string, unknown>)?.[
+            'username'
+          ] || '-',
         qcApprovalDate: approval.approvalDate
           ? new Date(approval.approvalDate).toLocaleString()
           : '-',
         qcRejectionReason: approval.rejectionReason || '-',
-        qcCreatedAt: approval.createdAt
-          ? new Date(approval.createdAt).toLocaleString()
+        qcCreatedAt: (approval as Record<string, unknown>)['createdAt']
+          ? new Date(
+              (approval as Record<string, unknown>)['createdAt'] as
+                | string
+                | number
+                | Date,
+            ).toLocaleString()
           : '-',
       };
 
@@ -1481,37 +1715,36 @@ export class ExportService {
 
         // For single link, use simple hyperlink format (more reliable)
         if (cleanedLinks.length === 1) {
-          cell.value = {
-            text: cleanedLinks[0].name,
-            hyperlink: cleanedLinks[0].url,
-          };
+          const link = cleanedLinks[0];
+          if (link) {
+            cell.value = {
+              text: link.name,
+              hyperlink: link.url,
+            };
+          }
           cell.font = { color: { argb: 'FF0563C1' }, underline: true };
           return;
         }
 
-        // For multiple links, use rich text format
-        // ExcelJS rich text format: array of objects with text, font, and hyperlink properties
-        const richTextParts: Array<{
-          text: string;
-          font?: { color?: { argb: string }; underline?: boolean };
-          hyperlink?: string;
-        }> = [];
+        // For multiple links, we need to use a workaround since Excel has limitations
+        // Excel doesn't natively support multiple clickable hyperlinks in a single cell
+        // Solution: Use Excel's HYPERLINK formula to create clickable links
+        // We'll create a formula that combines multiple HYPERLINK functions
 
-        cleanedLinks.forEach((link, index) => {
-          if (index > 0) {
-            // Add comma separator (no hyperlink, no special font)
-            richTextParts.push({ text: ', ' });
-          }
-          // Add link with hyperlink and styling
-          richTextParts.push({
-            text: link.name,
-            hyperlink: link.url,
-            font: { color: { argb: 'FF0563C1' }, underline: true },
-          });
+        // Build the formula: =HYPERLINK("url1","name1")&", "&HYPERLINK("url2","name2")&...
+        const hyperlinkFormulas = cleanedLinks.map((link) => {
+          // Escape quotes in URLs and names
+          const escapedUrl = link.url.replace(/"/g, '""');
+          const escapedName = link.name.replace(/"/g, '""');
+          return `HYPERLINK("${escapedUrl}","${escapedName}")`;
         });
 
-        // Set the rich text value
-        cell.value = { richText: richTextParts };
+        // Join with comma and space
+        const formula = hyperlinkFormulas.join('&", "&');
+
+        // Set the cell value as a formula
+        cell.value = { formula: `=${formula}` };
+        cell.font = { color: { argb: 'FF0563C1' }, underline: true };
       };
 
       // Add hyperlinks for machine images
@@ -1625,20 +1858,30 @@ export class ExportService {
     content.push({
       text: [
         { text: 'Machine Name: ', style: 'label' },
-        { text: qcEntry.name || 'N/A', style: 'value' },
+        {
+          text: (qcEntry as Record<string, unknown>)['name'] || 'N/A',
+          style: 'value',
+        },
       ],
     });
     content.push({
       text: [
         { text: 'Machine Sequence: ', style: 'label' },
-        { text: qcEntry.machine_sequence || 'N/A', style: 'value' },
+        {
+          text:
+            (qcEntry as Record<string, unknown>)['machine_sequence'] || 'N/A',
+          style: 'value',
+        },
       ],
     });
     content.push({
       text: [
         { text: 'Category: ', style: 'label' },
         {
-          text: (qcEntry.category_id as Record<string, unknown>)?.name || 'N/A',
+          text:
+            (qcEntry['category_id'] as unknown as Record<string, unknown>)?.[
+              'name'
+            ] || 'N/A',
           style: 'value',
         },
       ],
@@ -1672,12 +1915,18 @@ export class ExportService {
         { text: qcEntry.mobile_number || 'N/A', style: 'value' },
       ],
     });
-    if (qcEntry.dispatch_date) {
+    if ((qcEntry as Record<string, unknown>)['dispatch_date']) {
       content.push({
         text: [
           { text: 'Dispatch Date: ', style: 'label' },
           {
-            text: pdf.formatDate(qcEntry.dispatch_date),
+            text: pdf.formatDate(
+              (qcEntry as Record<string, unknown>)['dispatch_date'] as
+                | string
+                | Date
+                | null
+                | undefined,
+            ),
             style: 'value',
           },
         ],
@@ -1694,11 +1943,16 @@ export class ExportService {
         ],
       });
     }
-    if (qcEntry.qualityScore !== undefined) {
+    if ((qcEntry as Record<string, unknown>)['qualityScore'] !== undefined) {
       content.push({
         text: [
           { text: 'Quality Score: ', style: 'label' },
-          { text: qcEntry.qualityScore.toString(), style: 'value' },
+          {
+            text: (
+              (qcEntry as Record<string, unknown>)['qualityScore'] as number
+            ).toString(),
+            style: 'value',
+          },
         ],
       });
     }
@@ -1724,12 +1978,18 @@ export class ExportService {
         ],
       });
     }
-    if (qcEntry.nextInspectionDate) {
+    if ((qcEntry as Record<string, unknown>)['nextInspectionDate']) {
       content.push({
         text: [
           { text: 'Next Inspection Date: ', style: 'label' },
           {
-            text: pdf.formatDate(qcEntry.nextInspectionDate),
+            text: pdf.formatDate(
+              (qcEntry as Record<string, unknown>)['nextInspectionDate'] as
+                | string
+                | Date
+                | null
+                | undefined,
+            ),
             style: 'value',
           },
         ],
@@ -1784,16 +2044,20 @@ export class ExportService {
       content.push({ text: '\nMachine Documents', style: 'subheader' });
       const docList: unknown[] = [];
       qcEntry.documents.forEach((doc: unknown) => {
+        const docRecord = doc as Record<string, unknown>;
         docList.push({
           text: [
             { text: '• ', style: 'value' },
             {
-              text: doc.name || 'Document',
+              text: (docRecord['name'] as string) || 'Document',
               style: 'value',
-              link: doc.file_path,
+              link: docRecord['file_path'] as string,
               color: '#3B82F6',
             },
-            { text: ` (${doc.document_type || 'N/A'})`, style: 'value' },
+            {
+              text: ` (${(docRecord['document_type'] as string) || 'N/A'})`,
+              style: 'value',
+            },
           ],
           margin: [0, 2, 0, 2],
         });
@@ -1829,7 +2093,11 @@ export class ExportService {
         { text: 'Added By: ', style: 'label' },
         {
           text:
-            (qcEntry.added_by as Record<string, unknown>)?.username || 'N/A',
+            (
+              (qcEntry as Record<string, unknown>)[
+                'added_by'
+              ] as unknown as Record<string, unknown>
+            )?.['username'] || 'N/A',
           style: 'value',
         },
       ],
@@ -1867,7 +2135,7 @@ export class ExportService {
     await pdf.generateAndSend(
       res,
       docDefinition,
-      `qc_entry_${qcEntry._id}_${new Date().toISOString().split('T')[0]}.pdf`,
+      `qc_entry_${(qcEntry as Record<string, unknown>)['_id']}_${new Date().toISOString().split('T')[0]}.pdf`,
     );
   }
 
@@ -1891,8 +2159,8 @@ export class ExportService {
     ];
 
     // Add filter/sort header first and get the data start row
-    const sortBy = filters.sortBy || 'createdAt';
-    const sortOrder = filters.sortOrder || 'desc';
+    const sortBy = (filters['sortBy'] as string) || 'createdAt';
+    const sortOrder = (filters['sortOrder'] as string) || 'desc';
     const dataStartRow = excel.addFilterSortHeader(
       filters,
       sortBy,
@@ -1905,29 +2173,44 @@ export class ExportService {
     excel.setColumns(columns, dataStartRow);
 
     const query: Record<string, unknown> = {};
-    if (filters.status) query.status = filters.status;
-    if (filters.approvalType) query.approvalType = filters.approvalType;
+    if (filters['status']) query['status'] = filters['status'];
+    if (filters['approvalType'])
+      query['approvalType'] = filters['approvalType'];
 
     // Apply sorting (already set above)
-    const sort: Record<string, number> = {};
+    const sort: Record<string, 1 | -1> = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const approvals = await MachineApproval.find(query)
       .populate('machineId', 'name machine_sequence')
       .populate('requestedBy', 'username email')
-      .sort(sort)
+      .sort(sort as { [key: string]: 1 | -1 })
       .lean();
 
     for (const approval of approvals) {
       const rowData: Record<string, unknown> = {
-        _id: approval._id?.toString() || '-',
-        machine: (approval.machineId as Record<string, unknown>)?.name || '-',
-        type: approval.approvalType || '-',
-        status: approval.status || 'PENDING',
+        _id: (approval as Record<string, unknown>)['_id']?.toString() || '-',
+        machine:
+          (
+            (approval as Record<string, unknown>)[
+              'machineId'
+            ] as unknown as Record<string, unknown>
+          )?.['name'] || '-',
+        type: (approval as Record<string, unknown>)['approvalType'] || '-',
+        status: (approval as Record<string, unknown>)['status'] || 'PENDING',
         requestedBy:
-          (approval.requestedBy as Record<string, unknown>)?.username || '-',
-        createdAt: approval.createdAt
-          ? new Date(approval.createdAt).toLocaleString()
+          (
+            (approval as Record<string, unknown>)[
+              'requestedBy'
+            ] as unknown as Record<string, unknown>
+          )?.['username'] || '-',
+        createdAt: (approval as Record<string, unknown>)['createdAt']
+          ? new Date(
+              (approval as Record<string, unknown>)['createdAt'] as
+                | string
+                | number
+                | Date,
+            ).toLocaleString()
           : '-',
       };
 
@@ -1979,14 +2262,21 @@ export class ExportService {
     content.push({
       text: [
         { text: 'Approval ID: ', style: 'label' },
-        { text: approval._id?.toString() || 'N/A', style: 'value' },
+        {
+          text:
+            (approval as Record<string, unknown>)['_id']?.toString() || 'N/A',
+          style: 'value',
+        },
       ],
     });
     content.push({
       text: [
         { text: 'Machine: ', style: 'label' },
         {
-          text: (approval.machineId as Record<string, unknown>)?.name || 'N/A',
+          text:
+            (approval.machineId as unknown as Record<string, unknown>)?.[
+              'name'
+            ] || 'N/A',
           style: 'value',
         },
       ],
@@ -1996,8 +2286,9 @@ export class ExportService {
         { text: 'Machine Sequence: ', style: 'label' },
         {
           text:
-            (approval.machineId as Record<string, unknown>)?.machine_sequence ||
-            'N/A',
+            (approval['machineId'] as unknown as Record<string, unknown>)?.[
+              'machine_sequence'
+            ] || 'N/A',
           style: 'value',
         },
       ],
@@ -2005,7 +2296,10 @@ export class ExportService {
     content.push({
       text: [
         { text: 'Approval Type: ', style: 'label' },
-        { text: approval.approvalType || 'N/A', style: 'value' },
+        {
+          text: (approval as Record<string, unknown>)['approvalType'] || 'N/A',
+          style: 'value',
+        },
       ],
     });
     content.push({
@@ -2022,8 +2316,9 @@ export class ExportService {
         { text: 'Requested By: ', style: 'label' },
         {
           text:
-            (approval.requestedBy as Record<string, unknown>)?.username ||
-            'N/A',
+            (approval['requestedBy'] as unknown as Record<string, unknown>)?.[
+              'username'
+            ] || 'N/A',
           style: 'value',
         },
       ],
@@ -2033,16 +2328,23 @@ export class ExportService {
         { text: 'Requested Email: ', style: 'label' },
         {
           text:
-            (approval.requestedBy as Record<string, unknown>)?.email || 'N/A',
+            (approval['requestedBy'] as unknown as Record<string, unknown>)?.[
+              'email'
+            ] || 'N/A',
           style: 'value',
         },
       ],
     });
-    if (approval.requestNotes) {
+    if ((approval as Record<string, unknown>)['requestNotes']) {
       content.push({
         text: [
           { text: 'Request Notes: ', style: 'label' },
-          { text: approval.requestNotes, style: 'value' },
+          {
+            text: (approval as Record<string, unknown>)[
+              'requestNotes'
+            ] as string,
+            style: 'value',
+          },
         ],
       });
     }
@@ -2050,22 +2352,29 @@ export class ExportService {
       text: [
         { text: 'Created Date: ', style: 'label' },
         {
-          text: pdf.formatDate(approval.createdAt),
+          text: pdf.formatDate(
+            (approval as Record<string, unknown>)['createdAt'] as
+              | string
+              | Date
+              | null
+              | undefined,
+          ),
           style: 'value',
         },
       ],
     });
 
     // Approval/Rejection Information
-    if (approval.status === 'APPROVED') {
+    if ((approval as Record<string, unknown>)['status'] === 'APPROVED') {
       content.push({ text: '\nApproval Information', style: 'subheader' });
       content.push({
         text: [
           { text: 'Approved By: ', style: 'label' },
           {
             text:
-              (approval.approvedBy as Record<string, unknown>)?.username ||
-              'N/A',
+              (approval['approvedBy'] as unknown as Record<string, unknown>)?.[
+                'username'
+              ] || 'N/A',
             style: 'value',
           },
         ],
@@ -2089,24 +2398,32 @@ export class ExportService {
           ],
         });
       }
-    } else if (approval.status === 'REJECTED') {
+    } else if (approval['status'] === 'REJECTED') {
       content.push({ text: '\nRejection Information', style: 'subheader' });
       content.push({
         text: [
           { text: 'Rejected By: ', style: 'label' },
           {
             text:
-              (approval.rejectedBy as Record<string, unknown>)?.username ||
-              'N/A',
+              (
+                (approval as Record<string, unknown>)[
+                  'rejectedBy'
+                ] as unknown as Record<string, unknown>
+              )?.['username'] || 'N/A',
             style: 'value',
           },
         ],
       });
-      if (approval.rejectionReason) {
+      if (approval['rejectionReason']) {
         content.push({
           text: [
             { text: 'Rejection Reason: ', style: 'label' },
-            { text: approval.rejectionReason, style: 'value' },
+            {
+              text: (approval as Record<string, unknown>)[
+                'rejectionReason'
+              ] as string,
+              style: 'value',
+            },
           ],
         });
       }
@@ -2119,7 +2436,11 @@ export class ExportService {
     ) {
       content.push({ text: '\nProposed Changes', style: 'subheader' });
       content.push({
-        text: JSON.stringify(approval.proposedChanges, null, 2),
+        text: JSON.stringify(
+          (approval as Record<string, unknown>)['proposedChanges'],
+          null,
+          2,
+        ),
         style: 'value',
         margin: [0, 5, 0, 10],
       });
@@ -2165,8 +2486,8 @@ export class ExportService {
     ];
 
     // Add filter/sort header first and get the data start row
-    const sortBy = filters.sortBy || 'createdAt';
-    const sortOrder = filters.sortOrder || 'desc';
+    const sortBy = (filters['sortBy'] as string) || 'createdAt';
+    const sortOrder = (filters['sortOrder'] as string) || 'desc';
     const dataStartRow = excel.addFilterSortHeader(
       filters,
       sortBy,
@@ -2179,25 +2500,25 @@ export class ExportService {
     excel.setColumns(columns, dataStartRow);
 
     const query: Record<string, unknown> = {};
-    if (filters.search) {
-      query.$or = [
-        { name: { $regex: filters.search, $options: 'i' } },
-        { description: { $regex: filters.search, $options: 'i' } },
-        { action: { $regex: filters.search, $options: 'i' } },
+    if (filters['search']) {
+      query['$or'] = [
+        { name: { $regex: filters['search'], $options: 'i' } },
+        { description: { $regex: filters['search'], $options: 'i' } },
+        { action: { $regex: filters['search'], $options: 'i' } },
       ];
     }
-    if (filters.resource) {
+    if (filters['resource']) {
       // Action type filtering (resource is mapped to action)
-      query.action = filters.resource;
+      query['action'] = filters['resource'];
     }
-    if (filters.action) {
-      query.action = filters.action;
+    if (filters['action']) {
+      query['action'] = filters['action'];
     }
-    if (filters.role) {
-      query.roleIds = filters.role;
+    if (filters['role']) {
+      query['roleIds'] = filters['role'];
     }
-    if (typeof filters.isActive === 'boolean') {
-      query.isActive = filters.isActive;
+    if (typeof filters['isActive'] === 'boolean') {
+      query['isActive'] = filters['isActive'];
     }
 
     // Apply sorting (already set above)
@@ -2210,35 +2531,51 @@ export class ExportService {
       .populate('categoryIds', 'name')
       .populate('approverRoles', 'name')
       .populate('createdBy', 'username email')
-      .sort(sort)
+      .sort(sort as { [key: string]: 1 | -1 })
       .lean();
 
     for (const permission of permissions) {
       // Handle multiple values with comma separation
       const roles = Array.isArray(permission.roleIds)
         ? (permission.roleIds as unknown[])
-            .map((r) => (typeof r === 'object' && r?.name ? r.name : r))
+            .map((r) =>
+              typeof r === 'object' && r && 'name' in r
+                ? (r as Record<string, unknown>)['name']
+                : r,
+            )
             .filter(Boolean)
             .join(', ')
         : '-';
 
       const departments = Array.isArray(permission.departmentIds)
         ? (permission.departmentIds as unknown[])
-            .map((d) => (typeof d === 'object' && d?.name ? d.name : d))
+            .map((d) =>
+              typeof d === 'object' && d && 'name' in d
+                ? (d as Record<string, unknown>)['name']
+                : d,
+            )
             .filter(Boolean)
             .join(', ')
         : '-';
 
       const categories = Array.isArray(permission.categoryIds)
         ? (permission.categoryIds as unknown[])
-            .map((c) => (typeof c === 'object' && c?.name ? c.name : c))
+            .map((c) =>
+              typeof c === 'object' && c && 'name' in c
+                ? (c as Record<string, unknown>)['name']
+                : c,
+            )
             .filter(Boolean)
             .join(', ')
         : '-';
 
       const approvers = Array.isArray(permission.approverRoles)
         ? (permission.approverRoles as unknown[])
-            .map((a) => (typeof a === 'object' && a?.name ? a.name : a))
+            .map((a) =>
+              typeof a === 'object' && a && 'name' in a
+                ? (a as Record<string, unknown>)['name']
+                : a,
+            )
             .filter(Boolean)
             .join(', ')
         : '-';
@@ -2273,7 +2610,7 @@ export class ExportService {
       excel.applyStatusStyle(
         rowNumber,
         'status',
-        permission.isActive ? 'active' : 'inactive',
+        permission['isActive'] ? 'active' : 'inactive',
       );
     }
 
@@ -2308,44 +2645,44 @@ export class ExportService {
       throw new Error('Permission not found');
     }
 
-    const roles = Array.isArray(permission.roleIds)
-      ? (permission.roleIds as unknown[])
+    const roles = Array.isArray(permission['roleIds'])
+      ? (permission['roleIds'] as unknown[])
           .map((r) =>
             typeof r === 'object' && r && 'name' in r
-              ? (r as Record<string, unknown>).name
+              ? (r as unknown as Record<string, unknown>)['name']
               : r,
           )
           .filter(Boolean)
           .join(', ')
       : 'None';
 
-    const departments = Array.isArray(permission.departmentIds)
-      ? (permission.departmentIds as unknown[])
+    const departments = Array.isArray(permission['departmentIds'])
+      ? (permission['departmentIds'] as unknown[])
           .map((d) =>
             typeof d === 'object' && d && 'name' in d
-              ? (d as Record<string, unknown>).name
+              ? (d as unknown as Record<string, unknown>)['name']
               : d,
           )
           .filter(Boolean)
           .join(', ')
       : 'None';
 
-    const categories = Array.isArray(permission.categoryIds)
-      ? (permission.categoryIds as unknown[])
+    const categories = Array.isArray(permission['categoryIds'])
+      ? (permission['categoryIds'] as unknown[])
           .map((c) =>
             typeof c === 'object' && c && 'name' in c
-              ? (c as Record<string, unknown>).name
+              ? (c as unknown as Record<string, unknown>)['name']
               : c,
           )
           .filter(Boolean)
           .join(', ')
       : 'None';
 
-    const approvers = Array.isArray(permission.approverRoles)
-      ? (permission.approverRoles as unknown[])
+    const approvers = Array.isArray(permission['approverRoles'])
+      ? (permission['approverRoles'] as unknown[])
           .map((a) =>
             typeof a === 'object' && a && 'name' in a
-              ? (a as Record<string, unknown>).name
+              ? (a as unknown as Record<string, unknown>)['name']
               : a,
           )
           .filter(Boolean)
@@ -2364,7 +2701,7 @@ export class ExportService {
       {
         text: [
           { text: 'Name: ', style: 'label' },
-          { text: permission.name || 'N/A', style: 'value' },
+          { text: permission['name'] || 'N/A', style: 'value' },
         ],
       },
       {
@@ -2376,7 +2713,7 @@ export class ExportService {
       {
         text: [
           { text: 'Action: ', style: 'label' },
-          { text: permission.action || 'N/A', style: 'value' },
+          { text: permission['action'] || 'N/A', style: 'value' },
         ],
       },
       {
@@ -2440,7 +2777,9 @@ export class ExportService {
           { text: 'Created By: ', style: 'label' },
           {
             text:
-              (permission.createdBy as Record<string, unknown>)?.username ||
+              (permission.createdBy as unknown as Record<string, unknown>)?.[
+                'username'
+              ] ||
               (typeof permission.createdBy === 'string'
                 ? permission.createdBy
                 : 'N/A'),
@@ -2452,7 +2791,9 @@ export class ExportService {
         text: [
           { text: 'Created Date: ', style: 'label' },
           {
-            text: pdf.formatDate(permission.createdAt),
+            text: pdf.formatDate(
+              permission['createdAt'] as string | Date | null | undefined,
+            ),
             style: 'value',
           },
         ],
@@ -2498,8 +2839,8 @@ export class ExportService {
     ];
 
     // Add filter/sort header first and get the data start row
-    const sortBy = filters.sortBy || 'created_at';
-    const sortOrder = filters.sortOrder || 'desc';
+    const sortBy = (filters['sortBy'] as string) || 'created_at';
+    const sortOrder = (filters['sortOrder'] as string) || 'desc';
     const dataStartRow = excel.addFilterSortHeader(
       filters,
       sortBy,
@@ -2512,48 +2853,59 @@ export class ExportService {
     excel.setColumns(columns, dataStartRow);
 
     const query: Record<string, unknown> = {};
-    if (filters.search) {
-      query.$or = [
-        { sequence_prefix: { $regex: filters.search, $options: 'i' } },
-        { format: { $regex: filters.search, $options: 'i' } },
+    if (filters['search']) {
+      query['$or'] = [
+        { sequence_prefix: { $regex: filters['search'], $options: 'i' } },
+        { format: { $regex: filters['search'], $options: 'i' } },
       ];
     }
-    if (filters.category_id) query.category_id = filters.category_id;
-    if (filters.subcategory_id) query.subcategory_id = filters.subcategory_id;
-    if (typeof filters.is_active === 'boolean') {
-      query.is_active = filters.is_active;
+    if (filters['category_id']) query['category_id'] = filters['category_id'];
+    if (filters['subcategory_id'])
+      query['subcategory_id'] = filters['subcategory_id'];
+    if (typeof filters['is_active'] === 'boolean') {
+      query['is_active'] = filters['is_active'];
     }
 
     // Apply sorting (already set above)
-    const sort: Record<string, number> = {};
+    const sort: Record<string, 1 | -1> = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const sequences = await SequenceManagement.find(query)
       .populate('category_id', 'name')
       .populate('subcategory_id', 'name')
       .populate('created_by', 'username email')
-      .sort(sort)
+      .sort(sort as { [key: string]: 1 | -1 })
       .lean();
 
     for (const seq of sequences) {
       const rowData: Record<string, unknown> = {
         _id: seq._id?.toString() || '-',
         category:
-          (seq.category_id as Record<string, unknown>)?.name ||
-          (typeof seq.category_id === 'string' ? seq.category_id : '-'),
+          (seq['category_id'] as unknown as Record<string, unknown>)?.[
+            'name'
+          ] ||
+          (typeof seq['category_id'] === 'string' ? seq['category_id'] : '-'),
         subcategory:
-          (seq.subcategory_id as Record<string, unknown>)?.name ||
-          (typeof seq.subcategory_id === 'string' ? seq.subcategory_id : '-'),
-        prefix: seq.sequence_prefix || '-',
-        current: seq.current_sequence?.toString() || '0',
-        starting: seq.starting_number?.toString() || '1',
-        format: seq.format || '-',
-        status: seq.is_active ? 'Active' : 'Inactive',
+          (seq['subcategory_id'] as unknown as Record<string, unknown>)?.[
+            'name'
+          ] ||
+          (typeof seq['subcategory_id'] === 'string'
+            ? seq['subcategory_id']
+            : '-'),
+        prefix: seq['sequence_prefix'] || '-',
+        current: seq['current_sequence']?.toString() || '0',
+        starting: seq['starting_number']?.toString() || '1',
+        format: seq['format'] || '-',
+        status: seq['is_active'] ? 'Active' : 'Inactive',
         createdBy:
-          (seq.created_by as Record<string, unknown>)?.username ||
-          (typeof seq.created_by === 'string' ? seq.created_by : '-'),
-        createdAt: seq.created_at
-          ? new Date(seq.created_at).toLocaleString()
+          (seq['created_by'] as unknown as Record<string, unknown>)?.[
+            'username'
+          ] ||
+          (typeof seq['created_by'] === 'string' ? seq['created_by'] : '-'),
+        createdAt: seq['created_at']
+          ? new Date(
+              seq['created_at'] as string | number | Date,
+            ).toLocaleString()
           : '-',
       };
 
@@ -2610,9 +2962,11 @@ export class ExportService {
           { text: 'Category: ', style: 'label' },
           {
             text:
-              (sequence.category_id as Record<string, unknown>)?.name ||
-              (typeof sequence.category_id === 'string'
-                ? sequence.category_id
+              (sequence['category_id'] as unknown as Record<string, unknown>)?.[
+                'name'
+              ] ||
+              (typeof sequence['category_id'] === 'string'
+                ? sequence['category_id']
                 : 'N/A'),
             style: 'value',
           },
@@ -2623,7 +2977,9 @@ export class ExportService {
           { text: 'Subcategory: ', style: 'label' },
           {
             text:
-              (sequence.subcategory_id as Record<string, unknown>)?.name ||
+              (sequence.subcategory_id as unknown as Record<string, unknown>)?.[
+                'name'
+              ] ||
               (typeof sequence.subcategory_id === 'string'
                 ? sequence.subcategory_id
                 : 'N/A'),
@@ -2634,14 +2990,14 @@ export class ExportService {
       {
         text: [
           { text: 'Sequence Prefix: ', style: 'label' },
-          { text: sequence.sequence_prefix || 'N/A', style: 'value' },
+          { text: sequence['sequence_prefix'] || 'N/A', style: 'value' },
         ],
       },
       {
         text: [
           { text: 'Current Sequence: ', style: 'label' },
           {
-            text: sequence.current_sequence?.toString() || '0',
+            text: sequence['current_sequence']?.toString() || '0',
             style: 'value',
           },
         ],
@@ -2658,7 +3014,7 @@ export class ExportService {
       {
         text: [
           { text: 'Format: ', style: 'label' },
-          { text: sequence.format || 'N/A', style: 'value' },
+          { text: sequence['format'] || 'N/A', style: 'value' },
         ],
       },
       {
@@ -2672,9 +3028,11 @@ export class ExportService {
           { text: 'Created By: ', style: 'label' },
           {
             text:
-              (sequence.created_by as Record<string, unknown>)?.username ||
-              (typeof sequence.created_by === 'string'
-                ? sequence.created_by
+              (sequence['created_by'] as unknown as Record<string, unknown>)?.[
+                'username'
+              ] ||
+              (typeof sequence['created_by'] === 'string'
+                ? sequence['created_by']
                 : 'N/A'),
             style: 'value',
           },
@@ -2684,7 +3042,9 @@ export class ExportService {
         text: [
           { text: 'Created Date: ', style: 'label' },
           {
-            text: pdf.formatDate(sequence.created_at),
+            text: pdf.formatDate(
+              sequence['created_at'] as string | Date | null | undefined,
+            ),
             style: 'value',
           },
         ],
@@ -2725,8 +3085,8 @@ export class ExportService {
     ];
 
     // Add filter/sort header first and get the data start row
-    const sortBy = filters.sortBy || 'createdAt';
-    const sortOrder = filters.sortOrder || 'desc';
+    const sortBy = (filters['sortBy'] as string) || 'createdAt';
+    const sortOrder = (filters['sortOrder'] as string) || 'desc';
     const dataStartRow = excel.addFilterSortHeader(
       filters,
       sortBy,
@@ -2740,21 +3100,21 @@ export class ExportService {
 
     // Fetch pending users (users awaiting approval)
     const query: Record<string, unknown> = { isApproved: false };
-    if (filters.search) {
-      query.$or = [
-        { username: { $regex: filters.search, $options: 'i' } },
-        { email: { $regex: filters.search, $options: 'i' } },
+    if (filters['search']) {
+      query['$or'] = [
+        { username: { $regex: filters['search'], $options: 'i' } },
+        { email: { $regex: filters['search'], $options: 'i' } },
       ];
     }
-    if (filters.role) query.role = filters.role;
+    if (filters['role']) query['role'] = filters['role'];
 
     // Apply sorting
-    const sort: Record<string, number> = {};
+    const sort: Record<string, 1 | -1> = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const users = await User.find(query)
       .populate('role', 'name')
-      .sort(sort)
+      .sort(sort as { [key: string]: 1 | -1 })
       .lean();
 
     // Add data rows
@@ -2764,7 +3124,7 @@ export class ExportService {
         username: user.username || '-',
         email: user.email || '-',
         role:
-          (user.role as Record<string, unknown>)?.name ||
+          (user.role as unknown as Record<string, unknown>)?.['name'] ||
           (typeof user.role === 'string' ? user.role : '-'),
         createdAt: user.createdAt
           ? new Date(user.createdAt).toLocaleString()
@@ -2804,8 +3164,8 @@ export class ExportService {
     ];
 
     // Add filter/sort header first and get the data start row
-    const sortBy = filters.sortBy || 'createdAt';
-    const sortOrder = filters.sortOrder || 'desc';
+    const sortBy = (filters['sortBy'] as string) || 'createdAt';
+    const sortOrder = (filters['sortOrder'] as string) || 'desc';
     const dataStartRow = excel.addFilterSortHeader(
       filters,
       sortBy,
@@ -2819,37 +3179,46 @@ export class ExportService {
 
     // Build query
     const query: Record<string, unknown> = {};
-    if (filters.status) query.status = filters.status;
-    if (filters.approvalType) query.approvalType = filters.approvalType;
-    if (filters.search) {
-      query.$or = [{ requestNotes: { $regex: filters.search, $options: 'i' } }];
+    if (filters['status']) query['status'] = filters['status'];
+    if (filters['approvalType'])
+      query['approvalType'] = filters['approvalType'];
+    if (filters['search']) {
+      query['$or'] = [
+        { requestNotes: { $regex: filters['search'], $options: 'i' } },
+      ];
     }
 
     // Apply sorting
-    const sort: Record<string, number> = {};
+    const sort: Record<string, 1 | -1> = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const approvals = await MachineApproval.find(query)
       .populate('machineId', 'name machine_sequence')
       .populate('requestedBy', 'username email')
-      .sort(sort)
+      .sort(sort as { [key: string]: 1 | -1 })
       .lean();
 
     for (const approval of approvals) {
-      const machine = approval.machineId as Record<string, unknown>;
+      const machine = (approval as Record<string, unknown>)[
+        'machineId'
+      ] as unknown as Record<string, unknown>;
       const rowData: Record<string, unknown> = {
-        _id: approval._id?.toString() || '-',
-        machineName: machine?.name || '-',
-        machineSequence: machine?.machine_sequence || '-',
-        approvalType: approval.approvalType || '-',
+        _id: (approval as Record<string, unknown>)['_id']?.toString() || '-',
+        machineName: machine?.['name'] || '-',
+        machineSequence: machine?.['machine_sequence'] || '-',
+        approvalType: approval['approvalType'] || '-',
         requestedBy:
-          (approval.requestedBy as Record<string, unknown>)?.username ||
-          (typeof approval.requestedBy === 'string'
-            ? approval.requestedBy
+          (approval['requestedBy'] as unknown as Record<string, unknown>)?.[
+            'username'
+          ] ||
+          (typeof approval['requestedBy'] === 'string'
+            ? approval['requestedBy']
             : '-'),
-        status: approval.status || 'PENDING',
-        createdAt: approval.createdAt
-          ? new Date(approval.createdAt).toLocaleString()
+        status: approval['status'] || 'PENDING',
+        createdAt: approval['createdAt']
+          ? new Date(
+              approval['createdAt'] as string | number | Date,
+            ).toLocaleString()
           : '-',
       };
 
