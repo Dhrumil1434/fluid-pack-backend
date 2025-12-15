@@ -30,6 +30,7 @@ import MachineApprovalService from './services/machineApproval.service';
 import { ApprovalType } from '../../models/machineApproval.model';
 import { notifyMachineCreated } from '../notification/helpers/notification.helper';
 import { Machine, IMachine } from '../../models/machine.model';
+import { SO } from '../../models/so.model';
 import { SequenceManagement } from '../../models/category.model';
 import { Category } from '../../models/category.model';
 import {
@@ -356,7 +357,8 @@ class MachineController {
           machine as { _id: { toString(): string } }
         )._id.toString();
         const machineName =
-          (machine as { name?: string }).name || 'Unnamed Machine';
+          (machine as { so_id?: { name?: string } })?.so_id?.name ||
+          'Unnamed Machine';
         const requesterName =
           req.user?.username || req.user?.email || 'Unknown User';
 
@@ -409,11 +411,11 @@ class MachineController {
       if (value.dispatch_date_to)
         filters.dispatch_date_to = value.dispatch_date_to;
       // Specific field filters
-      if (value.party_name) filters.party_name = value.party_name;
+      if (value.party_name) filters.party_name = value.party_name; // Filters by SO party_name
       if (value.machine_sequence)
         filters.machine_sequence = value.machine_sequence;
       if (value.location) filters.location = value.location;
-      if (value.mobile_number) filters.mobile_number = value.mobile_number;
+      if (value.so_id) filters.so_id = value.so_id;
       if (value.sortBy) filters.sortBy = value.sortBy;
       if (value.sortOrder) filters.sortOrder = value.sortOrder;
 
@@ -674,20 +676,31 @@ class MachineController {
       // Ensure userId is a string for comparison
       const userId = String(req.user._id);
 
-      // Fetch machine with populated category
-      type PopulatedMachine = Omit<
-        IMachine,
-        'category_id' | 'subcategory_id' | 'created_by'
-      > & {
-        category_id: ICategory | mongoose.Types.ObjectId;
-        subcategory_id?: ICategory | mongoose.Types.ObjectId | null;
+      // Fetch machine with populated SO
+      type PopulatedMachine = Omit<IMachine, 'so_id' | 'created_by'> & {
+        so_id:
+          | {
+              _id: mongoose.Types.ObjectId;
+              name: string;
+              category_id: ICategory | mongoose.Types.ObjectId;
+              subcategory_id?: ICategory | mongoose.Types.ObjectId | null;
+            }
+          | mongoose.Types.ObjectId;
         created_by: IUser | mongoose.Types.ObjectId;
       };
       // Fetch machine - use exec() instead of lean() to ensure proper population
       const machine = (await Machine.findById(machineId)
-        .populate('category_id', 'name slug')
-        .populate('subcategory_id', 'name slug')
-        .populate('created_by', '_id username email')
+        .populate([
+          {
+            path: 'so_id',
+            select: 'name category_id subcategory_id',
+            populate: [
+              { path: 'category_id', select: 'name slug' },
+              { path: 'subcategory_id', select: 'name slug' },
+            ],
+          },
+          { path: 'created_by', select: '_id username email' },
+        ])
         .exec()) as PopulatedMachine | null;
 
       if (!machine) {
@@ -774,9 +787,23 @@ class MachineController {
         );
       }
 
-      // Validate sequence format against category/subcategory format
+      // Validate sequence format against category/subcategory format from SO
       let categoryId: string;
-      const categoryIdField = machine.category_id;
+      const so = machine.so_id;
+      if (!so || (typeof so === 'object' && !so.category_id)) {
+        throw new ApiError(
+          'INVALID_SO',
+          StatusCodes.BAD_REQUEST,
+          'INVALID_SO',
+          'Machine must have a valid SO with category',
+        );
+      }
+
+      const categoryIdField =
+        typeof so === 'object' && 'category_id' in so
+          ? (so as { category_id: unknown }).category_id
+          : null;
+
       if (
         categoryIdField &&
         typeof categoryIdField === 'object' &&
@@ -801,12 +828,16 @@ class MachineController {
           'INVALID_CATEGORY',
           StatusCodes.BAD_REQUEST,
           'INVALID_CATEGORY',
-          'Machine must have a valid category',
+          'SO must have a valid category',
         );
       }
 
       let subcategoryId: string | null = null;
-      const subcategoryIdField = machine.subcategory_id;
+      const subcategoryIdField =
+        typeof so === 'object' && 'subcategory_id' in so
+          ? (so as { subcategory_id: unknown }).subcategory_id
+          : null;
+
       if (subcategoryIdField) {
         if (
           typeof subcategoryIdField === 'object' &&
@@ -857,23 +888,35 @@ class MachineController {
         );
       }
 
-      // Validate sequence format
+      // Validate sequence format - get category from SO
+      const soCategory =
+        typeof so === 'object' &&
+        'category_id' in so &&
+        typeof so.category_id === 'object' &&
+        so.category_id !== null &&
+        'slug' in so.category_id
+          ? (so.category_id as ICategory)
+          : null;
+
       const category: ICategory | null =
-        typeof machine.category_id === 'object' &&
-        machine.category_id !== null &&
-        'slug' in machine.category_id
-          ? (machine.category_id as ICategory)
-          : await Category.findById(categoryId).select('name slug').lean();
+        soCategory ||
+        (await Category.findById(categoryId).select('name slug').lean());
+
+      const soSubcategory =
+        subcategoryId &&
+        typeof so === 'object' &&
+        'subcategory_id' in so &&
+        typeof so.subcategory_id === 'object' &&
+        so.subcategory_id !== null &&
+        'slug' in so.subcategory_id
+          ? (so.subcategory_id as ICategory)
+          : null;
 
       const subcategory: ICategory | null =
-        subcategoryId &&
-        typeof machine.subcategory_id === 'object' &&
-        machine.subcategory_id !== null &&
-        'slug' in machine.subcategory_id
-          ? (machine.subcategory_id as ICategory)
-          : subcategoryId
-            ? await Category.findById(subcategoryId).select('name slug').lean()
-            : null;
+        soSubcategory ||
+        (subcategoryId
+          ? await Category.findById(subcategoryId).select('name slug').lean()
+          : null);
 
       // Build regex pattern from format
       const format = sequenceConfig.format;
@@ -1044,7 +1087,12 @@ class MachineController {
             requesterName = createdByUser.username || 'Technician';
           }
 
-          const machineName = machine.name;
+          const machineName =
+            typeof machine.so_id === 'object' &&
+            machine.so_id !== null &&
+            'name' in machine.so_id
+              ? (machine.so_id as { name: string }).name
+              : 'Machine';
 
           if (approvers.length > 0) {
             try {
@@ -1283,8 +1331,8 @@ class MachineController {
   static getSearchSuggestions = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const { field } = req.params;
-      const query = (req.query.query as string) || '';
-      const limit = parseInt((req.query.limit as string) || '10', 10);
+      const query = (req.query['query'] as string) || '';
+      const limit = parseInt((req.query['limit'] as string) || '10', 10);
 
       if (!field) {
         throw new ApiError(
@@ -1301,15 +1349,17 @@ class MachineController {
       try {
         switch (field) {
           case 'partyName': {
-            const machines = await Machine.find({
+            // Get party_name suggestions from SO
+            const sos = await SO.find({
               deletedAt: null,
+              is_active: true,
               party_name: { $exists: true, $ne: null, $ne: '' },
             })
               .select('party_name')
               .distinct('party_name')
               .lean();
 
-            suggestions = machines
+            suggestions = sos
               .filter(
                 (name: string) =>
                   name && name.toLowerCase().includes(searchQuery),
@@ -1353,15 +1403,17 @@ class MachineController {
           }
 
           case 'mobileNumber': {
-            const machines = await Machine.find({
+            // Get mobile_number suggestions from SO
+            const sos = await SO.find({
               deletedAt: null,
+              is_active: true,
               mobile_number: { $exists: true, $ne: null, $ne: '' },
             })
               .select('mobile_number')
               .distinct('mobile_number')
               .lean();
 
-            suggestions = machines
+            suggestions = sos
               .filter((num: string) => num && num.includes(searchQuery))
               .slice(0, limit);
             break;

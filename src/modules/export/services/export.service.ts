@@ -2,8 +2,10 @@ import { ExcelUtil } from '../utils/excel.util';
 import { PdfUtil } from '../utils/pdf.util';
 import { Response } from 'express';
 import ExcelJS from 'exceljs';
+import mongoose from 'mongoose';
 import { User } from '../../../models/user.model';
 import { Machine } from '../../../models/machine.model';
+import { SO } from '../../../models/so.model';
 import { Category } from '../../../models/category.model';
 import { Role } from '../../../models/role.model';
 import { MachineApproval } from '../../../models/machineApproval.model';
@@ -297,42 +299,308 @@ export class ExportService {
     // Define columns with headers at the correct row (after filter header)
     excel.setColumns(columns, dataStartRow);
 
-    // Build query
+    // Build query - use SO-based filtering similar to MachineService
     const query: Record<string, unknown> = { deletedAt: null };
-    if (filters['category_id']) query['category_id'] = filters['category_id'];
+
+    // Apply SO filter
+    if (filters['so_id']) {
+      query['so_id'] = filters['so_id'];
+    }
+
+    // Filter by SO's category_id - find matching SOs first
+    if (filters['category_id']) {
+      const matchingSOs = await SO.find({
+        category_id: filters['category_id'],
+        deletedAt: null,
+        is_active: true,
+      })
+        .select('_id')
+        .lean();
+      const soIds = matchingSOs.map((so) => so._id as mongoose.Types.ObjectId);
+      if (soIds.length > 0) {
+        query['so_id'] = { $in: soIds };
+      } else {
+        // No matching SOs, return empty result
+        await excel.generateAndSend(
+          res,
+          `machines_export_${new Date().toISOString().split('T')[0]}.xlsx`,
+        );
+        return;
+      }
+    }
+
     if (typeof filters['is_approved'] === 'boolean') {
       query['is_approved'] = filters['is_approved'];
     }
+
+    if (filters['created_by']) {
+      query['created_by'] = filters['created_by'];
+    }
+
+    // Handle search filter - search across SO fields and machine fields
     if (filters['search']) {
-      query['$or'] = [
-        { name: { $regex: filters['search'], $options: 'i' } },
-        { party_name: { $regex: filters['search'], $options: 'i' } },
-        { location: { $regex: filters['search'], $options: 'i' } },
+      const searchRegex = { $regex: filters['search'], $options: 'i' };
+      // Find SOs matching the search term
+      const matchingSOs = await SO.find({
+        $or: [
+          { name: searchRegex },
+          { party_name: searchRegex },
+          { mobile_number: searchRegex },
+        ],
+        deletedAt: null,
+        is_active: true,
+      })
+        .select('_id')
+        .lean();
+      const soIds = matchingSOs.map((so) => so._id as mongoose.Types.ObjectId);
+
+      // Search in machine fields too
+      const machineSearchConditions: Array<Record<string, unknown>> = [
+        { location: searchRegex },
+        { machine_sequence: searchRegex },
       ];
+
+      if (soIds.length > 0) {
+        machineSearchConditions.push({ so_id: { $in: soIds } });
+      }
+
+      // Also search in created_by username/email
+      const matchingUsers = await User.find({
+        $or: [{ username: searchRegex }, { email: searchRegex }],
+      })
+        .select('_id')
+        .lean();
+      const userIds = matchingUsers.map(
+        (u) => u._id as mongoose.Types.ObjectId,
+      );
+      if (userIds.length > 0) {
+        machineSearchConditions.push({ created_by: { $in: userIds } });
+      }
+
+      query['$or'] = machineSearchConditions;
+    }
+
+    // Handle other filters
+    if (filters['has_sequence'] !== undefined) {
+      if (filters['has_sequence']) {
+        query['machine_sequence'] = { $exists: true, $ne: null, $nin: [''] };
+      } else {
+        query['$or'] = [
+          { machine_sequence: { $exists: false } },
+          { machine_sequence: null },
+          { machine_sequence: '' },
+        ];
+      }
+    }
+
+    if (filters['location']) {
+      query['location'] = { $regex: filters['location'], $options: 'i' };
+    }
+
+    if (filters['machine_sequence']) {
+      query['machine_sequence'] = {
+        $regex: filters['machine_sequence'],
+        $options: 'i',
+      };
+    }
+
+    // Handle dispatch_date range
+    if (filters['dispatch_date_from'] || filters['dispatch_date_to']) {
+      const dateQuery: { $gte?: Date; $lte?: Date } = {};
+      if (filters['dispatch_date_from']) {
+        dateQuery.$gte = new Date(filters['dispatch_date_from'] as string);
+      }
+      if (filters['dispatch_date_to']) {
+        const toDate = new Date(filters['dispatch_date_to'] as string);
+        toDate.setHours(23, 59, 59, 999);
+        dateQuery.$lte = toDate;
+      }
+      query['dispatch_date'] = dateQuery;
+    }
+
+    // Handle metadata filters
+    if (filters['metadata_key']) {
+      const metadataKey = String(filters['metadata_key']).trim();
+      if (filters['metadata_value']) {
+        query[`metadata.${metadataKey}`] = {
+          $regex: String(filters['metadata_value']),
+          $options: 'i',
+        };
+      } else {
+        query[`metadata.${metadataKey}`] = { $exists: true };
+      }
+    }
+
+    // Handle party_name filter (via SO)
+    if (filters['party_name']) {
+      const matchingSOs = await SO.find({
+        party_name: { $regex: filters['party_name'], $options: 'i' },
+        deletedAt: null,
+        is_active: true,
+      })
+        .select('_id')
+        .lean();
+      const soIds = matchingSOs.map((so) => so._id as mongoose.Types.ObjectId);
+      if (soIds.length > 0) {
+        if (query['so_id']) {
+          // Intersect with existing so_id filter
+          const existingSOIdValue = query['so_id'];
+          const existingSOIds = Array.isArray(existingSOIdValue)
+            ? (existingSOIdValue as { $in: unknown[] })['$in'] || []
+            : [existingSOIdValue];
+          const intersection = soIds.filter((id) => existingSOIds.includes(id));
+          if (intersection.length > 0) {
+            query['so_id'] = { $in: intersection };
+          } else {
+            // No intersection, return empty
+            await excel.generateAndSend(
+              res,
+              `machines_export_${new Date().toISOString().split('T')[0]}.xlsx`,
+            );
+            return;
+          }
+        } else {
+          query['so_id'] = { $in: soIds };
+        }
+      } else {
+        // No matching SOs, return empty
+        await excel.generateAndSend(
+          res,
+          `machines_export_${new Date().toISOString().split('T')[0]}.xlsx`,
+        );
+        return;
+      }
+    }
+
+    // Handle mobile_number filter (via SO)
+    if (filters['mobile_number']) {
+      const matchingSOs = await SO.find({
+        mobile_number: { $regex: filters['mobile_number'], $options: 'i' },
+        deletedAt: null,
+        is_active: true,
+      })
+        .select('_id')
+        .lean();
+      const soIds = matchingSOs.map((so) => so._id as mongoose.Types.ObjectId);
+      if (soIds.length > 0) {
+        if (query['so_id']) {
+          // Intersect with existing so_id filter
+          const existingSOIdValue = query['so_id'];
+          const existingSOIds = Array.isArray(existingSOIdValue)
+            ? (existingSOIdValue as { $in: unknown[] })['$in'] || []
+            : [existingSOIdValue];
+          const intersection = soIds.filter((id) => existingSOIds.includes(id));
+          if (intersection.length > 0) {
+            query['so_id'] = { $in: intersection };
+          } else {
+            // No intersection, return empty
+            await excel.generateAndSend(
+              res,
+              `machines_export_${new Date().toISOString().split('T')[0]}.xlsx`,
+            );
+            return;
+          }
+        } else {
+          query['so_id'] = { $in: soIds };
+        }
+      } else {
+        // No matching SOs, return empty
+        await excel.generateAndSend(
+          res,
+          `machines_export_${new Date().toISOString().split('T')[0]}.xlsx`,
+        );
+        return;
+      }
+    }
+
+    // Determine sort order
+    const sortOrderValue = (sortOrder as string) === 'desc' ? -1 : 1;
+    let sortField: Record<string, 1 | -1> = { createdAt: -1 }; // Default: latest first
+
+    if (sortBy) {
+      switch (sortBy) {
+        case 'name':
+          sortField = { so_id: sortOrderValue };
+          break;
+        case 'category':
+          sortField = { so_id: sortOrderValue };
+          break;
+        case 'dispatch_date':
+          sortField = { dispatch_date: sortOrderValue };
+          break;
+        case 'party_name':
+          sortField = { so_id: sortOrderValue };
+          break;
+        case 'machine_sequence':
+          sortField = { machine_sequence: sortOrderValue };
+          break;
+        case 'location':
+          sortField = { location: sortOrderValue };
+          break;
+        case 'created_by':
+          sortField = { created_by: sortOrderValue };
+          break;
+        case 'createdAt':
+        default:
+          sortField = { createdAt: sortOrderValue };
+          break;
+      }
     }
 
     const machines = await Machine.find(query)
-      .populate('category_id', 'name')
-      .populate('created_by', 'username email')
-      .sort({ createdAt: -1 })
+      .populate([
+        {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
+          ],
+        },
+        { path: 'created_by', select: 'username email' },
+        { path: 'updatedBy', select: 'username email' },
+      ])
+      .sort(sortField)
       .lean();
 
     // Add data rows
     for (const machine of machines) {
+      // Extract SO data - so_id is populated as an object
+      const soIdValue = (machine as Record<string, unknown>)['so_id'];
+      let soName = '-';
+      let categoryName = '-';
+      let partyName = '-';
+      let mobileNumber = '-';
+
+      if (soIdValue && typeof soIdValue === 'object' && soIdValue !== null) {
+        const so = soIdValue as Record<string, unknown>;
+        soName = String(so['name'] || '-');
+        partyName = String(so['party_name'] || '-');
+        mobileNumber = String(so['mobile_number'] || '-');
+
+        // Extract category name
+        const categoryId = so['category_id'];
+        if (
+          categoryId &&
+          typeof categoryId === 'object' &&
+          categoryId !== null
+        ) {
+          categoryName = String(
+            (categoryId as Record<string, unknown>)['name'] || '-',
+          );
+        }
+      }
+
       const rowData: Record<string, unknown> = {
         _id: (machine as Record<string, unknown>)['_id']?.toString() || '-',
-        name: (machine as Record<string, unknown>)['name'] || '-',
-        category:
-          (
-            (machine as Record<string, unknown>)[
-              'category_id'
-            ] as unknown as Record<string, unknown>
-          )?.['name'] || '-',
+        name: soName,
+        category: categoryName,
         sequence:
           (machine as Record<string, unknown>)['machine_sequence'] || '-',
-        party_name: (machine as Record<string, unknown>)['party_name'] || '-',
+        party_name: partyName,
         location: (machine as Record<string, unknown>)['location'] || '-',
-        mobile: (machine as Record<string, unknown>)['mobile_number'] || '-',
+        mobile: mobileNumber,
         dispatch_date: (machine as Record<string, unknown>)['dispatch_date']
           ? new Date(
               (machine as Record<string, unknown>)['dispatch_date'] as
@@ -444,12 +712,58 @@ export class ExportService {
     const styles = pdf.getDefaultStyles();
 
     const machine = await Machine.findById(machineId)
-      .populate('category_id', 'name description')
-      .populate('created_by', 'username email')
+      .populate([
+        {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
+          ],
+        },
+        { path: 'created_by', select: 'username email' },
+        { path: 'updatedBy', select: 'username email' },
+      ])
       .lean();
 
     if (!machine) {
       throw new Error('Machine not found');
+    }
+
+    // Extract SO data - so_id is populated as an object
+    const soIdValue = (machine as Record<string, unknown>)['so_id'];
+    let soName = 'N/A';
+    let categoryName = 'N/A';
+    let subcategoryName = 'N/A';
+    let partyName = 'N/A';
+    let mobileNumber = 'N/A';
+
+    if (soIdValue && typeof soIdValue === 'object' && soIdValue !== null) {
+      const so = soIdValue as Record<string, unknown>;
+      soName = String(so['name'] || 'N/A');
+      partyName = String(so['party_name'] || 'N/A');
+      mobileNumber = String(so['mobile_number'] || 'N/A');
+
+      // Extract category name
+      const categoryId = so['category_id'];
+      if (categoryId && typeof categoryId === 'object' && categoryId !== null) {
+        categoryName = String(
+          (categoryId as Record<string, unknown>)['name'] || 'N/A',
+        );
+      }
+
+      // Extract subcategory name
+      const subcategoryId = so['subcategory_id'];
+      if (
+        subcategoryId &&
+        typeof subcategoryId === 'object' &&
+        subcategoryId !== null
+      ) {
+        subcategoryName = String(
+          (subcategoryId as Record<string, unknown>)['name'] || 'N/A',
+        );
+      }
     }
 
     const content: Content[] = [
@@ -461,24 +775,30 @@ export class ExportService {
     content.push({ text: 'Basic Information', style: 'subheader' });
     content.push({
       text: [
-        { text: 'Name: ', style: 'label' },
-        { text: machine.name || 'N/A', style: 'value' },
+        { text: 'SO Name: ', style: 'label' },
+        { text: soName, style: 'value' },
       ],
     } as Content);
     content.push({
       text: [
         { text: 'Category: ', style: 'label' },
         {
-          text:
-            (
-              (machine as Record<string, unknown>)[
-                'category_id'
-              ] as unknown as Record<string, unknown>
-            )?.['name'] || 'N/A',
+          text: categoryName,
           style: 'value',
         },
       ],
     } as Content);
+    if (subcategoryName !== 'N/A') {
+      content.push({
+        text: [
+          { text: 'Subcategory: ', style: 'label' },
+          {
+            text: subcategoryName,
+            style: 'value',
+          },
+        ],
+      } as Content);
+    }
     content.push({
       text: [
         { text: 'Machine Sequence: ', style: 'label' },
@@ -501,7 +821,7 @@ export class ExportService {
     content.push({
       text: [
         { text: 'Party Name: ', style: 'label' },
-        { text: machine.party_name || 'N/A', style: 'value' },
+        { text: partyName, style: 'value' },
       ],
     } as Content);
     content.push({
@@ -518,7 +838,7 @@ export class ExportService {
     content.push({
       text: [
         { text: 'Mobile Number: ', style: 'label' },
-        { text: machine.mobile_number || 'N/A', style: 'value' },
+        { text: mobileNumber, style: 'value' },
       ],
     } as Content);
     content.push({
@@ -1319,14 +1639,22 @@ export class ExportService {
       }
     }
 
-    // Fetch QC Approvals with populated machine data
+    // Fetch QC Approvals with populated machine data (including SO)
     const qcApprovals = await QCApproval.find(query)
-      .populate(
-        'machineId',
-        'name machine_sequence category_id subcategory_id party_name location mobile_number dispatch_date images documents createdAt created_by updatedBy is_approved',
-      )
-      .populate('machineId.category_id', 'name')
-      .populate('machineId.subcategory_id', 'name')
+      .populate({
+        path: 'machineId',
+        select:
+          'so_id machine_sequence location dispatch_date images documents createdAt created_by updatedBy is_approved',
+        populate: {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
+          ],
+        },
+      })
       .populate('machineId.created_by', 'username email')
       .populate('machineId.updatedBy', 'username email')
       .populate('requestedBy', 'username email')
@@ -1491,26 +1819,68 @@ export class ExportService {
           unknown
         >) || {};
 
-      // Get machine data (from machine or proposedChanges)
-      const machineName = machine?.['name'] || proposedChanges['name'] || '-';
+      // Get machine data (from machine SO or proposedChanges)
+      // Extract SO data - machines now reference SO
+      const soIdValue = machine?.['so_id'];
+      let machineName = '-';
+      let category = '-';
+      let subcategory = '-';
+      let partyName = '-';
+      let mobileNumber = '-';
+
+      if (soIdValue && typeof soIdValue === 'object' && soIdValue !== null) {
+        machineName = String(soIdValue['name'] || '-');
+        partyName = String(soIdValue['party_name'] || '-');
+        mobileNumber = String(soIdValue['mobile_number'] || '-');
+
+        // Extract category name
+        const categoryId = soIdValue['category_id'];
+        if (
+          categoryId &&
+          typeof categoryId === 'object' &&
+          categoryId !== null
+        ) {
+          category = String(
+            (categoryId as Record<string, unknown>)['name'] || '-',
+          );
+        }
+
+        // Extract subcategory name
+        const subcategoryId = soIdValue['subcategory_id'];
+        if (
+          subcategoryId &&
+          typeof subcategoryId === 'object' &&
+          subcategoryId !== null
+        ) {
+          subcategory = String(
+            (subcategoryId as Record<string, unknown>)['name'] || '-',
+          );
+        }
+      }
+
+      // Fallback to proposedChanges if SO data not available
+      if (machineName === '-' && proposedChanges['name']) {
+        machineName = String(proposedChanges['name']);
+      }
+      if (category === '-' && proposedChanges['category_id']) {
+        category = 'N/A';
+      }
+      if (subcategory === '-' && proposedChanges['subcategory_id']) {
+        subcategory = 'N/A';
+      }
+      if (partyName === '-' && proposedChanges['party_name']) {
+        partyName = String(proposedChanges['party_name']);
+      }
+      if (mobileNumber === '-' && proposedChanges['mobile_number']) {
+        mobileNumber = String(proposedChanges['mobile_number']);
+      }
+
       const machineSequence =
         machine?.['machine_sequence'] ||
         proposedChanges['machine_sequence'] ||
         '-';
-      const category =
-        (machine?.['category_id'] as unknown as Record<string, unknown>)?.[
-          'name'
-        ] || (proposedChanges['category_id'] ? 'N/A' : '-');
-      const subcategory =
-        (machine?.['subcategory_id'] as unknown as Record<string, unknown>)?.[
-          'name'
-        ] || (proposedChanges['subcategory_id'] ? 'N/A' : '-');
-      const partyName =
-        machine?.['party_name'] || proposedChanges['party_name'] || '-';
       const location =
         machine?.['location'] || proposedChanges['location'] || '-';
-      const mobileNumber =
-        machine?.['mobile_number'] || proposedChanges['mobile_number'] || '-';
       const dispatchDate = machine?.['dispatch_date']
         ? new Date(
             machine['dispatch_date'] as string | number | Date,
@@ -1842,8 +2212,19 @@ export class ExportService {
     const styles = pdf.getDefaultStyles();
 
     const qcEntry = await QAMachineEntry.findById(qcEntryId)
-      .populate('machine_id', 'name machine_sequence')
-      .populate('category_id', 'name')
+      .populate({
+        path: 'machine_id',
+        select: 'so_id machine_sequence location dispatch_date is_approved',
+        populate: {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
+          ],
+        },
+      })
       .populate('added_by', 'username email')
       .lean();
 
@@ -1864,11 +2245,42 @@ export class ExportService {
         { text: qcEntry._id?.toString() || 'N/A', style: 'value' },
       ],
     });
+    // Extract machine data from SO
+    const machineIdValue = (qcEntry as Record<string, unknown>)['machine_id'];
+    let machineName = 'N/A';
+    let categoryName = 'N/A';
+
+    if (
+      machineIdValue &&
+      typeof machineIdValue === 'object' &&
+      machineIdValue !== null
+    ) {
+      const soIdValue = machineIdValue['so_id'];
+      if (soIdValue && typeof soIdValue === 'object' && soIdValue !== null) {
+        machineName = String(soIdValue['name'] || 'N/A');
+        const categoryId = soIdValue['category_id'];
+        if (
+          categoryId &&
+          typeof categoryId === 'object' &&
+          categoryId !== null
+        ) {
+          categoryName = String(
+            (categoryId as Record<string, unknown>)['name'] || 'N/A',
+          );
+        }
+      }
+    }
+
+    // Fallback to qcEntry name if machine SO not available
+    if (machineName === 'N/A' && (qcEntry as Record<string, unknown>)['name']) {
+      machineName = String((qcEntry as Record<string, unknown>)['name']);
+    }
+
     content.push({
       text: [
         { text: 'Machine Name: ', style: 'label' },
         {
-          text: String((qcEntry as Record<string, unknown>)['name'] || 'N/A'),
+          text: machineName,
           style: 'value',
         },
       ],
@@ -1878,7 +2290,12 @@ export class ExportService {
         { text: 'Machine Sequence: ', style: 'label' },
         {
           text: String(
-            (qcEntry as Record<string, unknown>)['machine_sequence'] || 'N/A',
+            (machineIdValue &&
+            typeof machineIdValue === 'object' &&
+            machineIdValue !== null
+              ? machineIdValue['machine_sequence']
+              : (qcEntry as Record<string, unknown>)['machine_sequence']) ||
+              'N/A',
           ),
           style: 'value',
         },
@@ -1888,11 +2305,7 @@ export class ExportService {
       text: [
         { text: 'Category: ', style: 'label' },
         {
-          text: String(
-            (qcEntry['category_id'] as unknown as Record<string, unknown>)?.[
-              'name'
-            ] || 'N/A',
-          ),
+          text: categoryName,
           style: 'value',
         },
       ],
@@ -1906,12 +2319,31 @@ export class ExportService {
       ],
     } as Content);
 
-    // Contact Information
+    // Contact Information - extract from SO if available
+    let partyName = qcEntry.party_name || 'N/A';
+    let mobileNumber = qcEntry.mobile_number || 'N/A';
+
+    if (
+      machineIdValue &&
+      typeof machineIdValue === 'object' &&
+      machineIdValue !== null
+    ) {
+      const soIdValue = machineIdValue['so_id'];
+      if (soIdValue && typeof soIdValue === 'object' && soIdValue !== null) {
+        if (partyName === 'N/A' || !qcEntry.party_name) {
+          partyName = String(soIdValue['party_name'] || 'N/A');
+        }
+        if (mobileNumber === 'N/A' || !qcEntry.mobile_number) {
+          mobileNumber = String(soIdValue['mobile_number'] || 'N/A');
+        }
+      }
+    }
+
     content.push({ text: '\nContact Information', style: 'subheader' });
     content.push({
       text: [
         { text: 'Party Name: ', style: 'label' },
-        { text: qcEntry.party_name || 'N/A', style: 'value' },
+        { text: partyName, style: 'value' },
       ],
     });
     content.push({
@@ -1923,7 +2355,7 @@ export class ExportService {
     content.push({
       text: [
         { text: 'Mobile Number: ', style: 'label' },
-        { text: qcEntry.mobile_number || 'N/A', style: 'value' },
+        { text: mobileNumber, style: 'value' },
       ],
     });
     if ((qcEntry as Record<string, unknown>)['dispatch_date']) {

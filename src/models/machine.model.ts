@@ -14,18 +14,13 @@ export interface IDocument {
  * IMachine interface defines the structure of a Machine document
  */
 export interface IMachine extends Document {
-  name: string;
-  nameHash?: string | null;
-  category_id: mongoose.Types.ObjectId;
-  subcategory_id?: mongoose.Types.ObjectId; // New field for subcategory
-  machine_sequence?: string; // New field for generated sequence
+  so_id: mongoose.Types.ObjectId; // Reference to SO (Sales Order)
+  machine_sequence?: string; // Auto-generated sequence
   created_by: mongoose.Types.ObjectId;
   is_approved: boolean;
   images: string[]; // Array of image URLs/paths
   documents: IDocument[]; // Array of document objects with names and paths
-  party_name: string; // Party/Company name
   location: string; // City-Country or location
-  mobile_number: string; // Contact mobile number
   dispatch_date?: Date; // Dispatch date for the machine
   updatedBy?: mongoose.Types.ObjectId;
   deletedAt?: Date | null;
@@ -39,24 +34,11 @@ export interface IMachine extends Document {
  */
 const machineSchema = new Schema<IMachine>(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    nameHash: {
-      type: String,
-      default: null,
-    },
-    category_id: {
+    so_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Category',
+      ref: 'SO',
       required: true,
-    },
-    subcategory_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Category',
-      default: null,
+      index: true,
     },
     machine_sequence: {
       type: String,
@@ -100,23 +82,11 @@ const machineSchema = new Schema<IMachine>(
         },
       },
     ],
-    party_name: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 100,
-    },
     location: {
       type: String,
       required: true,
       trim: true,
       maxlength: 100,
-    },
-    mobile_number: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 20,
     },
     dispatch_date: {
       type: Date,
@@ -146,14 +116,9 @@ const machineSchema = new Schema<IMachine>(
 machineSchema.index({ deletedAt: 1 });
 
 /**
- * Index for category-based queries
+ * Index for SO-based queries
  */
-machineSchema.index({ category_id: 1 });
-
-/**
- * Index for subcategory-based queries
- */
-machineSchema.index({ subcategory_id: 1 });
+machineSchema.index({ so_id: 1 });
 
 /**
  * Index for machine sequence queries
@@ -171,34 +136,14 @@ machineSchema.index({ is_approved: 1 });
 machineSchema.index({ created_by: 1 });
 
 /**
- * Compound index for active approved machines by category
+ * Compound index for active approved machines by SO
  */
-machineSchema.index({ category_id: 1, is_approved: 1, deletedAt: 1 });
-
-/**
- * Compound index for machines by category and subcategory
- */
-machineSchema.index({
-  category_id: 1,
-  subcategory_id: 1,
-  is_approved: 1,
-  deletedAt: 1,
-});
-
-/**
- * Index for party name queries
- */
-machineSchema.index({ party_name: 1 });
+machineSchema.index({ so_id: 1, is_approved: 1, deletedAt: 1 });
 
 /**
  * Index for location-based queries
  */
 machineSchema.index({ location: 1 });
-
-/**
- * Index for mobile number queries
- */
-machineSchema.index({ mobile_number: 1 });
 
 /**
  * Virtual to check if machine is deleted
@@ -215,7 +160,7 @@ machineSchema.virtual('isActive').get(function () {
 });
 
 /**
- * Query middleware to exclude deleted documents by default
+ * Query middleware to exclude deleted documents by default and populate SO
  */
 machineSchema.pre(/^find/, function (this: mongoose.Query<unknown, IMachine>) {
   // Only apply this middleware if deletedAt filter isn't explicitly set
@@ -223,6 +168,22 @@ machineSchema.pre(/^find/, function (this: mongoose.Query<unknown, IMachine>) {
   if (query.deletedAt === undefined) {
     this.where({ deletedAt: null });
   }
+  // Populate SO by default
+  this.populate({
+    path: 'so_id',
+    select:
+      'name category_id subcategory_id party_name mobile_number description is_active',
+    populate: [
+      {
+        path: 'category_id',
+        select: 'name description level',
+      },
+      {
+        path: 'subcategory_id',
+        select: 'name description level',
+      },
+    ],
+  });
 });
 
 /**

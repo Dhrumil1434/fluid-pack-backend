@@ -98,42 +98,87 @@ export const getQCApprovalStatistics = asyncHandler(
         '[QC Approval Controller] Looking up user for statistics filter:',
         requestedBy,
       );
-      // Try exact match first (more efficient and accurate)
-      let user = await User.findOne({
-        $or: [
-          { username: requestedBy },
-          { name: requestedBy },
-          { email: requestedBy },
-        ],
-      })
-        .select('_id username name email')
-        .lean();
 
-      // If exact match not found, try regex match
-      if (!user) {
-        user = await User.findOne({
+      let userId: mongoose.Types.ObjectId | null = null;
+
+      // First check if requestedBy is a valid ObjectId - if so, use it directly
+      if (mongoose.Types.ObjectId.isValid(requestedBy as string)) {
+        try {
+          userId = new mongoose.Types.ObjectId(requestedBy as string);
+          // Verify the user exists
+          const user = await User.findById(userId)
+            .select('_id username name email')
+            .lean();
+          if (user) {
+            const userData = user as any;
+            console.log(
+              '[QC Approval Controller] Found user by ObjectId for statistics filter:',
+              {
+                _id: userId.toString(),
+                username: userData.username,
+                name: userData.name,
+                email: userData.email,
+              },
+            );
+          } else {
+            console.warn(
+              '[QC Approval Controller] User ObjectId is valid but user not found:',
+              requestedBy,
+            );
+            userId = null; // Reset if user doesn't exist
+          }
+        } catch (error) {
+          console.warn(
+            '[QC Approval Controller] Error converting requestedBy to ObjectId:',
+            error,
+          );
+          userId = null;
+        }
+      }
+
+      // If not found by ObjectId, try searching by username/name/email
+      if (!userId) {
+        // Try exact match first (more efficient and accurate)
+        let user = await User.findOne({
           $or: [
-            { username: { $regex: requestedBy, $options: 'i' } },
-            { name: { $regex: requestedBy, $options: 'i' } },
-            { email: { $regex: requestedBy, $options: 'i' } },
+            { username: requestedBy },
+            { name: requestedBy },
+            { email: requestedBy },
           ],
         })
           .select('_id username name email')
           .lean();
+
+        // If exact match not found, try regex match
+        if (!user) {
+          user = await User.findOne({
+            $or: [
+              { username: { $regex: requestedBy, $options: 'i' } },
+              { name: { $regex: requestedBy, $options: 'i' } },
+              { email: { $regex: requestedBy, $options: 'i' } },
+            ],
+          })
+            .select('_id username name email')
+            .lean();
+        }
+
+        if (user && user._id) {
+          userId = new mongoose.Types.ObjectId(String(user._id));
+          const userData = user as any;
+          console.log(
+            '[QC Approval Controller] Filtering statistics by requestedBy user:',
+            {
+              _id: userId.toString(),
+              username: userData.username,
+              name: userData.name,
+              email: userData.email,
+            },
+          );
+        }
       }
 
-      if (user && user._id) {
-        matchStage.requestedBy = new mongoose.Types.ObjectId(String(user._id));
-        const userData = user as any;
-        console.log(
-          '[QC Approval Controller] Filtering statistics by requestedBy user:',
-          {
-            _id: matchStage.requestedBy.toString(),
-            username: userData.username,
-            name: userData.name,
-            email: userData.email,
-          },
-        );
+      if (userId) {
+        matchStage.requestedBy = userId;
       } else {
         console.warn(
           '[QC Approval Controller] No user found for statistics filter, returning zeros',
@@ -370,13 +415,20 @@ export const getAllQCApprovals = asyncHandler(
 
     if (search) {
       matchStage.$or = [
-        { 'machineId.name': { $regex: search, $options: 'i' } },
+        { 'machineId.so_id.name': { $regex: search, $options: 'i' } },
         { 'machineId.machine_sequence': { $regex: search, $options: 'i' } },
-        { 'machineId.category_id.name': { $regex: search, $options: 'i' } },
-        { 'machineId.subcategory_id.name': { $regex: search, $options: 'i' } },
-        { 'machineId.party_name': { $regex: search, $options: 'i' } },
+        {
+          'machineId.so_id.category_id.name': { $regex: search, $options: 'i' },
+        },
+        {
+          'machineId.so_id.subcategory_id.name': {
+            $regex: search,
+            $options: 'i',
+          },
+        },
+        { 'machineId.so_id.party_name': { $regex: search, $options: 'i' } },
         { 'machineId.location': { $regex: search, $options: 'i' } },
-        { 'machineId.mobile_number': { $regex: search, $options: 'i' } },
+        { 'machineId.so_id.mobile_number': { $regex: search, $options: 'i' } },
         { 'requestedBy.name': { $regex: search, $options: 'i' } },
         { 'requestedBy.username': { $regex: search, $options: 'i' } },
         { 'requestedBy.email': { $regex: search, $options: 'i' } },
@@ -441,7 +493,7 @@ export const getAllQCApprovals = asyncHandler(
       inspectionDate: 'inspectionDateForSort', // Use computed field
       qc_date: 'qcDateForSort', // Use computed field
       dispatch_date: 'dispatchDateForSort', // Use computed field
-      machineName: 'machineId.name',
+      machineName: 'machineId.so_id.name',
       partyName: 'partyNameForSort', // Use computed field
       location: 'locationForSort', // Use computed field
       mobileNumber: 'mobileNumberForSort', // Use computed field
@@ -459,64 +511,113 @@ export const getAllQCApprovals = asyncHandler(
         '[QC Approval Controller] Looking up user by requestedBy filter:',
         requestedBy,
       );
-      console.log(
-        '[QC Approval Controller] Searching for user with username/name/email matching:',
-        requestedBy,
-      );
 
-      // Try exact match first (more efficient and accurate)
-      let user = await User.findOne({
-        $or: [
-          { username: requestedBy },
-          { name: requestedBy },
-          { email: requestedBy },
-        ],
-      })
-        .select('_id username name email')
-        .lean();
+      // First check if requestedBy is a valid ObjectId - if so, use it directly
+      if (mongoose.Types.ObjectId.isValid(requestedBy as string)) {
+        try {
+          requestedByUserId = new mongoose.Types.ObjectId(
+            requestedBy as string,
+          );
+          // Verify the user exists
+          const user = await User.findById(requestedByUserId)
+            .select('_id username name email')
+            .lean();
+          if (user) {
+            const userData = user as any;
+            console.log(
+              '[QC Approval Controller] Found user by ObjectId for requestedBy filter:',
+              {
+                _id: requestedByUserId.toString(),
+                username: userData.username,
+                name: userData.name,
+                email: userData.email,
+              },
+            );
+          } else {
+            console.warn(
+              '[QC Approval Controller] User ObjectId is valid but user not found:',
+              requestedBy,
+            );
+            requestedByUserId = null; // Reset if user doesn't exist
+          }
+        } catch (error) {
+          console.warn(
+            '[QC Approval Controller] Error converting requestedBy to ObjectId:',
+            error,
+          );
+          requestedByUserId = null;
+        }
+      }
 
-      // If exact match not found, try regex match
-      if (!user) {
-        user = await User.findOne({
+      // If not found by ObjectId, try searching by username/name/email
+      if (!requestedByUserId) {
+        console.log(
+          '[QC Approval Controller] Searching for user with username/name/email matching:',
+          requestedBy,
+        );
+
+        // Try exact match first (more efficient and accurate)
+        let user = await User.findOne({
           $or: [
-            { username: { $regex: requestedBy, $options: 'i' } },
-            { name: { $regex: requestedBy, $options: 'i' } },
-            { email: { $regex: requestedBy, $options: 'i' } },
+            { username: requestedBy },
+            { name: requestedBy },
+            { email: requestedBy },
           ],
         })
           .select('_id username name email')
           .lean();
-      }
 
-      if (user && user._id) {
-        requestedByUserId = new mongoose.Types.ObjectId(String(user._id));
-        const userData = user as any;
-        console.log(
-          '[QC Approval Controller] Found user for requestedBy filter:',
-          {
-            _id: requestedByUserId.toString(),
-            username: userData.username,
-            name: userData.name,
-            email: userData.email,
-          },
-        );
-      } else {
-        console.warn(
-          '[QC Approval Controller] No user found matching requestedBy filter:',
-          requestedBy,
-        );
-        console.warn(
-          '[QC Approval Controller] This will result in no approvals being returned!',
-        );
+        // If exact match not found, try regex match
+        if (!user) {
+          user = await User.findOne({
+            $or: [
+              { username: { $regex: requestedBy, $options: 'i' } },
+              { name: { $regex: requestedBy, $options: 'i' } },
+              { email: { $regex: requestedBy, $options: 'i' } },
+            ],
+          })
+            .select('_id username name email')
+            .lean();
+        }
+
+        if (user && user._id) {
+          requestedByUserId = new mongoose.Types.ObjectId(String(user._id));
+          const userData = user as any;
+          console.log(
+            '[QC Approval Controller] Found user for requestedBy filter:',
+            {
+              _id: requestedByUserId.toString(),
+              username: userData.username,
+              name: userData.name,
+              email: userData.email,
+            },
+          );
+        } else {
+          console.warn(
+            '[QC Approval Controller] No user found matching requestedBy filter:',
+            requestedBy,
+          );
+          console.warn(
+            '[QC Approval Controller] This will result in no approvals being returned!',
+          );
+        }
       }
     }
 
     const pipeline: any[] = [];
 
-    // Note: We don't pre-filter by requestedBy here because we need to check
+    // IMPORTANT: We don't filter by requestedBy at the start because we need to check
     // both approval.requestedBy AND qcEntryId.added_by after lookups
     // This ensures we catch all approvals created by the user, regardless of
     // whether they match via the approval's requestedBy or the QC entry's added_by
+
+    // Start with approvalType filter only
+    pipeline.push({
+      $match: {
+        approvalType:
+          matchStage.approvalType || QCApprovalType.MACHINE_QC_ENTRY,
+      },
+    });
 
     // Now do the machine lookup
     pipeline.push(
@@ -533,13 +634,31 @@ export const getAllQCApprovals = asyncHandler(
       },
     );
 
-    // Filter by category _id after machine lookup (if category is ObjectId)
+    // Lookup SO (Sales Order) - machines now reference SO instead of direct category
+    pipeline.push(
+      {
+        $lookup: {
+          from: 'sos',
+          localField: 'machineId.so_id',
+          foreignField: '_id',
+          as: 'machineId.so_id',
+        },
+      },
+      {
+        $unwind: {
+          path: '$machineId.so_id',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+    );
+
+    // Filter by category _id after SO lookup (if category is ObjectId)
     if (category) {
       if (mongoose.Types.ObjectId.isValid(category as string)) {
-        // Filter by category _id after machine lookup but before category lookup
+        // Filter by category _id via SO
         pipeline.push({
           $match: {
-            'machineId.category_id': new mongoose.Types.ObjectId(
+            'machineId.so_id.category_id': new mongoose.Types.ObjectId(
               category as string,
             ),
           },
@@ -547,33 +666,33 @@ export const getAllQCApprovals = asyncHandler(
       }
     }
 
-    // Continue with category lookups
+    // Continue with SO's category and subcategory lookups
     pipeline.push(
       {
         $lookup: {
           from: 'categories',
-          localField: 'machineId.category_id',
+          localField: 'machineId.so_id.category_id',
           foreignField: '_id',
-          as: 'machineId.category_id',
+          as: 'machineId.so_id.category_id',
         },
       },
       {
         $unwind: {
-          path: '$machineId.category_id',
+          path: '$machineId.so_id.category_id',
           preserveNullAndEmptyArrays: true,
         },
       },
       {
         $lookup: {
           from: 'categories',
-          localField: 'machineId.subcategory_id',
+          localField: 'machineId.so_id.subcategory_id',
           foreignField: '_id',
-          as: 'machineId.subcategory_id',
+          as: 'machineId.so_id.subcategory_id',
         },
       },
       {
         $unwind: {
-          path: '$machineId.subcategory_id',
+          path: '$machineId.so_id.subcategory_id',
           preserveNullAndEmptyArrays: true,
         },
       },
@@ -581,11 +700,16 @@ export const getAllQCApprovals = asyncHandler(
       {
         $addFields: {
           categoryNameForSort: {
-            $ifNull: ['$machineId.category_id.name', ''],
+            $ifNull: ['$machineId.so_id.category_id.name', ''],
           },
           partyNameForSort: {
             $ifNull: [
-              { $ifNull: ['$qcEntryId.party_name', '$machineId.party_name'] },
+              {
+                $ifNull: [
+                  '$qcEntryId.party_name',
+                  '$machineId.so_id.party_name',
+                ],
+              },
               '',
             ],
           },
@@ -600,7 +724,7 @@ export const getAllQCApprovals = asyncHandler(
               {
                 $ifNull: [
                   '$qcEntryId.mobile_number',
-                  '$machineId.mobile_number',
+                  '$machineId.so_id.mobile_number',
                 ],
               },
               '',
@@ -691,8 +815,52 @@ export const getAllQCApprovals = asyncHandler(
           preserveNullAndEmptyArrays: true,
         },
       },
-      // Lookup the added_by user from the QC entry (for filtering by requestedBy text search)
-      // This allows us to filter by qcEntryId.added_by.username, name, or email
+    );
+
+    // IMPORTANT: After qcEntryId lookup, add filter for requestedByUserId if it exists
+    // This matches EITHER approval.requestedBy OR qcEntryId.added_by (raw ObjectId field)
+    // We match on the raw ObjectId field BEFORE populating it
+    if (requestedByUserId) {
+      console.log(
+        '[QC Approval Controller] Adding filter for requestedBy user (OR logic after qcEntryId lookup):',
+        requestedByUserId.toString(),
+      );
+      console.log(
+        '[QC Approval Controller] Will match if approval.requestedBy OR qcEntryId.added_by (raw ObjectId) matches',
+      );
+
+      // Match EITHER approval.requestedBy OR qcEntryId.added_by
+      // Both are ObjectId fields at this point (before user population)
+      // Use $expr with $eq for reliable ObjectId comparison, or direct comparison
+      // Handle case where qcEntryId might be null
+      pipeline.push({
+        $match: {
+          $or: [
+            { requestedBy: requestedByUserId }, // Match approval's requestedBy ObjectId (direct comparison)
+            {
+              // Match QC entry's added_by ObjectId (raw field) - only if qcEntryId exists
+              $and: [
+                { qcEntryId: { $exists: true, $ne: null } }, // Ensure qcEntryId exists
+                { 'qcEntryId.added_by': requestedByUserId }, // Match QC entry's added_by ObjectId (direct comparison)
+              ],
+            },
+          ],
+        },
+      });
+      console.log(
+        '[QC Approval Controller] Filter will match approvals where:',
+      );
+      console.log('  - requestedBy =', requestedByUserId.toString(), 'OR');
+      console.log(
+        '  - (qcEntryId exists AND qcEntryId.added_by =',
+        requestedByUserId.toString(),
+        ')',
+      );
+    }
+
+    // Now lookup the added_by user from the QC entry (for display purposes)
+    // This allows us to display qcEntryId.added_by.username, name, or email
+    pipeline.push(
       {
         $lookup: {
           from: 'users',
@@ -707,11 +875,15 @@ export const getAllQCApprovals = asyncHandler(
           preserveNullAndEmptyArrays: true,
         },
       },
+    );
+
+    // Continue with additional computed fields
+    pipeline.push(
       // Add computed fields for reliable sorting (after all lookups)
       {
         $addFields: {
           categoryNameForSort: {
-            $ifNull: ['$machineId.category_id.name', ''],
+            $ifNull: ['$machineId.so_id.category_id.name', ''],
           },
           requestedByForSort: {
             $ifNull: [
@@ -727,7 +899,12 @@ export const getAllQCApprovals = asyncHandler(
           },
           partyNameForSort: {
             $ifNull: [
-              { $ifNull: ['$qcEntryId.party_name', '$machineId.party_name'] },
+              {
+                $ifNull: [
+                  '$qcEntryId.party_name',
+                  '$machineId.so_id.party_name',
+                ],
+              },
               '',
             ],
           },
@@ -742,7 +919,7 @@ export const getAllQCApprovals = asyncHandler(
               {
                 $ifNull: [
                   '$qcEntryId.mobile_number',
-                  '$machineId.mobile_number',
+                  '$machineId.so_id.mobile_number',
                 ],
               },
               '',
@@ -767,7 +944,7 @@ export const getAllQCApprovals = asyncHandler(
       if (!isObjectId) {
         // Filter by category name (for text search) - only if not ObjectId
         // ObjectId filtering is done before lookups for efficiency
-        matchStage['machineId.category_id.name'] = {
+        matchStage['machineId.so_id.category_id.name'] = {
           $regex: category,
           $options: 'i',
         };
@@ -775,14 +952,17 @@ export const getAllQCApprovals = asyncHandler(
     }
 
     if (subcategory) {
-      matchStage['machineId.subcategory_id.name'] = {
+      matchStage['machineId.so_id.subcategory_id.name'] = {
         $regex: subcategory,
         $options: 'i',
       };
     }
 
     if (machineName) {
-      matchStage['machineId.name'] = { $regex: machineName, $options: 'i' };
+      matchStage['machineId.so_id.name'] = {
+        $regex: machineName,
+        $options: 'i',
+      };
     }
 
     if (machineSequence) {
@@ -792,45 +972,17 @@ export const getAllQCApprovals = asyncHandler(
       };
     }
 
-    // IMPORTANT: Filter by requestedBy user - match if EITHER:
-    // 1. The approval's requestedBy field matches the user, OR
-    // 2. The QC entry's added_by field matches the user (if qcEntryId exists)
-    // This ensures we catch all approvals created by the user
-    if (requestedByUserId) {
-      console.log(
-        '[QC Approval Controller] Adding filter for requestedBy user (OR logic):',
-        requestedByUserId.toString(),
-      );
-      console.log(
-        '[QC Approval Controller] Will match if approval.requestedBy OR qcEntryId.added_by matches',
-      );
+    // IMPORTANT: Filter by requestedBy user - we already filtered by approval.requestedBy
+    // at the start of the pipeline. Now we need to also include approvals where
+    // qcEntryId.added_by matches the user (this will be applied AFTER qcEntryId lookup)
+    // We'll add this as a separate $match stage after the qcEntryId lookup
 
-      // Build OR condition: match if either requestedBy OR qcEntryId.added_by matches
-      // Note: We need to match on the ObjectId field BEFORE lookup, so we use the raw field
-      const requestedByOrCondition = {
-        $or: [
-          { requestedBy: requestedByUserId }, // Match approval's requestedBy ObjectId
-          { 'qcEntryId.added_by': requestedByUserId }, // Match QC entry's added_by ObjectId
-        ],
-      };
+    // Remove requestedByUserId from matchStage since we handle it separately
+    // (already applied at pipeline start for requestedBy, will apply after lookup for qcEntryId.added_by)
 
-      // Combine with existing matchStage conditions
-      if (matchStage.$and) {
-        matchStage.$and.push(requestedByOrCondition);
-      } else if (matchStage.$or) {
-        // If there's already an $or, wrap both with $and
-        const originalOr = matchStage.$or;
-        delete matchStage.$or;
-        matchStage.$and = [{ $or: originalOr }, requestedByOrCondition];
-      } else {
-        // No existing conditions, use the OR condition directly
-        matchStage.$or = requestedByOrCondition.$or;
-      }
-      console.log(
-        '[QC Approval Controller] Filter will match approvals where requestedBy OR qcEntryId.added_by =',
-        requestedByUserId.toString(),
-      );
-    } else if (requestedBy) {
+    // IMPORTANT: Only use text-based fallback if requestedByUserId was NOT found
+    // If requestedByUserId exists, we use ObjectId-based filtering (more reliable)
+    if (requestedBy && !requestedByUserId) {
       // Fallback: if user not found by ObjectId, try filtering by populated fields after lookup
       // This will be applied in the pipeline AFTER the lookups happen
       console.log(
@@ -868,14 +1020,32 @@ export const getAllQCApprovals = asyncHandler(
       } else {
         matchStage.$or = requestedByTextFilter.$or;
       }
+    } else if (requestedByUserId) {
+      console.log(
+        '[QC Approval Controller] Using ObjectId-based filtering for requestedBy (no text fallback needed):',
+        requestedByUserId.toString(),
+      );
     }
 
-    // QC Entry filters (from qamachineentries)
+    // QC Entry filters (from qamachineentries) - also check SO
     if (partyName) {
-      matchStage['qcEntryId.party_name'] = {
-        $regex: partyName,
-        $options: 'i',
-      };
+      // Combine with existing $or if present
+      const partyNameOr = [
+        { 'qcEntryId.party_name': { $regex: partyName, $options: 'i' } },
+        { 'machineId.so_id.party_name': { $regex: partyName, $options: 'i' } },
+      ];
+      if (matchStage.$or) {
+        // If $or exists, wrap both in $and
+        if (matchStage.$and) {
+          matchStage.$and.push({ $or: partyNameOr });
+        } else {
+          const existingOr = matchStage.$or;
+          delete matchStage.$or;
+          matchStage.$and = [{ $or: existingOr }, { $or: partyNameOr }];
+        }
+      } else {
+        matchStage.$or = partyNameOr;
+      }
     }
 
     if (location) {
@@ -886,10 +1056,28 @@ export const getAllQCApprovals = asyncHandler(
     }
 
     if (mobileNumber) {
-      matchStage['qcEntryId.mobile_number'] = {
-        $regex: mobileNumber,
-        $options: 'i',
-      };
+      // Combine with existing $or if present
+      const mobileNumberOr = [
+        { 'qcEntryId.mobile_number': { $regex: mobileNumber, $options: 'i' } },
+        {
+          'machineId.so_id.mobile_number': {
+            $regex: mobileNumber,
+            $options: 'i',
+          },
+        },
+      ];
+      if (matchStage.$or) {
+        // If $or exists, wrap both in $and
+        if (matchStage.$and) {
+          matchStage.$and.push({ $or: mobileNumberOr });
+        } else {
+          const existingOr = matchStage.$or;
+          delete matchStage.$or;
+          matchStage.$and = [{ $or: existingOr }, { $or: mobileNumberOr }];
+        }
+      } else {
+        matchStage.$or = mobileNumberOr;
+      }
     }
 
     // Date filters for dispatch_date
@@ -982,12 +1170,108 @@ export const getAllQCApprovals = asyncHandler(
       '[QC Approval Controller] Pipeline stages count:',
       pipeline.length,
     );
+
+    // Debug: Log first few pipeline stages
+    if (pipeline.length > 0) {
+      console.log(
+        '[QC Approval Controller] First pipeline stage:',
+        JSON.stringify(pipeline[0], null, 2),
+      );
+      if (requestedByUserId) {
+        // Find the $match stage with requestedBy filter
+        const requestedByMatchStage = pipeline.find(
+          (stage: any) =>
+            stage.$match &&
+            stage.$match.$or &&
+            (stage.$match.$or.some((condition: any) => condition.requestedBy) ||
+              stage.$match.$or.some((condition: any) => condition.$and)),
+        );
+        if (requestedByMatchStage) {
+          console.log(
+            '[QC Approval Controller] RequestedBy filter stage:',
+            JSON.stringify(requestedByMatchStage, null, 2),
+          );
+        }
+      }
+    }
+
     const approvals = await QCApproval.aggregate(pipeline);
     console.log(
       '[QC Approval Controller] Aggregation returned',
       approvals.length,
       'approvals',
     );
+
+    // Debug: Log sample approval if any found
+    if (approvals.length > 0) {
+      const sample = approvals[0];
+      console.log('[QC Approval Controller] Sample approval details:');
+      console.log('  - _id:', sample._id?.toString());
+      console.log('  - requestedBy (raw):', sample.requestedBy?.toString());
+      console.log('  - qcEntryId (raw):', sample.qcEntryId?._id?.toString());
+      console.log(
+        '  - qcEntryId.added_by (raw, before user lookup):',
+        sample.qcEntryId?.added_by?.toString(),
+      );
+    } else if (requestedByUserId) {
+      console.warn(
+        '[QC Approval Controller] No approvals found for user:',
+        requestedByUserId.toString(),
+      );
+      console.warn(
+        '[QC Approval Controller] Checking if any approvals exist in database...',
+      );
+      // Check if any approvals exist at all
+      const totalCount = await QCApproval.countDocuments({
+        approvalType: QCApprovalType.MACHINE_QC_ENTRY,
+      });
+      console.log(
+        '[QC Approval Controller] Total MACHINE_QC_ENTRY approvals in database:',
+        totalCount,
+      );
+      // Check if any approvals have this requestedBy
+      const requestedByCount = await QCApproval.countDocuments({
+        approvalType: QCApprovalType.MACHINE_QC_ENTRY,
+        requestedBy: requestedByUserId,
+      });
+      console.log(
+        '[QC Approval Controller] Approvals with requestedBy =',
+        requestedByUserId.toString(),
+        ':',
+        requestedByCount,
+      );
+
+      // Also check QC entries with this added_by
+      const qcEntriesWithAddedBy = await QAMachineEntry.countDocuments({
+        added_by: requestedByUserId,
+      });
+      console.log(
+        '[QC Approval Controller] QC entries with added_by =',
+        requestedByUserId.toString(),
+        ':',
+        qcEntriesWithAddedBy,
+      );
+
+      // Check approvals that reference these QC entries
+      if (qcEntriesWithAddedBy > 0) {
+        const qcEntryIds = await QAMachineEntry.find({
+          added_by: requestedByUserId,
+        })
+          .select('_id')
+          .lean();
+        const qcEntryIdArray = qcEntryIds.map((e: any) => e._id);
+        const approvalsWithQCEntry = await QCApproval.countDocuments({
+          approvalType: QCApprovalType.MACHINE_QC_ENTRY,
+          qcEntryId: { $in: qcEntryIdArray },
+        });
+        console.log(
+          '[QC Approval Controller] Approvals referencing QC entries with added_by =',
+          requestedByUserId.toString(),
+          ':',
+          approvalsWithQCEntry,
+        );
+      }
+    }
 
     // Final safety check - ensure we never return more than the limit
     // This handles edge cases where aggregation might return unexpected results
@@ -1077,14 +1361,29 @@ export const getAllQCApprovals = asyncHandler(
       {
         $unwind: '$machineId',
       },
+      // Lookup SO (Sales Order) - machines now reference SO instead of direct category
+      {
+        $lookup: {
+          from: 'sos',
+          localField: 'machineId.so_id',
+          foreignField: '_id',
+          as: 'machineId.so_id',
+        },
+      },
+      {
+        $unwind: {
+          path: '$machineId.so_id',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
     );
 
-    // Filter by category _id after machine lookup (if category is ObjectId)
+    // Filter by category _id after SO lookup (if category is ObjectId)
     if (category) {
       if (mongoose.Types.ObjectId.isValid(category as string)) {
         countPipeline.push({
           $match: {
-            'machineId.category_id': new mongoose.Types.ObjectId(
+            'machineId.so_id.category_id': new mongoose.Types.ObjectId(
               category as string,
             ),
           },
@@ -1092,19 +1391,19 @@ export const getAllQCApprovals = asyncHandler(
       }
     }
 
-    // Continue with lookups for count
+    // Continue with lookups for count - SO's category and subcategory
     countPipeline.push(
       {
         $lookup: {
           from: 'categories',
-          localField: 'machineId.category_id',
+          localField: 'machineId.so_id.category_id',
           foreignField: '_id',
-          as: 'machineId.category_id',
+          as: 'machineId.so_id.category_id',
         },
       },
       {
         $unwind: {
-          path: '$machineId.category_id',
+          path: '$machineId.so_id.category_id',
           preserveNullAndEmptyArrays: true,
         },
       },
@@ -1178,16 +1477,32 @@ export const getAllQCApprovals = asyncHandler(
           preserveNullAndEmptyArrays: true,
         },
       },
-      // Note: We filter by qcEntryId.added_by ObjectId directly (no need to populate for filtering)
-      // The added_by field in qamachineentries is the QC person who created the entry
     );
 
-    // IMPORTANT: For count pipeline, we also need to filter by qcEntryId.added_by
-    // if requestedByUserId is set, since we're now filtering by QC entry's added_by
-    // The matchStage already includes this filter, but we need to ensure it's applied
-    // after the qcEntryId lookup in the count pipeline
+    // IMPORTANT: For count pipeline, add the same requestedByUserId filter
+    // This matches EITHER approval.requestedBy OR qcEntryId.added_by (raw ObjectId field)
+    if (requestedByUserId) {
+      console.log(
+        '[QC Approval Controller] Adding requestedBy filter to count pipeline:',
+        requestedByUserId.toString(),
+      );
+      countPipeline.push({
+        $match: {
+          $or: [
+            { requestedBy: requestedByUserId }, // Match approval's requestedBy ObjectId (direct comparison)
+            {
+              // Match QC entry's added_by ObjectId (raw field) - only if qcEntryId exists
+              $and: [
+                { qcEntryId: { $exists: true, $ne: null } }, // Ensure qcEntryId exists
+                { 'qcEntryId.added_by': requestedByUserId }, // Match QC entry's added_by ObjectId (direct comparison)
+              ],
+            },
+          ],
+        },
+      });
+    }
 
-    // Add match stage for count (after all lookups, including qcEntryId)
+    // Add match stage for count (after all lookups, including qcEntryId and requestedBy filter)
     if (Object.keys(matchStage).length > 0) {
       console.log(
         '[QC Approval Controller] Adding match stage to count pipeline:',
@@ -1226,13 +1541,25 @@ export const getQCApprovalById = asyncHandler(
     const { id } = req.params;
 
     const approval = await QCApproval.findById(id)
-      .populate('machineId', 'name category_id images metadata')
+      .populate({
+        path: 'machineId',
+        select:
+          'so_id images metadata location machine_sequence dispatch_date is_approved',
+        populate: {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
+          ],
+        },
+      })
       .populate('requestedBy', 'username name email')
       .populate('approvedBy', 'username name email')
       .populate('rejectedBy', 'username name email')
       .populate('approvers', 'username name email')
       .populate('qcEntryId', 'files')
-      .populate('machineId.category_id', 'name description')
       .lean();
 
     if (!approval) {
@@ -1335,9 +1662,21 @@ export const createQCApproval = asyncHandler(
     await approval.save();
 
     const populatedApproval = await QCApproval.findById(approval._id)
-      .populate('machineId', 'name category_id images')
+      .populate({
+        path: 'machineId',
+        select:
+          'so_id images location machine_sequence dispatch_date is_approved',
+        populate: {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
+          ],
+        },
+      })
       .populate('requestedBy', 'username name email')
-      .populate('machineId.category_id', 'name')
       .lean();
 
     res
@@ -1389,7 +1728,12 @@ export const createQCApprovalForEntry = async (
   } = args;
 
   console.log('[QC Approval Controller] Looking up machine:', machineId);
-  const machine = await Machine.findById(machineId);
+  const machine = await Machine.findById(machineId)
+    .populate({
+      path: 'so_id',
+      select: 'name',
+    })
+    .lean();
   if (!machine) {
     console.error('[QC Approval Controller] Machine not found:', machineId);
     throw new ApiError(
@@ -1399,14 +1743,16 @@ export const createQCApprovalForEntry = async (
       'Machine not found',
     );
   }
+  const machineName =
+    (machine as any).so_id?.name || machine._id?.toString() || 'Unknown';
   console.log(
     '[QC Approval Controller] Machine found:',
-    machine.name,
+    machineName,
     'is_approved:',
-    machine.is_approved,
+    (machine as any).is_approved,
   );
 
-  if (!machine.is_approved) {
+  if (!(machine as any).is_approved) {
     console.error(
       '[QC Approval Controller] Machine is not approved:',
       machineId,
@@ -1709,9 +2055,21 @@ export const updateQCApproval = asyncHandler(
     await approval.save();
 
     const updatedApproval = await QCApproval.findById(approval._id)
-      .populate('machineId', 'name category_id images')
+      .populate({
+        path: 'machineId',
+        select:
+          'so_id images location machine_sequence dispatch_date is_approved',
+        populate: {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
+          ],
+        },
+      })
       .populate('requestedBy', 'username name email')
-      .populate('machineId.category_id', 'name')
       .lean();
 
     res
@@ -1880,11 +2238,23 @@ export const processQCApprovalAction = asyncHandler(
     await approval.save();
 
     const updatedApproval = await QCApproval.findById(approval._id)
-      .populate('machineId', 'name category_id images')
+      .populate({
+        path: 'machineId',
+        select:
+          'so_id images location machine_sequence dispatch_date is_approved',
+        populate: {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
+          ],
+        },
+      })
       .populate('requestedBy', 'username name email')
       .populate('approvedBy', 'username name email')
       .populate('rejectedBy', 'username name email')
-      .populate('machineId.category_id', 'name')
       .lean();
 
     res
@@ -2015,8 +2385,20 @@ export const getQCApprovalsByUser = asyncHandler(
     const skip = (pageNum - 1) * limitNum;
 
     const approvals = await QCApproval.find({ requestedBy: userId })
-      .populate('machineId', 'name category_id images')
-      .populate('machineId.category_id', 'name')
+      .populate({
+        path: 'machineId',
+        select:
+          'so_id images location machine_sequence dispatch_date is_approved',
+        populate: {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
+          ],
+        },
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
@@ -2247,7 +2629,7 @@ export const getSearchSuggestions = asyncHandler(
         }
 
         case 'partyName': {
-          // Get unique party names from both machine and QC entry
+          // Get unique party names from both machine (via SO) and QC entry
           const pipeline = [
             {
               $lookup: {
@@ -2259,6 +2641,20 @@ export const getSearchSuggestions = asyncHandler(
             },
             {
               $unwind: '$machineId',
+            },
+            {
+              $lookup: {
+                from: 'sos',
+                localField: 'machineId.so_id',
+                foreignField: '_id',
+                as: 'machineId.so_id',
+              },
+            },
+            {
+              $unwind: {
+                path: '$machineId.so_id',
+                preserveNullAndEmptyArrays: true,
+              },
             },
             {
               $lookup: {
@@ -2278,7 +2674,7 @@ export const getSearchSuggestions = asyncHandler(
               $group: {
                 _id: null,
                 machinePartyNames: {
-                  $addToSet: '$machineId.party_name',
+                  $addToSet: '$machineId.so_id.party_name',
                 },
                 qcPartyNames: {
                   $addToSet: '$qcEntryId.party_name',

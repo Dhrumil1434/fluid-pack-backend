@@ -5,10 +5,10 @@ import { StatusCodes } from 'http-status-codes';
 // import { ApiError } from '../../../../utils/ApiError';
 // import { ERROR_MESSAGES } from '../../../../constants/errorMessages';
 import mongoose from 'mongoose';
-import { Category } from '../../../models/category.model';
 import { User } from '../../../models/user.model';
 
 import { IMachine, Machine } from '../../../models/machine.model';
+import { SO } from '../../../models/so.model';
 import { ApiError } from '../../../utils/ApiError';
 import { ERROR_MESSAGES } from '../machine.error.constant';
 import {
@@ -16,9 +16,7 @@ import {
   sanitizeMachines,
 } from '../../../utils/sanitizeMachineResponse';
 export interface CreateMachineData {
-  name: string;
-  category_id: string;
-  subcategory_id?: string;
+  so_id: string; // Reference to SO (Sales Order)
   created_by: string;
   images?: string[];
   documents?: Array<{
@@ -26,30 +24,23 @@ export interface CreateMachineData {
     file_path: string;
     document_type?: string;
   }>;
-  party_name: string;
   location: string;
-  mobile_number: string;
   dispatch_date?: Date | string;
-  machine_sequence?: string;
   metadata?: Record<string, unknown>;
   is_approved?: boolean;
 }
 
 export interface UpdateMachineData {
-  name?: string;
-  category_id?: mongoose.Types.ObjectId;
-  subcategory_id?: mongoose.Types.ObjectId;
+  so_id?: string; // Update SO reference if needed
   images?: string[];
   documents?: Array<{
     name: string;
     file_path: string;
     document_type?: string;
   }>;
-  party_name?: string;
   location?: string;
-  mobile_number?: string;
   dispatch_date?: Date | string | null;
-  machine_sequence?: string;
+  machine_sequence?: string; // Can be updated but usually auto-generated
   metadata?: Record<string, unknown>;
   removedDocuments?: Array<{
     _id?: string;
@@ -69,29 +60,28 @@ export interface MachineListResult {
 }
 
 export interface MachineFilters {
-  category_id?: string;
+  so_id?: string; // Filter by SO ID
+  category_id?: string; // Filter by SO's category_id
   is_approved?: boolean;
   created_by?: string;
-  search?: string;
+  search?: string; // Search in SO name, SO party_name, location, machine_sequence
   has_sequence?: boolean;
   metadata_key?: string;
   metadata_value?: string;
   dispatch_date_from?: string | Date;
   dispatch_date_to?: string | Date;
   // Specific field filters for suggestion-based search
-  party_name?: string;
+  party_name?: string; // Filter by SO's party_name
   machine_sequence?: string;
   location?: string;
-  mobile_number?: string;
   sortBy?:
     | 'createdAt'
-    | 'name'
-    | 'category'
+    | 'name' // Sort by SO name
+    | 'category' // Sort by SO category
     | 'dispatch_date'
-    | 'party_name'
+    | 'party_name' // Sort by SO party_name
     | 'machine_sequence'
     | 'location'
-    | 'mobile_number'
     | 'created_by';
   sortOrder?: 'asc' | 'desc';
 }
@@ -102,91 +92,20 @@ class MachineService {
    */
   static async create(data: CreateMachineData): Promise<IMachine> {
     try {
-      // Verify category exists and is active
-      const category = await Category.findOne({
-        _id: data.category_id,
+      // Verify SO exists and is active
+      const so = await SO.findOne({
+        _id: data.so_id,
         deletedAt: null,
+        is_active: true,
       });
 
-      if (!category) {
+      if (!so) {
         throw new ApiError(
           ERROR_MESSAGES.MACHINE.ACTION.CREATE,
           StatusCodes.BAD_REQUEST,
-          ERROR_MESSAGES.CATEGORY.NOT_FOUND.code,
-          ERROR_MESSAGES.CATEGORY.NOT_FOUND.message,
+          'SO_NOT_FOUND',
+          'SO not found or is not active',
         );
-      }
-
-      // Validate subcategory if provided
-      if (data.subcategory_id) {
-        const subcategory = await Category.findOne({
-          _id: data.subcategory_id,
-          deletedAt: null,
-        });
-
-        if (!subcategory) {
-          throw new ApiError(
-            ERROR_MESSAGES.MACHINE.ACTION.CREATE,
-            StatusCodes.BAD_REQUEST,
-            'SUBCATEGORY_NOT_FOUND',
-            'Subcategory not found',
-          );
-        }
-
-        // Verify subcategory belongs to the selected category
-        const subcategoryParentId = subcategory.parent_id
-          ? subcategory.parent_id.toString()
-          : null;
-        const categoryIdStr = (
-          category._id as mongoose.Types.ObjectId
-        ).toString();
-
-        if (subcategoryParentId !== categoryIdStr) {
-          throw new ApiError(
-            ERROR_MESSAGES.MACHINE.ACTION.CREATE,
-            StatusCodes.BAD_REQUEST,
-            'INVALID_SUBCATEGORY',
-            'Subcategory does not belong to the selected category',
-          );
-        }
-      }
-
-      // Check if machine with same name already exists in the same category
-      const nameHash = data.name.trim().toLowerCase();
-      const existingMachine = await Machine.findOne({
-        nameHash: nameHash,
-        category_id: data.category_id,
-        deletedAt: null,
-      });
-
-      if (existingMachine) {
-        throw new ApiError(
-          ERROR_MESSAGES.MACHINE.ACTION.CREATE,
-          StatusCodes.CONFLICT,
-          ERROR_MESSAGES.MACHINE.ALREADY_EXISTS.code,
-          ERROR_MESSAGES.MACHINE.ALREADY_EXISTS.message,
-        );
-      }
-
-      // Check for duplicate sequence number if provided
-      if (
-        data.machine_sequence !== undefined &&
-        data.machine_sequence !== null &&
-        data.machine_sequence.trim() !== ''
-      ) {
-        const duplicateSequenceMachine = await Machine.findOne({
-          machine_sequence: data.machine_sequence.trim(),
-          deletedAt: null,
-        });
-
-        if (duplicateSequenceMachine) {
-          throw new ApiError(
-            ERROR_MESSAGES.MACHINE.ACTION.CREATE,
-            StatusCodes.CONFLICT,
-            'DUPLICATE_SEQUENCE',
-            `Machine sequence "${data.machine_sequence}" is already assigned to another machine`,
-          );
-        }
       }
 
       // Parse dispatch_date if provided as string
@@ -206,19 +125,16 @@ class MachineService {
         }
       }
 
+      // Machine sequence will be auto-generated later if needed
+      // For now, leave it as null
       const machine = new Machine({
-        name: data.name.trim(),
-        nameHash: nameHash,
-        category_id: data.category_id,
-        subcategory_id: data.subcategory_id || null,
+        so_id: data.so_id,
         created_by: data.created_by,
         images: data.images || [],
         documents: data.documents || [],
-        party_name: data.party_name.trim(),
         location: data.location.trim(),
-        mobile_number: data.mobile_number.trim(),
         dispatch_date: dispatchDate,
-        machine_sequence: data.machine_sequence || null,
+        machine_sequence: null, // Auto-generated later if needed
         metadata: data.metadata || {},
         is_approved:
           typeof data.is_approved === 'boolean' ? data.is_approved : false,
@@ -226,9 +142,17 @@ class MachineService {
 
       await machine.save();
 
-      // Populate category and creator information
+      // Populate SO and creator information
       await machine.populate([
-        { path: 'category_id', select: 'name description' },
+        {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description' },
+            { path: 'subcategory_id', select: 'name description' },
+          ],
+        },
         { path: 'created_by', select: 'username email' },
       ]);
 
@@ -257,8 +181,32 @@ class MachineService {
       const query: Record<string, unknown> = { deletedAt: null };
 
       // Apply filters
+      if (filters.so_id) {
+        query['so_id'] = filters.so_id;
+      }
+
+      // Filter by SO's category_id - find matching SOs first
       if (filters.category_id) {
-        query['category_id'] = filters.category_id;
+        const matchingSOs = await SO.find({
+          category_id: filters.category_id,
+          deletedAt: null,
+          is_active: true,
+        })
+          .select('_id')
+          .lean();
+        const soIds = matchingSOs.map(
+          (so) => so._id as mongoose.Types.ObjectId,
+        );
+        if (soIds.length > 0) {
+          query['so_id'] = { $in: soIds };
+        } else {
+          // No matching SOs, return empty result
+          return {
+            machines: [],
+            total: 0,
+            pages: 0,
+          };
+        }
       }
 
       if (typeof filters.is_approved === 'boolean') {
@@ -272,7 +220,7 @@ class MachineService {
       // Build $and array for complex queries
       const andConditions: Array<Record<string, unknown>> = [];
 
-      // Handle search filter - search across multiple fields including created_by
+      // Handle search filter - search across SO fields and machine fields
       if (filters.search) {
         const searchRegex = { $regex: filters.search, $options: 'i' };
         // First, find users matching the search term for created_by
@@ -281,23 +229,47 @@ class MachineService {
         })
           .select('_id')
           .lean();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const matchingUserIds = matchingUsers.map((u: any) => u._id);
+        const matchingUserIds = matchingUsers.map(
+          (u) => u._id as mongoose.Types.ObjectId,
+        );
+
+        // Find SOs matching the search term
+        const matchingSOs = await SO.find({
+          $or: [
+            { name: searchRegex },
+            { party_name: searchRegex },
+            { mobile_number: searchRegex },
+          ],
+          deletedAt: null,
+        })
+          .select('_id')
+          .lean();
+
+        const matchingSOIds = matchingSOs.map(
+          (so) => so._id as mongoose.Types.ObjectId,
+        );
 
         const searchOrConditions: Array<Record<string, unknown>> = [
-          { name: searchRegex },
-          { party_name: searchRegex },
           { location: searchRegex },
-          { mobile_number: searchRegex },
           { machine_sequence: searchRegex },
         ];
 
-        // If search term looks like an ObjectId (24 hex characters), also search by _id
+        // Add SO ID search if matching SOs found
+        if (matchingSOIds.length > 0) {
+          searchOrConditions.push({ so_id: { $in: matchingSOIds } });
+        }
+
+        // If search term looks like an ObjectId (24 hex characters), also search by _id and so_id
         if (/^[0-9a-fA-F]{24}$/.test(filters.search.trim())) {
           try {
+            const searchObjectId = new mongoose.Types.ObjectId(
+              filters.search.trim(),
+            );
             searchOrConditions.push({
-              _id: new mongoose.Types.ObjectId(filters.search.trim()),
+              _id: searchObjectId,
             });
+            // Also search in SO IDs
+            searchOrConditions.push({ so_id: searchObjectId });
           } catch {
             // Invalid ObjectId format, skip
           }
@@ -372,8 +344,43 @@ class MachineService {
       }
 
       // Handle specific field filters for suggestion-based search
+      // Filter by SO's party_name
       if (filters.party_name) {
-        query['party_name'] = { $regex: filters.party_name, $options: 'i' };
+        const matchingSOs = await SO.find({
+          party_name: { $regex: filters.party_name, $options: 'i' },
+          deletedAt: null,
+          is_active: true,
+        })
+          .select('_id')
+          .lean();
+        const soIds = matchingSOs.map(
+          (so) => so._id as mongoose.Types.ObjectId,
+        );
+        if (soIds.length > 0) {
+          if (query['so_id']) {
+            // If so_id filter already exists, intersect with party_name results
+            const existingSOIdValue = query['so_id'];
+            const existingSOIds = Array.isArray(existingSOIdValue)
+              ? ((existingSOIdValue as { $in: unknown[] })[
+                  '$in'
+                ] as unknown[]) || []
+              : [existingSOIdValue];
+            query['so_id'] = {
+              $in: (existingSOIds as unknown[]).filter((id: unknown) =>
+                soIds.some((sid: unknown) => String(sid) === String(id)),
+              ),
+            };
+          } else {
+            query['so_id'] = { $in: soIds };
+          }
+        } else {
+          // No matching SOs, return empty result
+          return {
+            machines: [],
+            total: 0,
+            pages: 0,
+          };
+        }
       }
 
       if (filters.machine_sequence) {
@@ -387,13 +394,6 @@ class MachineService {
         query['location'] = { $regex: filters.location, $options: 'i' };
       }
 
-      if (filters.mobile_number) {
-        query['mobile_number'] = {
-          $regex: filters.mobile_number,
-          $options: 'i',
-        };
-      }
-
       // Determine sort order
       const sortOrder = filters.sortOrder === 'asc' ? 1 : -1;
       let sortField: Record<string, 1 | -1> = { createdAt: -1 }; // Default: latest first
@@ -401,27 +401,26 @@ class MachineService {
       if (filters.sortBy) {
         switch (filters.sortBy) {
           case 'name':
-            sortField = { name: sortOrder };
+            // Sort by SO name - we'll need to sort after population or use aggregation
+            // For now, sort by so_id (will be sorted by SO creation order)
+            sortField = { so_id: sortOrder };
             break;
           case 'category':
-            // We'll need to sort by populated category name, but MongoDB can't sort by populated fields directly
-            // So we'll sort by category_id and handle category name sorting in a different way
-            sortField = { category_id: sortOrder };
+            // Sort by SO's category - sort by so_id for now
+            sortField = { so_id: sortOrder };
             break;
           case 'dispatch_date':
             sortField = { dispatch_date: sortOrder };
             break;
           case 'party_name':
-            sortField = { party_name: sortOrder };
+            // Sort by SO's party_name - sort by so_id for now
+            sortField = { so_id: sortOrder };
             break;
           case 'machine_sequence':
             sortField = { machine_sequence: sortOrder };
             break;
           case 'location':
             sortField = { location: sortOrder };
-            break;
-          case 'mobile_number':
-            sortField = { mobile_number: sortOrder };
             break;
           case 'created_by':
             sortField = { created_by: sortOrder };
@@ -436,8 +435,15 @@ class MachineService {
       const [machines, total] = await Promise.all([
         Machine.find(query)
           .populate([
-            { path: 'category_id', select: 'name description slug' },
-            { path: 'subcategory_id', select: 'name description slug' },
+            {
+              path: 'so_id',
+              select:
+                'name category_id subcategory_id party_name mobile_number description is_active',
+              populate: [
+                { path: 'category_id', select: 'name description slug' },
+                { path: 'subcategory_id', select: 'name description slug' },
+              ],
+            },
             { path: 'created_by', select: 'username email' },
             { path: 'updatedBy', select: 'username email' },
           ])
@@ -485,8 +491,15 @@ class MachineService {
         deletedAt: null,
       })
         .populate([
-          { path: 'category_id', select: 'name description slug' },
-          { path: 'subcategory_id', select: 'name description slug' },
+          {
+            path: 'so_id',
+            select:
+              'name category_id subcategory_id party_name mobile_number description is_active',
+            populate: [
+              { path: 'category_id', select: 'name description slug' },
+              { path: 'subcategory_id', select: 'name description slug' },
+            ],
+          },
           { path: 'created_by', select: 'username email' },
           { path: 'updatedBy', select: 'username email' },
         ])
@@ -543,39 +556,20 @@ class MachineService {
         );
       }
 
-      // If category is being updated, verify it exists
-      if (data.category_id) {
-        const category = await Category.findOne({
-          _id: data.category_id,
+      // If SO is being updated, verify it exists and is active
+      if (data.so_id) {
+        const so = await SO.findOne({
+          _id: data.so_id,
           deletedAt: null,
+          is_active: true,
         });
 
-        if (!category) {
+        if (!so) {
           throw new ApiError(
             ERROR_MESSAGES.MACHINE.ACTION.UPDATE,
             StatusCodes.BAD_REQUEST,
-            ERROR_MESSAGES.CATEGORY.NOT_FOUND.code,
-            ERROR_MESSAGES.CATEGORY.NOT_FOUND.message,
-          );
-        }
-      }
-
-      // Check for duplicate name in the same category
-      if (data.name) {
-        const categoryId = data.category_id || existingMachine.category_id;
-        const duplicateMachine = await Machine.findOne({
-          name: { $regex: new RegExp(`^${data.name}$`, 'i') },
-          category_id: categoryId,
-          _id: { $ne: id },
-          deletedAt: null,
-        });
-
-        if (duplicateMachine) {
-          throw new ApiError(
-            ERROR_MESSAGES.MACHINE.ACTION.UPDATE,
-            StatusCodes.CONFLICT,
-            ERROR_MESSAGES.MACHINE.ALREADY_EXISTS.code,
-            ERROR_MESSAGES.MACHINE.ALREADY_EXISTS.message,
+            'SO_NOT_FOUND',
+            'SO not found or is not active',
           );
         }
       }
@@ -603,17 +597,11 @@ class MachineService {
       }
 
       const updateData: Partial<UpdateMachineData> = { ...data };
-      if (data.name) {
-        updateData.name = data.name.trim();
-      }
-      if (data.party_name) {
-        updateData.party_name = data.party_name.trim();
+      if (data.so_id) {
+        updateData.so_id = data.so_id;
       }
       if (data.location) {
         updateData.location = data.location.trim();
-      }
-      if (data.mobile_number) {
-        updateData.mobile_number = data.mobile_number.trim();
       }
       // Handle dispatch_date
       if (data.dispatch_date !== undefined) {
@@ -660,7 +648,7 @@ class MachineService {
         // New documents will be merged by the controller after this update
         updateData.documents = updatedDocuments;
         // Store removed document paths for Cloudinary deletion (will be handled in controller)
-        (updateData as Record<string, unknown>).__removedDocuments =
+        (updateData as Record<string, unknown>)['__removedDocuments'] =
           removedFilePaths;
       } else {
         // No documents are being removed
@@ -681,13 +669,21 @@ class MachineService {
 
       // Remove the removedDocuments and removedImages fields from updateData as they're not database fields
       delete updateData.removedDocuments;
-      delete (updateData as Record<string, unknown>).removedImages;
+      delete (updateData as Record<string, unknown>)['removedImages'];
 
       const machine = await Machine.findByIdAndUpdate(id, updateData, {
         new: true,
         runValidators: true,
       }).populate([
-        { path: 'category_id', select: 'name description' },
+        {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
+          ],
+        },
         { path: 'created_by', select: 'username email' },
         { path: 'updatedBy', select: 'username email' },
       ]);
@@ -810,7 +806,15 @@ class MachineService {
         },
         { new: true, runValidators: true },
       ).populate([
-        { path: 'category_id', select: 'name description' },
+        {
+          path: 'so_id',
+          select:
+            'name category_id subcategory_id party_name mobile_number description is_active',
+          populate: [
+            { path: 'category_id', select: 'name description slug' },
+            { path: 'subcategory_id', select: 'name description slug' },
+          ],
+        },
         { path: 'created_by', select: 'username email' },
         { path: 'updatedBy', select: 'username email' },
       ]);

@@ -34,8 +34,9 @@ export interface ApprovalFilters {
   createdBy?: string; // Machine created_by field (username/email)
   approvalType?: ApprovalType;
   machineId?: string;
+  machineName?: string; // Machine name filter (searches SO name)
   sequence?: string; // Machine sequence number
-  categoryId?: string; // Category filter
+  categoryId?: string; // Category filter (via SO)
   dateFrom?: string; // Date range start (ISO string)
   dateTo?: string; // Date range end (ISO string)
   metadataKey?: string; // Metadata key to search
@@ -115,7 +116,17 @@ class MachineApprovalService {
       await approvalRequest.populate([
         {
           path: 'machineId',
-          select: 'name category_id dispatch_date machine_sequence metadata',
+          select:
+            'so_id dispatch_date machine_sequence metadata location is_approved',
+          populate: {
+            path: 'so_id',
+            select:
+              'name category_id subcategory_id party_name mobile_number description is_active',
+            populate: [
+              { path: 'category_id', select: 'name description slug' },
+              { path: 'subcategory_id', select: 'name description slug' },
+            ],
+          },
         },
         { path: 'requestedBy', select: 'username email' },
       ]);
@@ -168,18 +179,48 @@ class MachineApprovalService {
             'machineId.dispatch_date': '$machineId.dispatch_date',
           },
         },
-        // Lookup category
+        // Lookup SO (Sales Order) - machines now reference SO instead of direct category
         {
           $lookup: {
-            from: 'categories',
-            localField: 'machineId.category_id',
+            from: 'sos',
+            localField: 'machineId.so_id',
             foreignField: '_id',
-            as: 'machineId.category_id',
+            as: 'machineId.so_id',
           },
         },
         {
           $unwind: {
-            path: '$machineId.category_id',
+            path: '$machineId.so_id',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        // Lookup SO's category
+        {
+          $lookup: {
+            from: 'categories',
+            localField: 'machineId.so_id.category_id',
+            foreignField: '_id',
+            as: 'machineId.so_id.category_id',
+          },
+        },
+        {
+          $unwind: {
+            path: '$machineId.so_id.category_id',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        // Lookup SO's subcategory
+        {
+          $lookup: {
+            from: 'categories',
+            localField: 'machineId.so_id.subcategory_id',
+            foreignField: '_id',
+            as: 'machineId.so_id.subcategory_id',
+          },
+        },
+        {
+          $unwind: {
+            path: '$machineId.so_id.subcategory_id',
             preserveNullAndEmptyArrays: true,
           },
         },
@@ -259,7 +300,7 @@ class MachineApprovalService {
         );
       }
 
-      // Category filter (only if valid ObjectId string)
+      // Category filter (only if valid ObjectId string) - now via SO
       if (
         filters.categoryId &&
         typeof filters.categoryId === 'string' &&
@@ -267,9 +308,8 @@ class MachineApprovalService {
       ) {
         const categoryId = filters.categoryId.trim();
         if (mongoose.Types.ObjectId.isValid(categoryId)) {
-          matchStage['machineId.category_id._id'] = new mongoose.Types.ObjectId(
-            categoryId,
-          );
+          matchStage['machineId.so_id.category_id._id'] =
+            new mongoose.Types.ObjectId(categoryId);
         }
       }
 
@@ -281,6 +321,18 @@ class MachineApprovalService {
       ) {
         matchStage['machineId.machine_sequence'] = {
           $regex: filters.sequence.trim(),
+          $options: 'i',
+        };
+      }
+
+      // Machine name filter (searches SO name)
+      if (
+        filters.machineName &&
+        typeof filters.machineName === 'string' &&
+        filters.machineName.trim()
+      ) {
+        matchStage['machineId.so_id.name'] = {
+          $regex: filters.machineName.trim(),
           $options: 'i',
         };
       }
@@ -477,7 +529,17 @@ class MachineApprovalService {
       const approval = await MachineApproval.findById(id).populate([
         {
           path: 'machineId',
-          select: 'name category_id dispatch_date machine_sequence metadata',
+          select:
+            'so_id dispatch_date machine_sequence metadata location is_approved',
+          populate: {
+            path: 'so_id',
+            select:
+              'name category_id subcategory_id party_name mobile_number description is_active',
+            populate: [
+              { path: 'category_id', select: 'name description slug' },
+              { path: 'subcategory_id', select: 'name description slug' },
+            ],
+          },
         },
         { path: 'requestedBy', select: 'username email' },
         { path: 'approvedBy', select: 'username email' },
@@ -568,7 +630,17 @@ class MachineApprovalService {
       const updated = await MachineApproval.findById(id).populate([
         {
           path: 'machineId',
-          select: 'name category_id dispatch_date machine_sequence metadata',
+          select:
+            'so_id dispatch_date machine_sequence metadata location is_approved',
+          populate: {
+            path: 'so_id',
+            select:
+              'name category_id subcategory_id party_name mobile_number description is_active',
+            populate: [
+              { path: 'category_id', select: 'name description slug' },
+              { path: 'subcategory_id', select: 'name description slug' },
+            ],
+          },
         },
         { path: 'requestedBy', select: 'username email' },
         { path: 'approverRoles', select: 'name' },
@@ -652,7 +724,17 @@ class MachineApprovalService {
       ).populate([
         {
           path: 'machineId',
-          select: 'name category_id dispatch_date machine_sequence metadata',
+          select:
+            'so_id dispatch_date machine_sequence metadata location is_approved',
+          populate: {
+            path: 'so_id',
+            select:
+              'name category_id subcategory_id party_name mobile_number description is_active',
+            populate: [
+              { path: 'category_id', select: 'name description slug' },
+              { path: 'subcategory_id', select: 'name description slug' },
+            ],
+          },
         },
         { path: 'requestedBy', select: 'username email' },
         { path: 'approvedBy', select: 'username email' },
@@ -765,7 +847,17 @@ class MachineApprovalService {
       ).populate([
         {
           path: 'machineId',
-          select: 'name category_id dispatch_date machine_sequence metadata',
+          select:
+            'so_id dispatch_date machine_sequence metadata location is_approved',
+          populate: {
+            path: 'so_id',
+            select:
+              'name category_id subcategory_id party_name mobile_number description is_active',
+            populate: [
+              { path: 'category_id', select: 'name description slug' },
+              { path: 'subcategory_id', select: 'name description slug' },
+            ],
+          },
         },
         { path: 'requestedBy', select: 'username email' },
       ]);

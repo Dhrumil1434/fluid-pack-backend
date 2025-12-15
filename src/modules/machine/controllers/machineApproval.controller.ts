@@ -118,6 +118,8 @@ class MachineApprovalController {
         filters.sequence = req.query['sequence'] as string;
       if (req.query['categoryId'])
         filters.categoryId = req.query['categoryId'] as string;
+      if (req.query['machineName'])
+        filters.machineName = req.query['machineName'] as string;
       if (req.query['dateFrom'])
         filters.dateFrom = req.query['dateFrom'] as string;
       if (req.query['dateTo']) filters.dateTo = req.query['dateTo'] as string;

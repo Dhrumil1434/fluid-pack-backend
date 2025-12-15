@@ -5,40 +5,13 @@ import Joi from 'joi';
  * Validation schema for creating machine
  */
 export const createMachineSchema = Joi.object({
-  name: Joi.string()
-    .trim()
-    .min(2)
-    .max(100)
-    .required()
-    .pattern(/^[a-zA-Z0-9\s\-_&().,/]+$/)
-    .messages({
-      'string.empty': 'Machine name is required',
-      'string.min': 'Machine name must be at least 2 characters long',
-      'string.max': 'Machine name cannot exceed 100 characters',
-      'string.pattern.base':
-        'Machine name can only contain letters, numbers, spaces, and common punctuation',
-      'any.required': 'Machine name is required',
-    }),
-
-  category_id: Joi.string()
+  so_id: Joi.string()
     .pattern(/^[0-9a-fA-F]{24}$/)
     .required()
     .messages({
-      'string.pattern.base': 'Invalid category ID format',
-      'any.required': 'Category ID is required',
+      'string.pattern.base': 'Invalid SO ID format',
+      'any.required': 'SO ID is required',
     }),
-
-  subcategory_id: Joi.string()
-    .pattern(/^[0-9a-fA-F]{24}$/)
-    .optional()
-    .allow('')
-    .messages({
-      'string.pattern.base': 'Invalid subcategory ID format',
-    }),
-
-  machine_sequence: Joi.string().trim().max(500).optional().allow('').messages({
-    'string.max': 'Machine sequence cannot exceed 500 characters',
-  }),
 
   images: Joi.array()
     .items(
@@ -52,24 +25,23 @@ export const createMachineSchema = Joi.object({
       'array.max': 'Cannot upload more than 10 images',
     }),
 
+  documents: Joi.array()
+    .items(
+      Joi.object({
+        name: Joi.string().required(),
+        file_path: Joi.string().required(),
+        document_type: Joi.string().optional(),
+      }),
+    )
+    .max(10)
+    .optional()
+    .messages({
+      'array.max': 'Cannot upload more than 10 documents',
+    }),
+
   metadata: Joi.object().optional().messages({
     'object.base': 'Metadata must be a valid object',
   }),
-
-  party_name: Joi.string()
-    .trim()
-    .min(2)
-    .max(100)
-    .required()
-    .pattern(/^[a-zA-Z0-9\s\-_&().,/]+$/)
-    .messages({
-      'string.empty': 'Party name is required',
-      'string.min': 'Party name must be at least 2 characters long',
-      'string.max': 'Party name cannot exceed 100 characters',
-      'string.pattern.base':
-        'Party name can only contain letters, numbers, spaces, and common punctuation',
-      'any.required': 'Party name is required',
-    }),
 
   location: Joi.string().trim().min(2).max(100).required().messages({
     'string.empty': 'Location is required',
@@ -77,21 +49,6 @@ export const createMachineSchema = Joi.object({
     'string.max': 'Location cannot exceed 100 characters',
     'any.required': 'Location is required',
   }),
-
-  mobile_number: Joi.string()
-    .trim()
-    .min(10)
-    .max(20)
-    .required()
-    .pattern(/^[+]?[0-9\s\-()]+$/)
-    .messages({
-      'string.empty': 'Mobile number is required',
-      'string.min': 'Mobile number must be at least 10 characters long',
-      'string.max': 'Mobile number cannot exceed 20 characters',
-      'string.pattern.base':
-        'Mobile number can only contain numbers, spaces, hyphens, parentheses, and optional + prefix',
-      'any.required': 'Mobile number is required',
-    }),
 
   dispatch_date: Joi.date().iso().optional().allow(null, '').messages({
     'date.base': 'Dispatch date must be a valid date',
@@ -103,32 +60,11 @@ export const createMachineSchema = Joi.object({
  * Validation schema for updating machine
  */
 export const updateMachineSchema = Joi.object({
-  name: Joi.string()
-    .trim()
-    .min(2)
-    .max(100)
-    .pattern(/^[a-zA-Z0-9\s\-_&().,/]+$/)
-    .optional()
-    .messages({
-      'string.min': 'Machine name must be at least 2 characters long',
-      'string.max': 'Machine name cannot exceed 100 characters',
-      'string.pattern.base':
-        'Machine name can only contain letters, numbers, spaces, and common punctuation',
-    }),
-
-  category_id: Joi.string()
+  so_id: Joi.string()
     .pattern(/^[0-9a-fA-F]{24}$/)
     .optional()
     .messages({
-      'string.pattern.base': 'Invalid category ID format',
-    }),
-
-  subcategory_id: Joi.string()
-    .pattern(/^[0-9a-fA-F]{24}$/)
-    .optional()
-    .allow('')
-    .messages({
-      'string.pattern.base': 'Invalid subcategory ID format',
+      'string.pattern.base': 'Invalid SO ID format',
     }),
 
   machine_sequence: Joi.string().trim().max(500).optional().allow('').messages({
@@ -145,6 +81,20 @@ export const updateMachineSchema = Joi.object({
     .optional()
     .messages({
       'array.max': 'Cannot upload more than 10 images',
+    }),
+
+  documents: Joi.array()
+    .items(
+      Joi.object({
+        name: Joi.string().required(),
+        file_path: Joi.string().required(),
+        document_type: Joi.string().optional(),
+      }),
+    )
+    .max(10)
+    .optional()
+    .messages({
+      'array.max': 'Cannot upload more than 10 documents',
     }),
 
   metadata: Joi.object().optional().messages({
@@ -166,36 +116,10 @@ export const updateMachineSchema = Joi.object({
     }),
   removedImages: Joi.array().items(Joi.string().uri()).optional(),
 
-  party_name: Joi.string()
-    .trim()
-    .min(2)
-    .max(100)
-    .pattern(/^[a-zA-Z0-9\s\-_&().,/]+$/)
-    .optional()
-    .messages({
-      'string.min': 'Party name must be at least 2 characters long',
-      'string.max': 'Party name cannot exceed 100 characters',
-      'string.pattern.base':
-        'Party name can only contain letters, numbers, spaces, and common punctuation',
-    }),
-
   location: Joi.string().trim().min(2).max(100).optional().messages({
     'string.min': 'Location must be at least 2 characters long',
     'string.max': 'Location cannot exceed 100 characters',
   }),
-
-  mobile_number: Joi.string()
-    .trim()
-    .min(10)
-    .max(20)
-    .pattern(/^[+]?[0-9\s\-()]+$/)
-    .optional()
-    .messages({
-      'string.min': 'Mobile number must be at least 10 characters long',
-      'string.max': 'Mobile number cannot exceed 20 characters',
-      'string.pattern.base':
-        'Mobile number can only contain numbers, spaces, hyphens, parentheses, and optional + prefix',
-    }),
 
   dispatch_date: Joi.date().iso().optional().allow(null, '').messages({
     'date.base': 'Dispatch date must be a valid date',
@@ -278,11 +202,19 @@ export const machinePaginationQuerySchema = Joi.object({
     'string.max': 'Search term cannot exceed 50 characters',
   }),
 
+  so_id: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .optional()
+    .messages({
+      'string.pattern.base': 'Invalid SO ID format',
+    }),
+
   category_id: Joi.string()
     .pattern(/^[0-9a-fA-F]{24}$/)
     .optional()
     .messages({
-      'string.pattern.base': 'Invalid category ID format',
+      'string.pattern.base':
+        'Invalid category ID format (filters by SO category)',
     }),
 
   is_approved: Joi.boolean().optional().messages({
@@ -322,6 +254,7 @@ export const machinePaginationQuerySchema = Joi.object({
   party_name: Joi.string().trim().min(1).max(100).optional().messages({
     'string.min': 'Party name filter must be at least 1 character long',
     'string.max': 'Party name filter cannot exceed 100 characters',
+    'string.base': 'Party name filter filters by SO party_name',
   }),
 
   machine_sequence: Joi.string().trim().min(1).max(100).optional().messages({
@@ -334,27 +267,21 @@ export const machinePaginationQuerySchema = Joi.object({
     'string.max': 'Location filter cannot exceed 100 characters',
   }),
 
-  mobile_number: Joi.string().trim().min(1).max(20).optional().messages({
-    'string.min': 'Mobile number filter must be at least 1 character long',
-    'string.max': 'Mobile number filter cannot exceed 20 characters',
-  }),
-
   sortBy: Joi.string()
     .valid(
       'createdAt',
-      'name',
-      'category',
+      'name', // Sort by SO name
+      'category', // Sort by SO category
       'dispatch_date',
-      'party_name',
+      'party_name', // Sort by SO party_name
       'machine_sequence',
       'location',
-      'mobile_number',
       'created_by',
     )
     .optional()
     .messages({
       'any.only':
-        'Sort by must be one of: createdAt, name, category, dispatch_date, party_name, machine_sequence, location, mobile_number, created_by',
+        'Sort by must be one of: createdAt, name, category, dispatch_date, party_name, machine_sequence, location, created_by',
     }),
 
   sortOrder: Joi.string().valid('asc', 'desc').optional().messages({
