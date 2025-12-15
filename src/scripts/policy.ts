@@ -81,6 +81,13 @@ export const defaultPolicy: Policy = {
       permission: 'ALLOWED',
       priority: 60,
     },
+    {
+      name: 'Technician edit',
+      action: 'EDIT_MACHINE',
+      roles: ['technician'],
+      permission: 'ALLOWED',
+      priority: 60,
+    },
 
     // Manager approval in department (value-capped)
     {
