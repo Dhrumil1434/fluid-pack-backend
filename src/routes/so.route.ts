@@ -26,7 +26,7 @@ router.post(
   checkPermission([ActionType.CREATE_SO]),
   uploadMachineDocuments.fields([{ name: 'documents', maxCount: 10 }]),
   handleFileUploadError,
-  parseJsonFields([]),
+  parseJsonFields(['items']),
   validateRequest(createSOSchema),
   SOController.createSO,
 );
@@ -57,7 +57,7 @@ router.put(
   checkPermission([ActionType.EDIT_SO]),
   uploadMachineDocuments.fields([{ name: 'documents', maxCount: 10 }]),
   handleFileUploadError,
-  parseJsonFields(['removedDocuments']),
+  parseJsonFields(['items', 'removedDocuments']),
   validateRequest(updateSOSchema),
   SOController.updateSO,
 );

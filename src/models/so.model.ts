@@ -14,7 +14,22 @@ export interface ISODocument {
  * ISO interface defines the structure of a SO document
  */
 export interface ISO extends Document {
-  name: string;
+  name?: string; // Optional, can be removed
+  customer: string; // Alphanumerical format like "T0037 - fsnf skfsfn sfksn"
+  location: string;
+  po_number: string; // Alphanumerical with special symbols
+  po_date: Date; // DD/MM/YYYY format
+  so_number: string; // Same type as P.O. Number
+  so_date: Date; // Same format as P.O. Date
+  items: Array<{
+    no: number;
+    item_code: string;
+    item_details: string;
+    uom: string;
+    quantity: number;
+    delivery_schedule?: Date;
+    total?: number;
+  }>;
   category_id: mongoose.Types.ObjectId;
   subcategory_id?: mongoose.Types.ObjectId;
   party_name: string;
@@ -36,9 +51,85 @@ const soSchema = new Schema<ISO>(
   {
     name: {
       type: String,
+      required: false,
+      trim: true,
+      maxlength: 100,
+    },
+    customer: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 200,
+    },
+    location: {
+      type: String,
       required: true,
       trim: true,
       maxlength: 100,
+    },
+    po_number: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 200,
+    },
+    po_date: {
+      type: Date,
+      required: true,
+    },
+    so_number: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 200,
+    },
+    so_date: {
+      type: Date,
+      required: true,
+    },
+    items: {
+      type: [
+        {
+          no: {
+            type: Number,
+            required: false,
+          },
+          item_code: {
+            type: String,
+            required: false,
+            trim: true,
+            maxlength: 100,
+          },
+          item_details: {
+            type: String,
+            required: false,
+            trim: true,
+            maxlength: 500,
+          },
+          uom: {
+            type: String,
+            required: false,
+            trim: true,
+            maxlength: 50,
+          },
+          quantity: {
+            type: Number,
+            required: false,
+            min: 0,
+          },
+          delivery_schedule: {
+            type: Date,
+            required: false,
+          },
+          total: {
+            type: Number,
+            required: false,
+            min: 0,
+          },
+        },
+      ],
+      required: false,
+      default: [],
     },
     category_id: {
       type: mongoose.Schema.Types.ObjectId,

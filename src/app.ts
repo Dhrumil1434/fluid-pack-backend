@@ -15,6 +15,7 @@ import qcApprovalRouter from './routes/qc-approval.route';
 import notificationRouter from './routes/notification.route';
 import exportRouter from './routes/export.route';
 import soRouter from './routes/so.route';
+import soApprovalRouter from './routes/soApproval.route';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 class App {
@@ -149,6 +150,7 @@ class App {
     this.app.use('/api/notifications', notificationRouter);
     this.app.use('/api/admin/export', exportRouter);
     this.app.use('/api/so', soRouter);
+    this.app.use('/api/so-approvals', soApprovalRouter);
   }
 
   private setErrorHandler(): void {

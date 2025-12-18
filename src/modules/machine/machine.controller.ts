@@ -28,7 +28,7 @@ import {
 } from '../../middlewares/multer.middleware';
 import MachineApprovalService from './services/machineApproval.service';
 import { ApprovalType } from '../../models/machineApproval.model';
-import { notifyMachineCreated } from '../notification/helpers/notification.helper';
+import { getUsersByRoleIds } from '../notification/helpers/notification.helper';
 import { Machine, IMachine } from '../../models/machine.model';
 import { SO } from '../../models/so.model';
 import { SequenceManagement } from '../../models/category.model';
@@ -356,18 +356,47 @@ class MachineController {
         const machineId = (
           machine as { _id: { toString(): string } }
         )._id.toString();
-        const machineName =
-          (machine as { so_id?: { name?: string } })?.so_id?.name ||
-          'Unnamed Machine';
+
+        // Extract customer name and SO number from SO (machines now reference SOs)
+        let customerName = 'Machine';
+        let soNumber = '';
+        const soIdValue = (
+          machine as {
+            so_id?: { customer?: string; name?: string; so_number?: string };
+          }
+        )?.so_id;
+        if (soIdValue && typeof soIdValue === 'object' && soIdValue !== null) {
+          customerName = soIdValue.customer || soIdValue.name || 'Machine';
+          soNumber = soIdValue.so_number || '';
+        }
+
         const requesterName =
           req.user?.username || req.user?.email || 'Unknown User';
 
-        await notifyMachineCreated(
-          machineId,
-          machineName,
-          req.user._id,
-          requesterName,
-          approverRolesResolved || [],
+        // Format message: "For SO number, customer name machine is being created"
+        const notificationMessage = soNumber
+          ? `For SO ${soNumber}, ${customerName} machine is being created`
+          : `${customerName} machine is being created`;
+
+        await notificationEmitter.createAndEmitToMultipleUsers(
+          await getUsersByRoleIds(approverRolesResolved || []),
+          {
+            senderId: req.user._id,
+            type: NotificationType.MACHINE_CREATED,
+            title: 'New Machine Created',
+            message: `${requesterName} ${notificationMessage} that requires approval`,
+            relatedEntityType: 'machine',
+            relatedEntityId: machineId,
+            actionUrl: '/dispatch/approvals',
+            actionLabel: 'View Approval',
+            metadata: {
+              machineId,
+              machineName: customerName,
+              soNumber,
+              requesterId: req.user._id,
+              requesterName,
+            },
+          },
         );
       }
 
@@ -386,13 +415,26 @@ class MachineController {
    */
   static getAllMachines = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      const { error, value } = machinePaginationQuerySchema.validate(req.query);
+      // Validate with lenient options: allow unknown fields and don't abort early
+      const { error, value } = machinePaginationQuerySchema.validate(
+        req.query,
+        {
+          abortEarly: false, // Collect all errors, not just the first one
+          stripUnknown: true, // Remove unknown fields instead of erroring
+          allowUnknown: true, // Allow unknown query parameters
+        },
+      );
       if (error) {
+        // Log the full error for debugging
+        console.error('[Machine Controller] Validation error:', {
+          query: req.query,
+          errors: error.details,
+        });
         throw new ApiError(
           'GET_MACHINES_VALIDATION',
           StatusCodes.BAD_REQUEST,
           'VALIDATION_ERROR',
-          error.details?.[0]?.message || 'Validation error',
+          error.details?.map((d) => d.message).join('; ') || 'Validation error',
         );
       }
 
@@ -401,20 +443,61 @@ class MachineController {
       if (typeof value.is_approved === 'boolean')
         filters.is_approved = value.is_approved;
       if (value.created_by) filters.created_by = value.created_by;
-      if (value.search) filters.search = value.search;
+      // Only add search if it's a non-empty string (after validation, empty strings become undefined)
+      if (
+        value.search &&
+        typeof value.search === 'string' &&
+        value.search.trim().length > 0
+      ) {
+        filters.search = value.search.trim();
+      }
       if (typeof value.has_sequence === 'boolean')
         filters.has_sequence = value.has_sequence;
-      if (value.metadata_key) filters.metadata_key = value.metadata_key;
-      if (value.metadata_value) filters.metadata_value = value.metadata_value;
+      // Only add metadata filters if they're non-empty strings
+      if (
+        value.metadata_key &&
+        typeof value.metadata_key === 'string' &&
+        value.metadata_key.trim().length > 0
+      ) {
+        filters.metadata_key = value.metadata_key.trim();
+      }
+      if (
+        value.metadata_value &&
+        typeof value.metadata_value === 'string' &&
+        value.metadata_value.trim().length > 0
+      ) {
+        filters.metadata_value = value.metadata_value.trim();
+      }
       if (value.dispatch_date_from)
         filters.dispatch_date_from = value.dispatch_date_from;
       if (value.dispatch_date_to)
         filters.dispatch_date_to = value.dispatch_date_to;
-      // Specific field filters
-      if (value.party_name) filters.party_name = value.party_name; // Filters by SO party_name
-      if (value.machine_sequence)
-        filters.machine_sequence = value.machine_sequence;
-      if (value.location) filters.location = value.location;
+      if (value.so_date_from) filters.so_date_from = value.so_date_from;
+      if (value.so_date_to) filters.so_date_to = value.so_date_to;
+      if (value.po_date_from) filters.po_date_from = value.po_date_from;
+      if (value.po_date_to) filters.po_date_to = value.po_date_to;
+      // Specific field filters - only add if non-empty strings
+      if (
+        value.party_name &&
+        typeof value.party_name === 'string' &&
+        value.party_name.trim().length > 0
+      ) {
+        filters.party_name = value.party_name.trim();
+      }
+      if (
+        value.machine_sequence &&
+        typeof value.machine_sequence === 'string' &&
+        value.machine_sequence.trim().length > 0
+      ) {
+        filters.machine_sequence = value.machine_sequence.trim();
+      }
+      if (
+        value.location &&
+        typeof value.location === 'string' &&
+        value.location.trim().length > 0
+      ) {
+        filters.location = value.location.trim();
+      }
       if (value.so_id) filters.so_id = value.so_id;
       if (value.sortBy) filters.sortBy = value.sortBy;
       if (value.sortOrder) filters.sortOrder = value.sortOrder;
@@ -693,7 +776,7 @@ class MachineController {
         .populate([
           {
             path: 'so_id',
-            select: 'name category_id subcategory_id',
+            select: 'name customer so_number category_id subcategory_id',
             populate: [
               { path: 'category_id', select: 'name slug' },
               { path: 'subcategory_id', select: 'name slug' },
@@ -1087,12 +1170,22 @@ class MachineController {
             requesterName = createdByUser.username || 'Technician';
           }
 
-          const machineName =
-            typeof machine.so_id === 'object' &&
-            machine.so_id !== null &&
-            'name' in machine.so_id
-              ? (machine.so_id as { name: string }).name
-              : 'Machine';
+          // Extract customer name and SO number from SO (machines now reference SOs)
+          let customerName = 'Machine';
+          let soNumber = '';
+          const soIdValue = machine.so_id;
+          if (
+            soIdValue &&
+            typeof soIdValue === 'object' &&
+            soIdValue !== null
+          ) {
+            customerName = soIdValue.customer || soIdValue.name || 'Machine';
+            soNumber = soIdValue.so_number || '';
+          }
+
+          const machineName = soNumber
+            ? `${customerName} (SO: ${soNumber})`
+            : customerName;
 
           if (approvers.length > 0) {
             try {
@@ -1109,7 +1202,8 @@ class MachineController {
                   actionLabel: 'View Machine',
                   metadata: {
                     machineId,
-                    machineName,
+                    machineName: customerName,
+                    soNumber,
                     requesterId: userId,
                     requesterName,
                     oldSequence,

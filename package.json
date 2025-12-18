@@ -7,6 +7,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "seed": "ts-node src/scripts/seed.ts",
+    "setup-sub-admin-permissions": "ts-node src/scripts/setup-sub-admin-permissions.ts",
+    "verify-sub-admin-permissions": "ts-node src/scripts/verify-sub-admin-permissions.ts",
     "lint": "eslint src/**/*.{ts,tsx,js,jsx}",
     "lint:fix": "eslint src/**/*.{ts,tsx,js,jsx} --fix",
     "format": "prettier --write src/**/*.{ts,tsx,js,jsx,json,css,md}",

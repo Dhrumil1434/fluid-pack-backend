@@ -15,6 +15,11 @@ import {
   sanitizeMachine,
   sanitizeMachines,
 } from '../../../utils/sanitizeMachineResponse';
+import {
+  SequenceService,
+  SequenceGenerationData,
+} from '../../category/services/sequence.service';
+import { ISO } from '../../../models/so.model';
 export interface CreateMachineData {
   so_id: string; // Reference to SO (Sales Order)
   created_by: string;
@@ -24,7 +29,7 @@ export interface CreateMachineData {
     file_path: string;
     document_type?: string;
   }>;
-  location: string;
+  location?: string;
   dispatch_date?: Date | string;
   metadata?: Record<string, unknown>;
   is_approved?: boolean;
@@ -70,6 +75,10 @@ export interface MachineFilters {
   metadata_value?: string;
   dispatch_date_from?: string | Date;
   dispatch_date_to?: string | Date;
+  so_date_from?: string | Date; // Filter by SO's so_date (from)
+  so_date_to?: string | Date; // Filter by SO's so_date (to)
+  po_date_from?: string | Date; // Filter by SO's po_date (from)
+  po_date_to?: string | Date; // Filter by SO's po_date (to)
   // Specific field filters for suggestion-based search
   party_name?: string; // Filter by SO's party_name
   machine_sequence?: string;
@@ -100,11 +109,26 @@ class MachineService {
       });
 
       if (!so) {
+        // Check if SO exists but is deleted
+        const deletedSO = await SO.findOne({
+          _id: data.so_id,
+          deletedAt: { $ne: null },
+        });
+
+        if (deletedSO) {
+          throw new ApiError(
+            ERROR_MESSAGES.MACHINE.ACTION.CREATE,
+            StatusCodes.BAD_REQUEST,
+            'SO_DELETED',
+            'Cannot create machine: The selected SO has been deleted. Please restore the SO first or select a different active SO.',
+          );
+        }
+
         throw new ApiError(
           ERROR_MESSAGES.MACHINE.ACTION.CREATE,
           StatusCodes.BAD_REQUEST,
           'SO_NOT_FOUND',
-          'SO not found or is not active',
+          'SO not found or is not active. Please select a valid active SO.',
         );
       }
 
@@ -132,7 +156,7 @@ class MachineService {
         created_by: data.created_by,
         images: data.images || [],
         documents: data.documents || [],
-        location: data.location.trim(),
+        location: data.location ? data.location.trim() : undefined,
         dispatch_date: dispatchDate,
         machine_sequence: null, // Auto-generated later if needed
         metadata: data.metadata || {},
@@ -147,7 +171,7 @@ class MachineService {
         {
           path: 'so_id',
           select:
-            'name category_id subcategory_id party_name mobile_number description is_active',
+            'name customer so_number category_id subcategory_id party_name mobile_number description is_active',
           populate: [
             { path: 'category_id', select: 'name description' },
             { path: 'subcategory_id', select: 'name description' },
@@ -343,6 +367,104 @@ class MachineService {
         query['dispatch_date'] = dateQuery;
       }
 
+      // Handle SO date range filter - find matching SOs first
+      if (filters.so_date_from || filters.so_date_to) {
+        const soDateQuery: Record<string, unknown> = {
+          deletedAt: null,
+          is_active: true,
+        };
+        if (filters.so_date_from || filters.so_date_to) {
+          const dateQuery: { $gte?: Date; $lte?: Date } = {};
+          if (filters.so_date_from) {
+            dateQuery.$gte = new Date(filters.so_date_from);
+          }
+          if (filters.so_date_to) {
+            const toDate = new Date(filters.so_date_to);
+            toDate.setHours(23, 59, 59, 999); // Include entire end date
+            dateQuery.$lte = toDate;
+          }
+          soDateQuery['so_date'] = dateQuery;
+        }
+        const matchingSOs = await SO.find(soDateQuery).select('_id').lean();
+        const soIds = matchingSOs.map(
+          (so) => so._id as mongoose.Types.ObjectId,
+        );
+        if (soIds.length > 0) {
+          if (query['so_id']) {
+            // If so_id filter already exists, intersect with SO date results
+            const existingSOIdValue = query['so_id'];
+            const existingSOIds = Array.isArray(existingSOIdValue)
+              ? ((existingSOIdValue as unknown as { $in: unknown[] })[
+                  '$in'
+                ] as unknown[]) || []
+              : [existingSOIdValue];
+            query['so_id'] = {
+              $in: (existingSOIds as unknown[]).filter((id: unknown) =>
+                soIds.some((sid: unknown) => String(sid) === String(id)),
+              ),
+            };
+          } else {
+            query['so_id'] = { $in: soIds };
+          }
+        } else {
+          // No matching SOs, return empty result
+          return {
+            machines: [],
+            total: 0,
+            pages: 0,
+          };
+        }
+      }
+
+      // Handle PO date range filter - find matching SOs first
+      if (filters.po_date_from || filters.po_date_to) {
+        const poDateQuery: Record<string, unknown> = {
+          deletedAt: null,
+          is_active: true,
+        };
+        if (filters.po_date_from || filters.po_date_to) {
+          const dateQuery: { $gte?: Date; $lte?: Date } = {};
+          if (filters.po_date_from) {
+            dateQuery.$gte = new Date(filters.po_date_from);
+          }
+          if (filters.po_date_to) {
+            const toDate = new Date(filters.po_date_to);
+            toDate.setHours(23, 59, 59, 999); // Include entire end date
+            dateQuery.$lte = toDate;
+          }
+          poDateQuery['po_date'] = dateQuery;
+        }
+        const matchingSOs = await SO.find(poDateQuery).select('_id').lean();
+        const soIds = matchingSOs.map(
+          (so) => so._id as mongoose.Types.ObjectId,
+        );
+        if (soIds.length > 0) {
+          if (query['so_id']) {
+            // If so_id filter already exists, intersect with PO date results
+            const existingSOIdValue = query['so_id'];
+            const existingSOIds = Array.isArray(existingSOIdValue)
+              ? ((existingSOIdValue as unknown as { $in: unknown[] })[
+                  '$in'
+                ] as unknown[]) || []
+              : [existingSOIdValue];
+            query['so_id'] = {
+              $in: (existingSOIds as unknown[]).filter((id: unknown) =>
+                soIds.some((sid: unknown) => String(sid) === String(id)),
+              ),
+            };
+          } else {
+            query['so_id'] = { $in: soIds };
+          }
+        } else {
+          // No matching SOs, return empty result
+          return {
+            machines: [],
+            total: 0,
+            pages: 0,
+          };
+        }
+      }
+
       // Handle specific field filters for suggestion-based search
       // Filter by SO's party_name
       if (filters.party_name) {
@@ -361,7 +483,7 @@ class MachineService {
             // If so_id filter already exists, intersect with party_name results
             const existingSOIdValue = query['so_id'];
             const existingSOIds = Array.isArray(existingSOIdValue)
-              ? ((existingSOIdValue as { $in: unknown[] })[
+              ? ((existingSOIdValue as unknown as { $in: unknown[] })[
                   '$in'
                 ] as unknown[]) || []
               : [existingSOIdValue];
@@ -438,7 +560,7 @@ class MachineService {
             {
               path: 'so_id',
               select:
-                'name category_id subcategory_id party_name mobile_number description is_active',
+                'name customer so_number po_number so_date po_date location category_id subcategory_id party_name mobile_number description is_active',
               populate: [
                 { path: 'category_id', select: 'name description slug' },
                 { path: 'subcategory_id', select: 'name description slug' },
@@ -556,20 +678,43 @@ class MachineService {
         );
       }
 
+      // Check if SO is being changed
+      const isSOChanging =
+        data.so_id && String(data.so_id) !== String(existingMachine.so_id);
+      let newSO: ISO | null = null;
+
       // If SO is being updated, verify it exists and is active
       if (data.so_id) {
-        const so = await SO.findOne({
+        newSO = await SO.findOne({
           _id: data.so_id,
           deletedAt: null,
           is_active: true,
-        });
+        })
+          .populate('category_id', 'name slug')
+          .populate('subcategory_id', 'name slug')
+          .lean();
 
-        if (!so) {
+        if (!newSO) {
+          // Check if SO exists but is deleted
+          const deletedSO = await SO.findOne({
+            _id: data.so_id,
+            deletedAt: { $ne: null },
+          });
+
+          if (deletedSO) {
+            throw new ApiError(
+              ERROR_MESSAGES.MACHINE.ACTION.UPDATE,
+              StatusCodes.BAD_REQUEST,
+              'SO_DELETED',
+              'Cannot update machine: The selected SO has been deleted. Please restore the SO first or select a different active SO.',
+            );
+          }
+
           throw new ApiError(
             ERROR_MESSAGES.MACHINE.ACTION.UPDATE,
             StatusCodes.BAD_REQUEST,
             'SO_NOT_FOUND',
-            'SO not found or is not active',
+            'SO not found or is not active. Please select a valid active SO.',
           );
         }
       }
@@ -613,12 +758,73 @@ class MachineService {
           updateData.dispatch_date = data.dispatch_date;
         }
       }
-      // Handle machine_sequence: empty string means remove sequence
-      if (data.machine_sequence !== undefined) {
-        updateData.machine_sequence =
-          data.machine_sequence.trim() === ''
-            ? ''
-            : data.machine_sequence.trim();
+
+      // If SO is changing, regenerate sequence based on new SO's category
+      if (isSOChanging && newSO) {
+        try {
+          // Extract category and subcategory IDs
+          let categoryId: string;
+          const catId = newSO.category_id;
+          if (
+            catId &&
+            typeof catId === 'object' &&
+            catId !== null &&
+            '_id' in catId
+          ) {
+            categoryId = String((catId as { _id: unknown })._id);
+          } else {
+            categoryId = String(catId);
+          }
+
+          let subcategoryId: string | null = null;
+          const subcatId = newSO.subcategory_id;
+          if (
+            subcatId &&
+            typeof subcatId === 'object' &&
+            subcatId !== null &&
+            '_id' in subcatId
+          ) {
+            subcategoryId = String((subcatId as { _id: unknown })._id);
+          } else if (subcatId) {
+            subcategoryId = String(subcatId);
+          }
+
+          // Generate new sequence for the new category/subcategory
+          const sequenceData: SequenceGenerationData = { categoryId };
+          if (subcategoryId) {
+            sequenceData.subcategoryId = subcategoryId;
+          }
+          const newSequence =
+            await SequenceService.generateSequence(sequenceData);
+
+          // Set the new sequence and unapprove machine (sequence changed)
+          updateData.machine_sequence = newSequence;
+          updateData.is_approved = false; // Unapprove when SO changes
+
+          console.log(
+            `[Machine Service] SO changed for machine ${id}. ` +
+              `Old SO: ${existingMachine.so_id}, New SO: ${data.so_id}. ` +
+              `New sequence: ${newSequence}`,
+          );
+        } catch (error) {
+          // If sequence generation fails, log error but don't fail the update
+          // The machine will be updated without sequence, which can be generated later
+          console.error(
+            `[Machine Service] Failed to generate sequence for machine ${id} after SO change:`,
+            error,
+          );
+          // Clear sequence if generation fails
+          updateData.machine_sequence = '';
+          updateData.is_approved = false; // Still unapprove when SO changes
+        }
+      } else {
+        // Handle machine_sequence: empty string means remove sequence (only if SO is not changing)
+        if (data.machine_sequence !== undefined) {
+          updateData.machine_sequence =
+            data.machine_sequence.trim() === ''
+              ? ''
+              : data.machine_sequence.trim();
+        }
       }
 
       // Handle image removal

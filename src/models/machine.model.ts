@@ -84,7 +84,7 @@ const machineSchema = new Schema<IMachine>(
     ],
     location: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
       maxlength: 100,
     },
@@ -161,6 +161,7 @@ machineSchema.virtual('isActive').get(function () {
 
 /**
  * Query middleware to exclude deleted documents by default and populate SO
+ * Enhanced to filter out deleted SOs during population to prevent data inconsistency
  */
 machineSchema.pre(/^find/, function (this: mongoose.Query<unknown, IMachine>) {
   // Only apply this middleware if deletedAt filter isn't explicitly set
@@ -168,11 +169,13 @@ machineSchema.pre(/^find/, function (this: mongoose.Query<unknown, IMachine>) {
   if (query.deletedAt === undefined) {
     this.where({ deletedAt: null });
   }
-  // Populate SO by default
+  // Populate SO by default, but exclude deleted SOs to maintain data integrity
+  // If SO is deleted, so_id will be populated as null, allowing frontend to handle gracefully
   this.populate({
     path: 'so_id',
+    match: { deletedAt: null }, // Filter out deleted SOs during population
     select:
-      'name category_id subcategory_id party_name mobile_number description is_active',
+      'name customer so_number po_number so_date po_date location category_id subcategory_id party_name mobile_number description is_active deletedAt',
     populate: [
       {
         path: 'category_id',

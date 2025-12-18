@@ -34,19 +34,86 @@ export const checkPermission = (actions: ActionType[]) => {
         );
       }
 
-      // Admin bypass: allow all actions
-      // Handle both string role and populated role object
-      const userRole =
-        user && typeof user.role === 'string'
-          ? user.role
-          : (user?.role as { name?: string })?.name;
-      if (userRole === 'admin') {
+      // Get user role - handle both Mongoose document and plain object
+      let userRoleName: string | null = null;
+      let userRoleId: string | null = null;
+
+      // Check if user.role is populated or just an ObjectId
+      if (user && user.role) {
+        if (typeof user.role === 'string') {
+          // Role is ObjectId string, need to populate
+          userRoleId = user.role;
+          const { User } = await import('../../../../models/user.model');
+          const populatedUser = await User.findById(user._id)
+            .populate('role', 'name')
+            .lean();
+          if (populatedUser?.role) {
+            const role = populatedUser.role as { name?: string; _id?: unknown };
+            userRoleName = role?.name?.toLowerCase() || null;
+            userRoleId = role?._id?.toString() || userRoleId;
+          }
+        } else if (typeof user.role === 'object' && user.role !== null) {
+          // Role is already populated
+          const role = user.role as { name?: string; _id?: unknown };
+          userRoleName = role?.name?.toLowerCase() || null;
+          userRoleId = role?._id?.toString() || null;
+        }
+      }
+
+      // Check by role name first
+      let isAdminRole = userRoleName === 'admin';
+      let isSubAdminRole = userRoleName === 'sub-admin';
+
+      // If not found by name, check by role ID
+      if (!isAdminRole && !isSubAdminRole && userRoleId) {
+        const { Role } = await import('../../../../models/role.model');
+        const adminRole = await Role.findOne({ name: 'admin' })
+          .select('_id')
+          .lean();
+        const subAdminRole = await Role.findOne({ name: 'sub-admin' })
+          .select('_id')
+          .lean();
+
+        if (adminRole?._id && userRoleId === adminRole._id.toString()) {
+          isAdminRole = true;
+        } else if (
+          subAdminRole?._id &&
+          userRoleId === subAdminRole._id.toString()
+        ) {
+          isSubAdminRole = true;
+        }
+      }
+
+      if (isAdminRole) {
         (req as RequestWithAuth).permissionInfo = {
           actions,
           adminOverride: true,
           reason: 'Admin role override - full access granted',
         };
         return next();
+      }
+
+      // Sub-admin bypass: allow VIEW actions only (read-only access)
+      if (isSubAdminRole) {
+        const viewActions = [
+          ActionType.VIEW_SO,
+          ActionType.VIEW_MACHINE,
+          ActionType.VIEW_QC_ENTRY,
+          ActionType.VIEW_QC_APPROVAL,
+        ];
+        const isViewAction = actions.every((action) =>
+          viewActions.includes(action),
+        );
+
+        if (isViewAction) {
+          (req as RequestWithAuth).permissionInfo = {
+            actions,
+            adminOverride: false,
+            reason: 'Sub-admin role - read-only access granted',
+          };
+          return next();
+        }
+        // For non-view actions, continue with permission check (may require approval)
       }
 
       // Extract context (categoryId, machineValue) from body or query
@@ -61,9 +128,16 @@ export const checkPermission = (actions: ActionType[]) => {
         (query?.['machineValue'] as string | number | undefined);
 
       // Check all actions
+      // Get user ID - handle both Mongoose document and plain object
+      const userId =
+        typeof user._id === 'string'
+          ? user._id
+          : (user._id as { toString?: () => string })?.toString?.() ||
+            String(user._id);
+
       for (const action of actions) {
         const result = await PermissionConfigService.checkPermission(
-          user._id,
+          userId,
           action,
           categoryId,
           machineValueRaw !== undefined

@@ -552,7 +552,7 @@ export class ExportService {
         {
           path: 'so_id',
           select:
-            'name category_id subcategory_id party_name mobile_number description is_active',
+            'name customer so_number po_number so_date po_date location category_id subcategory_id party_name mobile_number description is_active',
           populate: [
             { path: 'category_id', select: 'name description slug' },
             { path: 'subcategory_id', select: 'name description slug' },

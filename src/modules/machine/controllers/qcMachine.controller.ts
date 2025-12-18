@@ -339,7 +339,34 @@ class QCMachineController {
         );
       }
 
-      const bodyValidation = updateQAMachineEntrySchema.validate(req.body);
+      // Parse JSON strings from FormData for array fields
+      const parsedBody: Record<string, unknown> = { ...req.body };
+      if (typeof parsedBody['files'] === 'string') {
+        try {
+          parsedBody['files'] = JSON.parse(parsedBody['files'] as string);
+        } catch {
+          // If parsing fails, treat as empty array
+          parsedBody['files'] = [];
+        }
+      }
+      if (typeof parsedBody['images'] === 'string') {
+        try {
+          parsedBody['images'] = JSON.parse(parsedBody['images'] as string);
+        } catch {
+          parsedBody['images'] = [];
+        }
+      }
+      if (typeof parsedBody['documents'] === 'string') {
+        try {
+          parsedBody['documents'] = JSON.parse(
+            parsedBody['documents'] as string,
+          );
+        } catch {
+          parsedBody['documents'] = [];
+        }
+      }
+
+      const bodyValidation = updateQAMachineEntrySchema.validate(parsedBody);
       if (bodyValidation.error) {
         // Clean up uploaded files on validation error
         if (req.files) {
@@ -379,6 +406,14 @@ class QCMachineController {
       const updateData: UpdateQAMachineEntryData = {
         ...bodyValidation.value,
       };
+
+      // Ensure files array is properly set from parsed body
+      if (
+        parsedBody['files'] !== undefined &&
+        Array.isArray(parsedBody['files'])
+      ) {
+        updateData.files = parsedBody['files'] as string[];
+      }
 
       // Process uploaded files (images, documents, and QC files)
       const imageFiles: Express.Multer.File[] = [];

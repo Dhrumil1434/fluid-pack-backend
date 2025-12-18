@@ -43,11 +43,9 @@ export const createMachineSchema = Joi.object({
     'object.base': 'Metadata must be a valid object',
   }),
 
-  location: Joi.string().trim().min(2).max(100).required().messages({
-    'string.empty': 'Location is required',
+  location: Joi.string().trim().min(2).max(100).optional().messages({
     'string.min': 'Location must be at least 2 characters long',
     'string.max': 'Location cannot exceed 100 characters',
-    'any.required': 'Location is required',
   }),
 
   dispatch_date: Joi.date().iso().optional().allow(null, '').messages({
@@ -197,10 +195,16 @@ export const machinePaginationQuerySchema = Joi.object({
     'number.max': 'Limit cannot exceed 100',
   }),
 
-  search: Joi.string().trim().min(1).max(50).optional().messages({
-    'string.min': 'Search term must be at least 1 character long',
-    'string.max': 'Search term cannot exceed 50 characters',
-  }),
+  search: Joi.string()
+    .trim()
+    .empty(['', null]) // Convert empty strings and null to undefined
+    .min(1) // Only validate min if value exists (after empty conversion)
+    .max(50)
+    .optional() // Allow undefined values
+    .messages({
+      'string.min': 'Search term must be at least 1 character long',
+      'string.max': 'Search term cannot exceed 50 characters',
+    }),
 
   so_id: Joi.string()
     .pattern(/^[0-9a-fA-F]{24}$/)
@@ -251,21 +255,39 @@ export const machinePaginationQuerySchema = Joi.object({
   }),
 
   // Specific field filters for suggestion-based search
-  party_name: Joi.string().trim().min(1).max(100).optional().messages({
-    'string.min': 'Party name filter must be at least 1 character long',
-    'string.max': 'Party name filter cannot exceed 100 characters',
-    'string.base': 'Party name filter filters by SO party_name',
-  }),
+  party_name: Joi.string()
+    .trim()
+    .empty(['', null])
+    .min(1)
+    .max(100)
+    .optional()
+    .messages({
+      'string.min': 'Party name filter must be at least 1 character long',
+      'string.max': 'Party name filter cannot exceed 100 characters',
+      'string.base': 'Party name filter filters by SO party_name',
+    }),
 
-  machine_sequence: Joi.string().trim().min(1).max(100).optional().messages({
-    'string.min': 'Machine sequence filter must be at least 1 character long',
-    'string.max': 'Machine sequence filter cannot exceed 100 characters',
-  }),
+  machine_sequence: Joi.string()
+    .trim()
+    .empty(['', null])
+    .min(1)
+    .max(100)
+    .optional()
+    .messages({
+      'string.min': 'Machine sequence filter must be at least 1 character long',
+      'string.max': 'Machine sequence filter cannot exceed 100 characters',
+    }),
 
-  location: Joi.string().trim().min(1).max(100).optional().messages({
-    'string.min': 'Location filter must be at least 1 character long',
-    'string.max': 'Location filter cannot exceed 100 characters',
-  }),
+  location: Joi.string()
+    .trim()
+    .empty(['', null])
+    .min(1)
+    .max(100)
+    .optional()
+    .messages({
+      'string.min': 'Location filter must be at least 1 character long',
+      'string.max': 'Location filter cannot exceed 100 characters',
+    }),
 
   sortBy: Joi.string()
     .valid(

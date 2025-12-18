@@ -37,10 +37,17 @@ export interface ApprovalFilters {
   machineName?: string; // Machine name filter (searches SO name)
   sequence?: string; // Machine sequence number
   categoryId?: string; // Category filter (via SO)
-  dateFrom?: string; // Date range start (ISO string)
-  dateTo?: string; // Date range end (ISO string)
+  dateFrom?: string; // Date range start (ISO string) - approval creation date
+  dateTo?: string; // Date range end (ISO string) - approval creation date
+  soDateFrom?: string; // SO date range start (ISO string)
+  soDateTo?: string; // SO date range end (ISO string)
+  poDateFrom?: string; // PO date range start (ISO string)
+  poDateTo?: string; // PO date range end (ISO string)
+  soNumber?: string; // SO number filter
+  poNumber?: string; // PO number filter
   metadataKey?: string; // Metadata key to search
   metadataValue?: string; // Metadata value to search
+  search?: string; // General search across multiple fields (requestNotes, SO fields, etc.)
   sortBy?: string; // Sort field (default: createdAt)
   sortOrder?: 'asc' | 'desc'; // Sort order (default: desc)
 }
@@ -172,11 +179,13 @@ class MachineApprovalService {
         {
           $unwind: '$machineId',
         },
-        // Project to include machine_sequence and dispatch_date explicitly
+        // Project to include machine_sequence, dispatch_date, images, and documents explicitly
         {
           $addFields: {
             'machineId.machine_sequence': '$machineId.machine_sequence',
             'machineId.dispatch_date': '$machineId.dispatch_date',
+            'machineId.images': '$machineId.images',
+            'machineId.documents': '$machineId.documents',
           },
         },
         // Lookup SO (Sales Order) - machines now reference SO instead of direct category
@@ -419,7 +428,7 @@ class MachineApprovalService {
         }
       }
 
-      // Date range filter (only if valid date strings)
+      // Date range filter (only if valid date strings) - approval creation date
       if (filters.dateFrom || filters.dateTo) {
         matchStage.createdAt = {};
         if (
@@ -450,6 +459,92 @@ class MachineApprovalService {
         }
       }
 
+      // SO Date range filter (only if valid date strings)
+      if (filters.soDateFrom || filters.soDateTo) {
+        matchStage['machineId.so_id.so_date'] = {};
+        if (
+          filters.soDateFrom &&
+          typeof filters.soDateFrom === 'string' &&
+          filters.soDateFrom.trim()
+        ) {
+          const soDateFrom = new Date(filters.soDateFrom.trim());
+          if (!isNaN(soDateFrom.getTime())) {
+            matchStage['machineId.so_id.so_date'].$gte = soDateFrom;
+          }
+        }
+        if (
+          filters.soDateTo &&
+          typeof filters.soDateTo === 'string' &&
+          filters.soDateTo.trim()
+        ) {
+          const soDateTo = new Date(filters.soDateTo.trim());
+          if (!isNaN(soDateTo.getTime())) {
+            // Add one day to include the entire end date
+            soDateTo.setHours(23, 59, 59, 999);
+            matchStage['machineId.so_id.so_date'].$lte = soDateTo;
+          }
+        }
+        // Remove so_date if no valid dates were set
+        if (Object.keys(matchStage['machineId.so_id.so_date']).length === 0) {
+          delete matchStage['machineId.so_id.so_date'];
+        }
+      }
+
+      // PO Date range filter (only if valid date strings)
+      if (filters.poDateFrom || filters.poDateTo) {
+        matchStage['machineId.so_id.po_date'] = {};
+        if (
+          filters.poDateFrom &&
+          typeof filters.poDateFrom === 'string' &&
+          filters.poDateFrom.trim()
+        ) {
+          const poDateFrom = new Date(filters.poDateFrom.trim());
+          if (!isNaN(poDateFrom.getTime())) {
+            matchStage['machineId.so_id.po_date'].$gte = poDateFrom;
+          }
+        }
+        if (
+          filters.poDateTo &&
+          typeof filters.poDateTo === 'string' &&
+          filters.poDateTo.trim()
+        ) {
+          const poDateTo = new Date(filters.poDateTo.trim());
+          if (!isNaN(poDateTo.getTime())) {
+            // Add one day to include the entire end date
+            poDateTo.setHours(23, 59, 59, 999);
+            matchStage['machineId.so_id.po_date'].$lte = poDateTo;
+          }
+        }
+        // Remove po_date if no valid dates were set
+        if (Object.keys(matchStage['machineId.so_id.po_date']).length === 0) {
+          delete matchStage['machineId.so_id.po_date'];
+        }
+      }
+
+      // SO Number filter
+      if (
+        filters.soNumber &&
+        typeof filters.soNumber === 'string' &&
+        filters.soNumber.trim()
+      ) {
+        matchStage['machineId.so_id.so_number'] = {
+          $regex: filters.soNumber.trim(),
+          $options: 'i',
+        };
+      }
+
+      // PO Number filter
+      if (
+        filters.poNumber &&
+        typeof filters.poNumber === 'string' &&
+        filters.poNumber.trim()
+      ) {
+        matchStage['machineId.so_id.po_number'] = {
+          $regex: filters.poNumber.trim(),
+          $options: 'i',
+        };
+      }
+
       // Metadata filter (key-value search)
       if (
         filters.metadataKey &&
@@ -470,6 +565,85 @@ class MachineApprovalService {
         } else {
           // Just check if key exists
           matchStage[metadataPath] = { $exists: true };
+        }
+      }
+
+      // General search filter - search across multiple fields
+      if (
+        filters.search &&
+        typeof filters.search === 'string' &&
+        filters.search.trim()
+      ) {
+        const searchValue = filters.search.trim();
+        const searchConditions: Array<Record<string, unknown>> = [
+          // Search in requestNotes
+          { requestNotes: { $regex: searchValue, $options: 'i' } },
+          // Search in approverNotes
+          { approverNotes: { $regex: searchValue, $options: 'i' } },
+          // Search in rejectionReason
+          { rejectionReason: { $regex: searchValue, $options: 'i' } },
+          // Search in requestedBy username/email
+          { 'requestedBy.username': { $regex: searchValue, $options: 'i' } },
+          { 'requestedBy.email': { $regex: searchValue, $options: 'i' } },
+          // Search in machine's created_by username/email
+          {
+            'machineId.created_by.username': {
+              $regex: searchValue,
+              $options: 'i',
+            },
+          },
+          {
+            'machineId.created_by.email': {
+              $regex: searchValue,
+              $options: 'i',
+            },
+          },
+          // Search in machine sequence
+          {
+            'machineId.machine_sequence': {
+              $regex: searchValue,
+              $options: 'i',
+            },
+          },
+          // Search in SO fields (customer, name, so_number, po_number, party_name, location)
+          {
+            'machineId.so_id.customer': { $regex: searchValue, $options: 'i' },
+          },
+          { 'machineId.so_id.name': { $regex: searchValue, $options: 'i' } },
+          {
+            'machineId.so_id.so_number': {
+              $regex: searchValue,
+              $options: 'i',
+            },
+          },
+          {
+            'machineId.so_id.po_number': {
+              $regex: searchValue,
+              $options: 'i',
+            },
+          },
+          {
+            'machineId.so_id.party_name': {
+              $regex: searchValue,
+              $options: 'i',
+            },
+          },
+          {
+            'machineId.so_id.location': { $regex: searchValue, $options: 'i' },
+          },
+          {
+            'machineId.so_id.mobile_number': {
+              $regex: searchValue,
+              $options: 'i',
+            },
+          },
+        ];
+
+        // Combine with existing $or if present, or create new $or
+        if (matchStage.$or && Array.isArray(matchStage.$or)) {
+          matchStage.$or = [...matchStage.$or, ...searchConditions];
+        } else {
+          matchStage.$or = searchConditions;
         }
       }
 
@@ -530,11 +704,11 @@ class MachineApprovalService {
         {
           path: 'machineId',
           select:
-            'so_id dispatch_date machine_sequence metadata location is_approved',
+            'so_id dispatch_date machine_sequence metadata location is_approved images documents',
           populate: {
             path: 'so_id',
             select:
-              'name category_id subcategory_id party_name mobile_number description is_active',
+              'name customer so_number category_id subcategory_id party_name mobile_number description is_active',
             populate: [
               { path: 'category_id', select: 'name description slug' },
               { path: 'subcategory_id', select: 'name description slug' },
@@ -631,11 +805,11 @@ class MachineApprovalService {
         {
           path: 'machineId',
           select:
-            'so_id dispatch_date machine_sequence metadata location is_approved',
+            'so_id dispatch_date machine_sequence metadata location is_approved images documents',
           populate: {
             path: 'so_id',
             select:
-              'name category_id subcategory_id party_name mobile_number description is_active',
+              'name customer so_number category_id subcategory_id party_name mobile_number description is_active',
             populate: [
               { path: 'category_id', select: 'name description slug' },
               { path: 'subcategory_id', select: 'name description slug' },
@@ -725,11 +899,11 @@ class MachineApprovalService {
         {
           path: 'machineId',
           select:
-            'so_id dispatch_date machine_sequence metadata location is_approved',
+            'so_id dispatch_date machine_sequence metadata location is_approved images documents',
           populate: {
             path: 'so_id',
             select:
-              'name category_id subcategory_id party_name mobile_number description is_active',
+              'name customer so_number category_id subcategory_id party_name mobile_number description is_active',
             populate: [
               { path: 'category_id', select: 'name description slug' },
               { path: 'subcategory_id', select: 'name description slug' },

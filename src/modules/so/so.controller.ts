@@ -11,6 +11,9 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import { ApiResponse } from '../../utils/ApiResponse';
 import { ApiError } from '../../utils/ApiError';
 import { deleteMachineDocuments } from '../../middlewares/multer.middleware';
+import { Role } from '../../models/role.model';
+import SOApprovalService from './services/soApproval.service';
+import { SOApprovalType } from '../../models/soApproval.model';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -78,12 +81,98 @@ class SOController {
       const rawBody = req.body as Record<string, unknown>;
       const bodyForValidation: Record<string, unknown> = { ...rawBody };
 
+      // Debug: Log what we receive
+      console.log('🔍 Raw items from request:', {
+        type: typeof rawBody['items'],
+        value: rawBody['items'],
+        isArray: Array.isArray(rawBody['items']),
+      });
+
+      // Parse items from JSON string if present, or set to empty array if not provided
+      // FormData sends items as a JSON string, so we need to parse it
+      // Always ensure items is an array - handle all possible cases
+      const rawItems = rawBody['items'];
+
+      if (rawItems === undefined || rawItems === null || rawItems === '') {
+        // Not provided, null, or empty string - set to empty array
+        bodyForValidation['items'] = [];
+      } else if (typeof rawItems === 'string') {
+        // It's a string - try to parse as JSON
+        const itemsStr = rawItems.trim();
+        if (itemsStr === '' || itemsStr === '[]') {
+          bodyForValidation['items'] = [];
+        } else {
+          try {
+            const parsed = JSON.parse(itemsStr);
+            bodyForValidation['items'] = Array.isArray(parsed) ? parsed : [];
+          } catch (e) {
+            // If parsing fails, set to empty array
+            console.warn(
+              '⚠️ Failed to parse items JSON:',
+              e,
+              'String was:',
+              itemsStr,
+            );
+            bodyForValidation['items'] = [];
+          }
+        }
+      } else if (Array.isArray(rawItems)) {
+        // Already an array - use it directly
+        bodyForValidation['items'] = rawItems;
+      } else {
+        // Unknown type - set to empty array
+        console.warn(
+          '⚠️ Items is not string or array, type:',
+          typeof rawItems,
+          'value:',
+          rawItems,
+        );
+        bodyForValidation['items'] = [];
+      }
+
+      // Ensure items is always an array before validation
+      if (!Array.isArray(bodyForValidation['items'])) {
+        console.error(
+          '❌ Items is still not an array after parsing! Type:',
+          typeof bodyForValidation['items'],
+          'Value:',
+          bodyForValidation['items'],
+        );
+        bodyForValidation['items'] = [];
+      }
+
+      console.log('✅ Final items for validation:', {
+        type: typeof bodyForValidation['items'],
+        isArray: Array.isArray(bodyForValidation['items']),
+        length: Array.isArray(bodyForValidation['items'])
+          ? bodyForValidation['items'].length
+          : 'N/A',
+      });
+
+      // Parse date strings to Date objects
+      if (rawBody['po_date'] && typeof rawBody['po_date'] === 'string') {
+        const poDate = new Date(rawBody['po_date'] as string);
+        if (!isNaN(poDate.getTime())) {
+          bodyForValidation['po_date'] = poDate;
+        }
+      }
+      if (rawBody['so_date'] && typeof rawBody['so_date'] === 'string') {
+        const soDate = new Date(rawBody['so_date'] as string);
+        if (!isNaN(soDate.getTime())) {
+          bodyForValidation['so_date'] = soDate;
+        }
+      }
+
       // Handle description: convert empty string to null
       if (rawBody['description'] === '' || rawBody['description'] === null) {
         bodyForValidation['description'] = null;
       }
 
-      const { error, value } = createSOSchema.validate(bodyForValidation);
+      const { error, value } = createSOSchema.validate(bodyForValidation, {
+        abortEarly: false,
+        allowUnknown: false,
+        stripUnknown: true,
+      });
       if (error) {
         // Clean up uploaded files if validation fails
         if (req.files) {
@@ -95,11 +184,17 @@ class SOController {
             await deleteMachineDocuments(documentPaths);
           }
         }
+        // Format errors for field-level display
+        const errors = error.details.map((err) => ({
+          field: err.path.join('.'),
+          message: err.message.replace(/"/g, ''),
+        }));
         throw new ApiError(
           'CREATE_SO_VALIDATION',
           StatusCodes.BAD_REQUEST,
-          'VALIDATION_ERROR',
-          error.details?.[0]?.message || 'Validation error',
+          'INVALID_REQUEST_BODY',
+          'Request body validation failed',
+          errors,
         );
       }
 
@@ -144,6 +239,45 @@ class SOController {
       };
 
       const so = await SOService.create(createData);
+
+      // Check if user is sub-admin and create approval request if needed
+      const user = await req.user.populate('role');
+      const userRole =
+        typeof user.role === 'object' && user.role !== null
+          ? (user.role as { name?: string })
+          : null;
+      const roleName = userRole?.name?.toLowerCase();
+
+      // If user is sub-admin, create approval request
+      if (roleName === 'sub-admin') {
+        const adminRole = await Role.findOne({ name: 'admin' })
+          .select('_id')
+          .lean();
+
+        if (adminRole?._id) {
+          // Create approval request
+          await SOApprovalService.createApprovalRequest({
+            soId: so._id.toString(),
+            requestedBy: req.user._id,
+            approvalType: SOApprovalType.SO_CREATION,
+            proposedChanges: {
+              name: so.name,
+              customer: so.customer,
+              location: so.location,
+              po_number: so.po_number,
+              so_number: so.so_number,
+              party_name: so.party_name,
+              mobile_number: so.mobile_number,
+            },
+            requestNotes: 'SO created by sub-admin, awaiting admin approval',
+            approverRoles: [adminRole._id.toString()],
+          });
+
+          // Set SO to inactive until approved
+          so.is_active = false;
+          await so.save();
+        }
+      }
 
       const response = new ApiResponse(true, so, 'SO created successfully');
       res.status(StatusCodes.CREATED).json(response);
@@ -252,12 +386,62 @@ class SOController {
       const rawBody = req.body as Record<string, unknown>;
       const bodyForValidation: Record<string, unknown> = { ...rawBody };
 
+      // Parse items from JSON string if present, or set to empty array if not provided
+      // FormData sends items as a JSON string, so we need to parse it
+      if (rawBody['items'] !== undefined && rawBody['items'] !== null) {
+        if (typeof rawBody['items'] === 'string') {
+          const itemsStr = (rawBody['items'] as string).trim();
+          if (itemsStr === '' || itemsStr === '[]') {
+            bodyForValidation['items'] = [];
+          } else {
+            try {
+              const parsed = JSON.parse(itemsStr);
+              bodyForValidation['items'] = Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+              // If parsing fails, set to empty array
+              console.warn('Failed to parse items JSON:', e);
+              bodyForValidation['items'] = [];
+            }
+          }
+        } else if (Array.isArray(rawBody['items'])) {
+          bodyForValidation['items'] = rawBody['items'];
+        } else {
+          bodyForValidation['items'] = [];
+        }
+      } else {
+        // If items is not provided, set to empty array
+        bodyForValidation['items'] = [];
+      }
+
+      // Ensure items is always an array
+      if (!Array.isArray(bodyForValidation['items'])) {
+        bodyForValidation['items'] = [];
+      }
+
+      // Parse date strings to Date objects
+      if (rawBody['po_date'] && typeof rawBody['po_date'] === 'string') {
+        const poDate = new Date(rawBody['po_date'] as string);
+        if (!isNaN(poDate.getTime())) {
+          bodyForValidation['po_date'] = poDate;
+        }
+      }
+      if (rawBody['so_date'] && typeof rawBody['so_date'] === 'string') {
+        const soDate = new Date(rawBody['so_date'] as string);
+        if (!isNaN(soDate.getTime())) {
+          bodyForValidation['so_date'] = soDate;
+        }
+      }
+
       // Handle description: convert empty string to null
       if (rawBody['description'] === '' || rawBody['description'] === null) {
         bodyForValidation['description'] = null;
       }
 
-      const { error, value } = updateSOSchema.validate(bodyForValidation);
+      const { error, value } = updateSOSchema.validate(bodyForValidation, {
+        abortEarly: false,
+        allowUnknown: false,
+        stripUnknown: true,
+      });
       if (error) {
         // Clean up uploaded files if validation fails
         if (req.files) {
@@ -269,11 +453,17 @@ class SOController {
             await deleteMachineDocuments(documentPaths);
           }
         }
+        // Format errors for field-level display
+        const errors = error.details.map((err) => ({
+          field: err.path.join('.'),
+          message: err.message.replace(/"/g, ''),
+        }));
         throw new ApiError(
           'UPDATE_SO_VALIDATION',
           StatusCodes.BAD_REQUEST,
-          'VALIDATION_ERROR',
-          error.details?.[0]?.message || 'Validation error',
+          'INVALID_REQUEST_BODY',
+          'Request body validation failed',
+          errors,
         );
       }
 

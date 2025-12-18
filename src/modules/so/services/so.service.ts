@@ -4,11 +4,27 @@ import mongoose from 'mongoose';
 import { Category } from '../../../models/category.model';
 import { User } from '../../../models/user.model';
 import { ISO, SO } from '../../../models/so.model';
+import { Machine } from '../../../models/machine.model';
 import { ApiError } from '../../../utils/ApiError';
 import { ERROR_MESSAGES } from '../so.error.constant';
 
 export interface CreateSOData {
-  name: string;
+  name?: string;
+  customer: string;
+  location: string;
+  po_number: string;
+  po_date: Date | string;
+  so_number: string;
+  so_date: Date | string;
+  items?: Array<{
+    no?: number;
+    item_code?: string;
+    item_details?: string;
+    uom?: string;
+    quantity?: number;
+    delivery_schedule?: Date | string;
+    total?: number;
+  }>;
   category_id: string;
   subcategory_id?: string;
   party_name: string;
@@ -24,6 +40,21 @@ export interface CreateSOData {
 
 export interface UpdateSOData {
   name?: string;
+  customer?: string;
+  location?: string;
+  po_number?: string;
+  po_date?: Date | string;
+  so_number?: string;
+  so_date?: Date | string;
+  items?: Array<{
+    no?: number;
+    item_code?: string;
+    item_details?: string;
+    uom?: string;
+    quantity?: number;
+    delivery_schedule?: Date | string;
+    total?: number;
+  }>;
   category_id?: string;
   subcategory_id?: string;
   party_name?: string;
@@ -127,9 +158,42 @@ class SOService {
         );
       }
 
+      // Parse dates if they're strings
+      const poDate =
+        typeof data.po_date === 'string'
+          ? new Date(data.po_date)
+          : data.po_date;
+      const soDate =
+        typeof data.so_date === 'string'
+          ? new Date(data.so_date)
+          : data.so_date;
+
+      // Process items array - convert delivery_schedule dates if present
+      const processedItems =
+        data.items?.map((item) => ({
+          no: item.no,
+          item_code: item.item_code,
+          item_details: item.item_details,
+          uom: item.uom,
+          quantity: item.quantity,
+          delivery_schedule: item.delivery_schedule
+            ? typeof item.delivery_schedule === 'string'
+              ? new Date(item.delivery_schedule)
+              : item.delivery_schedule
+            : undefined,
+          total: item.total,
+        })) || [];
+
       // Create SO document
       const so = new SO({
-        name: data.name.trim(),
+        name: data.name?.trim() || undefined,
+        customer: data.customer.trim(),
+        location: data.location.trim(),
+        po_number: data.po_number.trim(),
+        po_date: poDate,
+        so_number: data.so_number.trim(),
+        so_date: soDate,
+        items: processedItems,
         category_id: data.category_id,
         subcategory_id: data.subcategory_id || null,
         party_name: data.party_name.trim(),
@@ -207,6 +271,9 @@ class SOService {
 
         const searchOrConditions: Array<Record<string, unknown>> = [
           { name: searchRegex },
+          { customer: searchRegex },
+          { so_number: searchRegex },
+          { po_number: searchRegex },
           { party_name: searchRegex },
           { mobile_number: searchRegex },
           { description: searchRegex },
@@ -468,7 +535,54 @@ class SOService {
 
       // Update other fields
       if (data.name !== undefined) {
-        so.name = data.name.trim();
+        so.name = data.name.trim() || undefined;
+      }
+
+      if (data.customer !== undefined) {
+        so.customer = data.customer.trim();
+      }
+
+      if (data.location !== undefined) {
+        so.location = data.location.trim();
+      }
+
+      if (data.po_number !== undefined) {
+        so.po_number = data.po_number.trim();
+      }
+
+      if (data.po_date !== undefined) {
+        so.po_date =
+          typeof data.po_date === 'string'
+            ? new Date(data.po_date)
+            : data.po_date;
+      }
+
+      if (data.so_number !== undefined) {
+        so.so_number = data.so_number.trim();
+      }
+
+      if (data.so_date !== undefined) {
+        so.so_date =
+          typeof data.so_date === 'string'
+            ? new Date(data.so_date)
+            : data.so_date;
+      }
+
+      if (data.items !== undefined) {
+        // Process items array - convert delivery_schedule dates if present
+        so.items = data.items.map((item) => ({
+          no: item.no,
+          item_code: item.item_code,
+          item_details: item.item_details,
+          uom: item.uom,
+          quantity: item.quantity,
+          delivery_schedule: item.delivery_schedule
+            ? typeof item.delivery_schedule === 'string'
+              ? new Date(item.delivery_schedule)
+              : item.delivery_schedule
+            : undefined,
+          total: item.total,
+        }));
       }
 
       if (data.party_name !== undefined) {
@@ -537,6 +651,7 @@ class SOService {
 
   /**
    * Soft delete SO
+   * Prevents deletion if active machines reference this SO to maintain data integrity
    */
   static async softDelete(id: string, deletedBy: string): Promise<void> {
     try {
@@ -554,6 +669,22 @@ class SOService {
         );
       }
 
+      // Check if any active (non-deleted) machines reference this SO
+      const activeMachinesCount = await Machine.countDocuments({
+        so_id: id,
+        deletedAt: null, // Only count non-deleted machines
+      });
+
+      if (activeMachinesCount > 0) {
+        throw new ApiError(
+          ERROR_MESSAGES.SO.ACTION.DELETE,
+          StatusCodes.BAD_REQUEST,
+          'SO_HAS_ACTIVE_MACHINES',
+          `Cannot delete SO: ${activeMachinesCount} active machine(s) are associated with this SO. Please delete or reassign machines first. The SO can be restored later if needed.`,
+        );
+      }
+
+      // Safe to proceed with soft delete - no active machines reference this SO
       await so['softDelete'](deletedBy);
     } catch (error) {
       if (error instanceof ApiError) throw error;

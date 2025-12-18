@@ -123,10 +123,23 @@ class MachineApprovalController {
       if (req.query['dateFrom'])
         filters.dateFrom = req.query['dateFrom'] as string;
       if (req.query['dateTo']) filters.dateTo = req.query['dateTo'] as string;
+      if (req.query['soDateFrom'])
+        filters.soDateFrom = req.query['soDateFrom'] as string;
+      if (req.query['soDateTo'])
+        filters.soDateTo = req.query['soDateTo'] as string;
+      if (req.query['poDateFrom'])
+        filters.poDateFrom = req.query['poDateFrom'] as string;
+      if (req.query['poDateTo'])
+        filters.poDateTo = req.query['poDateTo'] as string;
+      if (req.query['soNumber'])
+        filters.soNumber = req.query['soNumber'] as string;
+      if (req.query['poNumber'])
+        filters.poNumber = req.query['poNumber'] as string;
       if (req.query['metadataKey'])
         filters.metadataKey = req.query['metadataKey'] as string;
       if (req.query['metadataValue'])
         filters.metadataValue = req.query['metadataValue'] as string;
+      if (req.query['search']) filters.search = req.query['search'] as string;
       if (req.query['sortBy']) filters.sortBy = req.query['sortBy'] as string;
       if (req.query['sortOrder'])
         filters.sortOrder = req.query['sortOrder'] as 'asc' | 'desc';
@@ -236,8 +249,27 @@ class MachineApprovalController {
         typeof approval?.machineId === 'string'
           ? approval.machineId
           : approval?.machineId?._id?.toString();
-      const machineName =
-        approval?.machineId?.name || approval?.machineId?.name || 'Machine';
+
+      // Extract machine name from SO (machines now reference SOs)
+      let machineName = 'Machine';
+      const machineIdValue = approval?.machineId;
+      if (
+        machineIdValue &&
+        typeof machineIdValue === 'object' &&
+        machineIdValue !== null
+      ) {
+        const soIdValue = machineIdValue.so_id;
+        if (soIdValue && typeof soIdValue === 'object' && soIdValue !== null) {
+          machineName =
+            soIdValue.customer ||
+            soIdValue.name ||
+            soIdValue.so_number ||
+            'Machine';
+        } else if (machineIdValue.name) {
+          machineName = machineIdValue.name;
+        }
+      }
+
       const requesterId =
         typeof approval?.requestedBy === 'string'
           ? approval.requestedBy
@@ -385,15 +417,10 @@ class MachineApprovalController {
       // Build filters for pending approvals with enhanced search support
       const additionalFilters: Partial<ApprovalFilters> = {};
 
-      // Extract search parameters
+      // Extract search parameters - pass search as-is for comprehensive search
+      // The service will handle searching across all fields (requestNotes, SO fields, etc.)
       if (search) {
-        // Try to parse as sequence number (if it looks like a sequence)
-        // Otherwise treat as general search (requestedBy)
-        if (/^[A-Z0-9-_]+$/i.test(search)) {
-          additionalFilters.sequence = search;
-        } else {
-          additionalFilters.requestedBy = search;
-        }
+        additionalFilters.search = search;
       }
 
       // Parse sort string (e.g., "-createdAt" or "createdAt")
@@ -414,10 +441,30 @@ class MachineApprovalController {
         additionalFilters.dateFrom = req.query['dateFrom'] as string;
       if (req.query['dateTo'])
         additionalFilters.dateTo = req.query['dateTo'] as string;
+      if (req.query['soDateFrom'])
+        additionalFilters.soDateFrom = req.query['soDateFrom'] as string;
+      if (req.query['soDateTo'])
+        additionalFilters.soDateTo = req.query['soDateTo'] as string;
+      if (req.query['poDateFrom'])
+        additionalFilters.poDateFrom = req.query['poDateFrom'] as string;
+      if (req.query['poDateTo'])
+        additionalFilters.poDateTo = req.query['poDateTo'] as string;
+      if (req.query['soNumber'])
+        additionalFilters.soNumber = req.query['soNumber'] as string;
+      if (req.query['poNumber'])
+        additionalFilters.poNumber = req.query['poNumber'] as string;
       if (req.query['metadataKey'])
         additionalFilters.metadataKey = req.query['metadataKey'] as string;
       if (req.query['metadataValue'])
         additionalFilters.metadataValue = req.query['metadataValue'] as string;
+      if (req.query['requestedBy'])
+        additionalFilters.requestedBy = req.query['requestedBy'] as string;
+      if (req.query['createdBy'])
+        additionalFilters.createdBy = req.query['createdBy'] as string;
+      if (req.query['machineName'])
+        additionalFilters.machineName = req.query['machineName'] as string;
+      // Pass search as-is for comprehensive search in service
+      if (search) additionalFilters.search = search;
 
       const result = await MachineApprovalService.getPendingApprovals(
         page,

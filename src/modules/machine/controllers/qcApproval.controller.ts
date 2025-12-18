@@ -18,6 +18,8 @@ import { ApiResponse } from '../../../utils/ApiResponse';
 import { ApiError } from '../../../utils/ApiError';
 import { asyncHandler } from '../../../utils/asyncHandler';
 import { QAMachineEntry } from '../../../models/qcMachine.model';
+import notificationEmitter from '../../notification/services/notificationEmitter.service';
+import { NotificationType } from '../../../models/notification.model';
 
 /**
  * Get approvers for QC approval based on permission configuration
@@ -1559,7 +1561,11 @@ export const getQCApprovalById = asyncHandler(
       .populate('approvedBy', 'username name email')
       .populate('rejectedBy', 'username name email')
       .populate('approvers', 'username name email')
-      .populate('qcEntryId', 'files')
+      .populate({
+        path: 'qcEntryId',
+        select:
+          'files qc_date report_link qcNotes qualityScore inspectionDate nextInspectionDate',
+      })
       .lean();
 
     if (!approval) {
@@ -1952,6 +1958,58 @@ export const createQCApprovalForEntry = async (
   );
   console.log('[QC Approval Controller]   These should be DIFFERENT users!');
 
+  // Send notifications to approvers about the new QC approval
+  try {
+    const approvers = await getQCApprovers();
+    if (approvers.length > 0) {
+      const machine = await Machine.findById(machineId)
+        .populate({
+          path: 'so_id',
+          select: 'customer so_number name',
+        })
+        .lean();
+
+      let customerName = 'Machine';
+      let soNumber = '';
+      if (machine && (machine as any).so_id) {
+        const soIdValue = (machine as any).so_id;
+        customerName = soIdValue.customer || soIdValue.name || 'Machine';
+        soNumber = soIdValue.so_number || '';
+      }
+
+      const machineName = soNumber
+        ? `${customerName} (SO: ${soNumber})`
+        : customerName;
+
+      const requesterName = userData.name || userData.username || 'QC User';
+
+      await notificationEmitter.createAndEmitToMultipleUsers(approvers, {
+        senderId: requestedByObjectId.toString(),
+        type: NotificationType.MACHINE_CREATED, // Reuse or create QC_APPROVAL_CREATED type
+        title: 'New QC Entry Created',
+        message: `${requesterName} created a QC entry for machine "${machineName}". Please review and approve.`,
+        relatedEntityType: 'qc_approval',
+        relatedEntityId: approval._id?.toString() || '',
+        actionUrl: `/qc/approval-management?approvalId=${approval._id}`,
+        actionLabel: 'View Approval',
+        metadata: {
+          approvalId: approval._id?.toString(),
+          machineId: machineId,
+          machineName: customerName,
+          soNumber,
+          requesterId: requestedByObjectId.toString(),
+          requesterName,
+        },
+      });
+      console.log(
+        `✅ Notifications sent to ${approvers.length} approver(s) for QC approval creation`,
+      );
+    }
+  } catch (notifError) {
+    console.error('Error sending notifications:', notifError);
+    // Don't fail the approval creation if notification fails
+  }
+
   return approval;
 };
 
@@ -2049,6 +2107,40 @@ export const updateQCApproval = asyncHandler(
       proposedChanges['requestNotes'] = updateData.requestNotes;
     }
 
+    // Update qc_date and report_link if provided (these are synced to QC entry)
+    if (updateData['qc_date'] !== undefined) {
+      proposedChanges['qc_date'] = updateData['qc_date'];
+      // Also update the related QC entry if it exists
+      if (approval.qcEntryId) {
+        try {
+          await QAMachineEntry.findByIdAndUpdate(approval.qcEntryId, {
+            qc_date: updateData['qc_date']
+              ? new Date(updateData['qc_date'] as string)
+              : null,
+          } as any);
+        } catch (error) {
+          console.error('Error updating QC entry qc_date:', error);
+        }
+      }
+    }
+    if (
+      updateData['report_link'] !== undefined ||
+      updateData['reportLink'] !== undefined
+    ) {
+      const reportLink = updateData['report_link'] || updateData['reportLink'];
+      proposedChanges['report_link'] = reportLink;
+      // Also update the related QC entry if it exists
+      if (approval.qcEntryId) {
+        try {
+          await QAMachineEntry.findByIdAndUpdate(approval.qcEntryId, {
+            report_link: reportLink || null,
+          } as any);
+        } catch (error) {
+          console.error('Error updating QC entry report_link:', error);
+        }
+      }
+    }
+
     // Set the updated proposedChanges
     approval.proposedChanges = proposedChanges;
 
@@ -2062,7 +2154,7 @@ export const updateQCApproval = asyncHandler(
         populate: {
           path: 'so_id',
           select:
-            'name category_id subcategory_id party_name mobile_number description is_active',
+            'name customer so_number category_id subcategory_id party_name mobile_number description is_active',
           populate: [
             { path: 'category_id', select: 'name description slug' },
             { path: 'subcategory_id', select: 'name description slug' },
@@ -2071,6 +2163,62 @@ export const updateQCApproval = asyncHandler(
       })
       .populate('requestedBy', 'username name email')
       .lean();
+
+    // Send notifications to approvers about the update
+    const userId = (req as any).user?.id;
+    if (userId && updatedApproval) {
+      try {
+        const approvers = await getQCApprovers();
+        if (approvers.length > 0) {
+          const machine = updatedApproval.machineId as any;
+          let customerName = 'Machine';
+          let soNumber = '';
+          const soIdValue = machine?.so_id;
+          if (
+            soIdValue &&
+            typeof soIdValue === 'object' &&
+            soIdValue !== null
+          ) {
+            customerName = soIdValue.customer || soIdValue.name || 'Machine';
+            soNumber = soIdValue.so_number || '';
+          }
+
+          const machineName = soNumber
+            ? `${customerName} (SO: ${soNumber})`
+            : customerName;
+
+          const requesterName =
+            (updatedApproval.requestedBy as any)?.name ||
+            (updatedApproval.requestedBy as any)?.username ||
+            'QC User';
+
+          await notificationEmitter.createAndEmitToMultipleUsers(approvers, {
+            senderId: userId,
+            type: NotificationType.MACHINE_CREATED, // Reuse or create QC_APPROVAL_UPDATED type
+            title: 'QC Entry Updated',
+            message: `${requesterName} updated QC entry for machine "${machineName}". Please review the changes.`,
+            relatedEntityType: 'qc_approval',
+            relatedEntityId: id,
+            actionUrl: `/qc/approval-management?approvalId=${id}`,
+            actionLabel: 'View Approval',
+            metadata: {
+              approvalId: id,
+              machineId: machine?._id?.toString(),
+              machineName: customerName,
+              soNumber,
+              requesterId: userId,
+              requesterName,
+            },
+          });
+          console.log(
+            `✅ Notifications sent to ${approvers.length} approver(s) for QC approval update`,
+          );
+        }
+      } catch (notifError) {
+        console.error('Error sending notifications:', notifError);
+        // Don't fail the update if notification fails
+      }
+    }
 
     res
       .status(200)
