@@ -179,7 +179,7 @@ const soSchema = new Schema<ISO>(
       type: String,
       trim: true,
       default: '',
-      maxlength: 50000,
+      maxlength: 1000,
     },
     is_active: {
       type: Boolean,
