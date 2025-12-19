@@ -382,6 +382,26 @@ class SOController {
         );
       }
 
+      // Check if user is subadmin and SO is activated - prevent editing
+      // Also get existing SO early to reuse it later for document merging
+      const existingSO = await SOService.getById(id);
+
+      const user = await req.user.populate('role');
+      const userRole =
+        typeof user.role === 'object' && user.role !== null
+          ? (user.role as { name?: string })
+          : null;
+      const roleName = userRole?.name?.toLowerCase();
+
+      if (roleName === 'sub-admin' && existingSO.is_active) {
+        throw new ApiError(
+          'UPDATE_SO',
+          StatusCodes.FORBIDDEN,
+          'EDIT_RESTRICTED',
+          'Sub-admins cannot edit activated SOs. Please contact an admin to deactivate the SO first.',
+        );
+      }
+
       // Parse body for validation
       const rawBody = req.body as Record<string, unknown>;
       const bodyForValidation: Record<string, unknown> = { ...rawBody };
@@ -467,10 +487,7 @@ class SOController {
         );
       }
 
-      // Get existing SO to merge documents
-      const existingSO = await SOService.getById(id);
-
-      // Process uploaded documents
+      // Process uploaded documents (existingSO already fetched above)
       const documentFiles: Express.Multer.File[] = [];
       if (req.files) {
         const files = req.files as {

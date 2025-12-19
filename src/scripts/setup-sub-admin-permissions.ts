@@ -4,7 +4,8 @@
  * This script configures permissions for the sub-admin role:
  * - Allows VIEW actions (read-only access)
  * - Requires approval for CREATE_SO action
- * - Denies EDIT, UPDATE, DELETE actions
+ * - Allows EDIT_SO and UPDATE_SO (for non-activated SOs only)
+ * - Denies DELETE and other actions
  *
  * Usage: npm run setup-sub-admin-permissions
  * or: ts-node src/scripts/setup-sub-admin-permissions.ts
@@ -631,47 +632,47 @@ async function setupSubAdminPermissions(): Promise<void> {
     );
     console.log('✅ Configured APPROVE_QC_APPROVAL permission (DENIED)');
 
-    // 19. Deny EDIT_SO
+    // 19. Allow EDIT_SO (sub-admins can edit non-activated SOs)
     await PermissionConfig.findOneAndUpdate(
       {
         action: ActionType.EDIT_SO,
         roleIds: subAdminRoleId,
-        permission: PermissionLevel.DENIED,
+        permission: PermissionLevel.ALLOWED,
       },
       {
-        name: 'Sub-admin Edit SO (Denied)',
-        description: 'Sub-admin cannot edit SO records',
+        name: 'Sub-admin Edit SO (Allowed)',
+        description: 'Sub-admin can edit SO records (only non-activated SOs)',
         action: ActionType.EDIT_SO,
         roleIds: [subAdminRoleId],
-        permission: PermissionLevel.DENIED,
+        permission: PermissionLevel.ALLOWED,
         isActive: true,
         priority: 10,
         createdBy: adminUserId,
       },
       { upsert: true, new: true },
     );
-    console.log('✅ Configured EDIT_SO permission (DENIED)');
+    console.log('✅ Configured EDIT_SO permission (ALLOWED)');
 
-    // 20. Deny UPDATE_SO
+    // 20. Allow UPDATE_SO (sub-admins can update non-activated SOs)
     await PermissionConfig.findOneAndUpdate(
       {
         action: ActionType.UPDATE_SO,
         roleIds: subAdminRoleId,
-        permission: PermissionLevel.DENIED,
+        permission: PermissionLevel.ALLOWED,
       },
       {
-        name: 'Sub-admin Update SO (Denied)',
-        description: 'Sub-admin cannot update SO records',
+        name: 'Sub-admin Update SO (Allowed)',
+        description: 'Sub-admin can update SO records (only non-activated SOs)',
         action: ActionType.UPDATE_SO,
         roleIds: [subAdminRoleId],
-        permission: PermissionLevel.DENIED,
+        permission: PermissionLevel.ALLOWED,
         isActive: true,
         priority: 10,
         createdBy: adminUserId,
       },
       { upsert: true, new: true },
     );
-    console.log('✅ Configured UPDATE_SO permission (DENIED)');
+    console.log('✅ Configured UPDATE_SO permission (ALLOWED)');
 
     // 21. Deny DELETE_SO
     await PermissionConfig.findOneAndUpdate(
@@ -720,6 +721,34 @@ async function setupSubAdminPermissions(): Promise<void> {
       console.log('⚠️  CREATE_SO permission not found - please check');
     }
 
+    const editSoPermission = await PermissionConfig.findOne({
+      action: ActionType.EDIT_SO,
+      roleIds: subAdminRoleId,
+      isActive: true,
+    }).lean();
+
+    if (editSoPermission) {
+      console.log(
+        `✅ EDIT_SO permission verified (${editSoPermission.permission})`,
+      );
+    } else {
+      console.log('⚠️  EDIT_SO permission not found - please check');
+    }
+
+    const updateSoPermission = await PermissionConfig.findOne({
+      action: ActionType.UPDATE_SO,
+      roleIds: subAdminRoleId,
+      isActive: true,
+    }).lean();
+
+    if (updateSoPermission) {
+      console.log(
+        `✅ UPDATE_SO permission verified (${updateSoPermission.permission})`,
+      );
+    } else {
+      console.log('⚠️  UPDATE_SO permission not found - please check');
+    }
+
     // Count total permissions for sub-admin
     const totalPermissions = await PermissionConfig.countDocuments({
       roleIds: subAdminRoleId,
@@ -737,6 +766,8 @@ async function setupSubAdminPermissions(): Promise<void> {
     console.log('      - VIEW_QC_ENTRY');
     console.log('      - VIEW_QC_APPROVAL');
     console.log('   ✅ CREATE_SO: REQUIRES_APPROVAL (admin must approve)');
+    console.log('   ✅ EDIT_SO: ALLOWED (can edit non-activated SOs only)');
+    console.log('   ✅ UPDATE_SO: ALLOWED (can update non-activated SOs only)');
     console.log(
       '   ❌ All other CREATE/EDIT/UPDATE/DELETE/APPROVE actions: DENIED',
     );
@@ -744,7 +775,8 @@ async function setupSubAdminPermissions(): Promise<void> {
     console.log('   - View all pages (SO, Machines, QC Entries, QC Approvals)');
     console.log('   - Access admin dashboard (read-only)');
     console.log('   - Create SO records (pending admin approval)');
-    console.log('   - Cannot edit, delete, or approve any records');
+    console.log('   - Edit and update SO records (only non-activated SOs)');
+    console.log('   - Cannot delete or approve any records');
     console.log('\n⚠️  IMPORTANT: If you still see permission errors,');
     console.log('   make sure the app is using the same database.');
     console.log('   Check that MONGO_URI environment variable matches.');

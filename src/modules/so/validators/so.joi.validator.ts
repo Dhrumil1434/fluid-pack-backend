@@ -149,12 +149,12 @@ export const createSOSchema = Joi.object({
 
   description: Joi.string()
     .trim()
-    .max(1000)
+    .max(50000)
     .optional()
     .allow('')
     .allow(null)
     .messages({
-      'string.max': 'Description cannot exceed 1000 characters',
+      'string.max': 'Description cannot exceed 50000 characters',
     }),
 
   documents: Joi.array()
@@ -300,12 +300,12 @@ export const updateSOSchema = Joi.object({
 
   description: Joi.string()
     .trim()
-    .max(1000)
+    .max(50000)
     .optional()
     .allow('')
     .allow(null)
     .messages({
-      'string.max': 'Description cannot exceed 1000 characters',
+      'string.max': 'Description cannot exceed 50000 characters',
     }),
 
   is_active: Joi.boolean().optional().messages({
