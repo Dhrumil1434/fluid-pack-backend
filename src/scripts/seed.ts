@@ -43,6 +43,8 @@ function mapAction(a: Policy['rules'][number]['action']): ActionType {
     VIEW_QC_APPROVAL: ActionType.VIEW_QC_APPROVAL,
     APPROVE_QC_APPROVAL: ActionType.APPROVE_QC_APPROVAL,
     ACTIVATE_MACHINE: ActionType.ACTIVATE_MACHINE,
+    // SO actions
+    VIEW_SO: ActionType.VIEW_SO,
   };
   return allowed[a] ?? ActionType.VIEW_MACHINE;
 }

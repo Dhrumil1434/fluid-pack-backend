@@ -147,15 +147,7 @@ export const createSOSchema = Joi.object({
       'any.required': 'Mobile number is required',
     }),
 
-  description: Joi.string()
-    .trim()
-    .max(1000)
-    .optional()
-    .allow('')
-    .allow(null)
-    .messages({
-      'string.max': 'Description cannot exceed 1000 characters',
-    }),
+  description: Joi.string().trim().optional().allow('').allow(null),
 
   documents: Joi.array()
     .items(
@@ -298,15 +290,7 @@ export const updateSOSchema = Joi.object({
       'string.pattern.base': 'Mobile number format is invalid',
     }),
 
-  description: Joi.string()
-    .trim()
-    .max(1000)
-    .optional()
-    .allow('')
-    .allow(null)
-    .messages({
-      'string.max': 'Description cannot exceed 1000 characters',
-    }),
+  description: Joi.string().trim().optional().allow('').allow(null),
 
   is_active: Joi.boolean().optional().messages({
     'boolean.base': 'is_active must be a boolean value',

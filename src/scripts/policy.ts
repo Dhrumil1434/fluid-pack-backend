@@ -13,7 +13,8 @@ export type Action =
   | 'DELETE_QC_APPROVAL'
   | 'VIEW_QC_APPROVAL'
   | 'APPROVE_QC_APPROVAL'
-  | 'ACTIVATE_MACHINE';
+  | 'ACTIVATE_MACHINE'
+  | 'VIEW_SO';
 
 export type Permission = 'ALLOWED' | 'REQUIRES_APPROVAL' | 'DENIED';
 
@@ -84,6 +85,13 @@ export const defaultPolicy: Policy = {
     {
       name: 'Technician edit',
       action: 'EDIT_MACHINE',
+      roles: ['technician'],
+      permission: 'ALLOWED',
+      priority: 60,
+    },
+    {
+      name: 'Technician view SO',
+      action: 'VIEW_SO',
       roles: ['technician'],
       permission: 'ALLOWED',
       priority: 60,
