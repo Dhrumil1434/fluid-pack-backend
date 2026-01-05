@@ -1001,29 +1001,83 @@ class MachineController {
           ? await Category.findById(subcategoryId).select('name slug').lean()
           : null);
 
+      // Helper function to format category name for sequence (preserves special characters)
+      const formatCategoryNameForSequence = (categoryName: string): string => {
+        return categoryName
+          .toUpperCase()
+          .trim()
+          .replace(/\s+/g, '-') // Replace spaces with hyphens
+          .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+          .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+      };
+
+      // Helper function to escape regex special characters
+      const escapeRegex = (str: string): string => {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      };
+
       // Build regex pattern from format
+      // Accept both old format (using slug) and new format (using name with special characters)
       const format = sequenceConfig.format;
-      let pattern = format
+
+      // New format: using category name (preserves special characters)
+      const categoryFormatted = category?.name
+        ? formatCategoryNameForSequence(category.name)
+        : '[A-Z0-9-().]+';
+      const subcategoryFormatted = subcategory?.name
+        ? formatCategoryNameForSequence(subcategory.name)
+        : '[A-Z0-9-().]*';
+
+      // Old format: using slug (no special characters) - for backward compatibility
+      const categorySlugFormatted = category?.slug
+        ? category.slug.toUpperCase()
+        : '[A-Z0-9-]+';
+      const subcategorySlugFormatted = subcategory?.slug
+        ? subcategory.slug.toUpperCase()
+        : '[A-Z0-9-]*';
+
+      // Build pattern for new format (with special characters)
+      let patternNew = format
         .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        .replace(
-          /\\\{category\\\}/g,
-          category?.slug?.toUpperCase() || '[A-Z0-9-]+',
-        )
+        .replace(/\\\{category\\\}/g, escapeRegex(categoryFormatted))
         .replace(
           /\\\{subcategory\\\}/g,
-          subcategory?.slug?.toUpperCase() || '[A-Z0-9-]*',
+          subcategoryFormatted || '[A-Z0-9-().]*',
         )
         .replace(/\\\{sequence\\\}/g, '\\d+');
+      patternNew = patternNew.replace(/-+/g, '-').replace(/^-|-$/g, '');
 
-      // Clean up pattern
-      pattern = pattern.replace(/-+/g, '-').replace(/^-|-$/g, '');
-      const regex = new RegExp(`^${pattern}$`, 'i');
+      // Build pattern for old format (slug-based, no special characters) - for backward compatibility
+      let patternOld = format
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\\\{category\\\}/g, escapeRegex(categorySlugFormatted))
+        .replace(
+          /\\\{subcategory\\\}/g,
+          subcategorySlugFormatted || '[A-Z0-9-]*',
+        )
+        .replace(/\\\{sequence\\\}/g, '\\d+');
+      patternOld = patternOld.replace(/-+/g, '-').replace(/^-|-$/g, '');
 
-      if (!regex.test(newSequence)) {
-        // Generate example sequence for error message
+      // Test against both patterns (new format and old format for backward compatibility)
+      const regexNew = new RegExp(`^${patternNew}$`, 'i');
+      const regexOld = new RegExp(`^${patternOld}$`, 'i');
+      const isValid = regexNew.test(newSequence) || regexOld.test(newSequence);
+
+      if (!isValid) {
+        // Generate example sequence for error message using category name (new format)
         const exampleSequence = format
-          .replace('{category}', category?.slug?.toUpperCase() || 'CATEGORY')
-          .replace('{subcategory}', subcategory?.slug?.toUpperCase() || '')
+          .replace(
+            '{category}',
+            category?.name
+              ? formatCategoryNameForSequence(category.name)
+              : 'CATEGORY',
+          )
+          .replace(
+            '{subcategory}',
+            subcategory?.name
+              ? formatCategoryNameForSequence(subcategory.name)
+              : '',
+          )
           .replace('{sequence}', '001')
           .replace(/-+/g, '-')
           .replace(/^-|-$/g, '');

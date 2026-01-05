@@ -50,7 +50,7 @@ class CloudinaryStorage implements StorageEngine {
   }
 
   _handleFile(
-    req: Request,
+    _req: Request,
     file: Express.Multer.File,
     cb: (error?: Error | null, info?: Partial<CloudinaryFile>) => void,
   ): void {
@@ -139,9 +139,9 @@ class CloudinaryStorage implements StorageEngine {
   }
 
   _removeFile(
-    req: Request,
+    _req: Request,
     file: Express.Multer.File,
-    cb: (error?: Error | null) => void,
+    cb: (error: Error | null) => void,
   ): void {
     // If file has Cloudinary info, delete from Cloudinary
     const cloudinaryFile = file as CloudinaryFile;
@@ -229,7 +229,14 @@ const machineDocumentStorage = new CloudinaryStorage(
 // Set storage engine for updating machine images (when machine ID is known)
 // This storage reads machineId from request params
 class MachineUpdateStorage extends CloudinaryStorage {
-  _handleFile(
+  private readonly baseResourceType: 'image' | 'raw' | 'auto';
+
+  constructor(folder: string, resourceType: 'image' | 'raw' | 'auto' = 'auto') {
+    super(folder, resourceType);
+    this.baseResourceType = resourceType;
+  }
+
+  override _handleFile(
     req: Request,
     file: Express.Multer.File,
     cb: (error?: Error | null, info?: Partial<CloudinaryFile>) => void,
@@ -238,13 +245,12 @@ class MachineUpdateStorage extends CloudinaryStorage {
     if (!machineId) {
       return cb(new Error('Machine ID is required'));
     }
-    // Temporarily update folder for this request
-    const originalFolder = this.folder;
-    this.folder = `machines/${machineId}/images`;
-    super._handleFile(req, file, (error, info) => {
-      this.folder = originalFolder; // Restore original folder
-      cb(error, info);
-    });
+    // Create a new instance with the correct folder for this request
+    const tempStorage = new CloudinaryStorage(
+      `machines/${machineId}/images`,
+      this.baseResourceType,
+    );
+    tempStorage._handleFile(req, file, cb);
   }
 }
 
@@ -253,7 +259,7 @@ const uploadMachineImages = multer({
   storage: machineStorage,
   limits: {
     fileSize: MAX_IMAGE_SIZE, // Configurable from env
-    files: 5, // Maximum 5 files
+    files: 100, // Maximum 100 files
   },
   fileFilter: (_req, file, cb) => {
     checkFileType(file, cb);
@@ -265,7 +271,7 @@ const uploadMachineDocuments = multer({
   storage: machineDocumentStorage,
   limits: {
     fileSize: MAX_DOCUMENT_SIZE, // Configurable from env
-    files: 10, // Maximum 10 document files
+    files: 100, // Maximum 100 document files
   },
   fileFilter: (_req, file, cb) => {
     checkDocumentType(file, cb);
@@ -275,7 +281,7 @@ const uploadMachineDocuments = multer({
 // Combined storage for machine files (handles both images and documents)
 class CombinedMachineStorage implements StorageEngine {
   _handleFile(
-    req: Request,
+    _req: Request,
     file: Express.Multer.File,
     cb: (error?: Error | null, info?: Partial<CloudinaryFile>) => void,
   ): void {
@@ -287,13 +293,13 @@ class CombinedMachineStorage implements StorageEngine {
           ? machineDocumentStorage
           : machineStorage; // Default to image storage
 
-    storage._handleFile(req, file, cb);
+    storage._handleFile(_req, file, cb);
   }
 
   _removeFile(
-    req: Request,
+    _req: Request,
     file: Express.Multer.File,
-    cb: (error?: Error | null) => void,
+    cb: (error: Error | null) => void,
   ): void {
     const storage =
       file.fieldname === 'images'
@@ -302,7 +308,7 @@ class CombinedMachineStorage implements StorageEngine {
           ? machineDocumentStorage
           : machineStorage;
 
-    storage._removeFile(req, file, cb);
+    storage._removeFile(_req, file, cb);
   }
 }
 
@@ -312,7 +318,7 @@ const uploadMachineFiles = multer({
   storage: new CombinedMachineStorage(),
   limits: {
     fileSize: Math.max(MAX_IMAGE_SIZE, MAX_DOCUMENT_SIZE), // Use the larger limit
-    files: 15, // Maximum 15 files total (5 images + 10 documents)
+    files: 200, // Maximum 200 files total (100 images + 100 documents)
   },
   fileFilter: (_req, file, cb) => {
     // Check if it's an image or document based on fieldname
@@ -340,7 +346,7 @@ class CombinedMachineUpdateStorage implements StorageEngine {
   }
 
   _handleFile(
-    req: Request,
+    _req: Request,
     file: Express.Multer.File,
     cb: (error?: Error | null, info?: Partial<CloudinaryFile>) => void,
   ): void {
@@ -352,13 +358,13 @@ class CombinedMachineUpdateStorage implements StorageEngine {
           ? this.documentStorage
           : this.imageStorage; // Default to image storage
 
-    storage._handleFile(req, file, cb);
+    storage._handleFile(_req, file, cb);
   }
 
   _removeFile(
-    req: Request,
+    _req: Request,
     file: Express.Multer.File,
-    cb: (error?: Error | null) => void,
+    cb: (error: Error | null) => void,
   ): void {
     const storage =
       file.fieldname === 'images'
@@ -367,7 +373,7 @@ class CombinedMachineUpdateStorage implements StorageEngine {
           ? this.documentStorage
           : this.imageStorage;
 
-    storage._removeFile(req, file, cb);
+    storage._removeFile(_req, file, cb);
   }
 }
 
@@ -375,7 +381,7 @@ const uploadMachineImagesUpdate = multer({
   storage: machineUpdateStorage,
   limits: {
     fileSize: MAX_IMAGE_SIZE, // Configurable from env
-    files: 5, // Maximum 5 files
+    files: 100, // Maximum 100 files
   },
   fileFilter: (_req, file, cb) => {
     checkFileType(file, cb);
@@ -387,7 +393,7 @@ const uploadMachineFilesUpdate = multer({
   storage: new CombinedMachineUpdateStorage(),
   limits: {
     fileSize: Math.max(MAX_IMAGE_SIZE, MAX_DOCUMENT_SIZE), // Use the larger limit
-    files: 15, // Maximum 15 files total (5 images + 10 documents)
+    files: 200, // Maximum 200 files total (100 images + 100 documents)
   },
   fileFilter: (_req, file, cb) => {
     // Check if it's an image or document based on fieldname
@@ -396,12 +402,7 @@ const uploadMachineFilesUpdate = multer({
     } else if (file.fieldname === 'documents') {
       checkDocumentType(file, cb);
     } else {
-      cb(
-        new Error(
-          `Unexpected file field name: ${file.fieldname}. Use "images" for images or "documents" for documents.`,
-        ),
-        false,
-      );
+      cb(null, false);
     }
   },
 });
@@ -546,7 +547,7 @@ const cleanupMachineDirectory = (machineId: string): void => {
 // This class handles the file upload directly to ensure proper filename handling
 class SmartQAMachineStorage implements StorageEngine {
   _handleFile(
-    req: Request,
+    _req: Request,
     file: Express.Multer.File,
     cb: (error?: Error | null, info?: Partial<CloudinaryFile>) => void,
   ): void {
@@ -636,9 +637,9 @@ class SmartQAMachineStorage implements StorageEngine {
   }
 
   _removeFile(
-    req: Request,
+    _req: Request,
     file: Express.Multer.File,
-    cb: (error?: Error | null) => void,
+    cb: (error: Error | null) => void,
   ): void {
     const isImage = file.mimetype.startsWith('image/');
     const resourceType = isImage ? 'image' : 'raw';
@@ -662,11 +663,11 @@ const qaMachineStorage = new SmartQAMachineStorage();
 // This storage reads qaEntryId from request params and detects file type
 class QAMachineUpdateStorage implements StorageEngine {
   _handleFile(
-    req: Request,
+    _req: Request,
     file: Express.Multer.File,
     cb: (error?: Error | null, info?: Partial<CloudinaryFile>) => void,
   ): void {
-    const qaEntryId = req.params['id'];
+    const qaEntryId = _req.params['id'];
     if (!qaEntryId) {
       return cb(new Error('QA Entry ID is required'));
     }
@@ -757,9 +758,9 @@ class QAMachineUpdateStorage implements StorageEngine {
   }
 
   _removeFile(
-    req: Request,
+    _req: Request,
     file: Express.Multer.File,
-    cb: (error?: Error | null) => void,
+    cb: (error: Error | null) => void,
   ): void {
     const isImage = file.mimetype.startsWith('image/');
     const resourceType = isImage ? 'image' : 'raw';

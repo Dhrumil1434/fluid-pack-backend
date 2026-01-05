@@ -688,13 +688,19 @@ class SequenceService {
       console.log(`   Old format: ${oldFormat}`);
       console.log(`   New format: ${config.format}`);
 
-      // Prepare category and subcategory slugs for format replacement
-      const categorySlug = category.slug.toUpperCase();
-      const subcategorySlug = subcategory ? subcategory.slug.toUpperCase() : '';
+      // Prepare category and subcategory names for format replacement (using name to preserve special characters)
+      const categoryFormatted = this.formatCategoryNameForSequence(
+        category.name,
+      );
+      const subcategoryFormatted = subcategory
+        ? this.formatCategoryNameForSequence(subcategory.name)
+        : '';
 
-      console.log(`   Category: ${category.name} (slug: ${categorySlug})`);
       console.log(
-        `   Subcategory: ${subcategory ? subcategory.name + ' (slug: ' + subcategorySlug + ')' : 'none'}`,
+        `   Category: ${category.name} (formatted: ${categoryFormatted})`,
+      );
+      console.log(
+        `   Subcategory: ${subcategory ? subcategory.name + ' (formatted: ' + subcategoryFormatted + ')' : 'none'}`,
       );
 
       // Build array of update operations
@@ -725,8 +731,8 @@ class SequenceService {
         const sequenceNumber = this.extractSequenceNumber(
           machine.machine_sequence,
           oldFormat,
-          categorySlug,
-          subcategorySlug,
+          categoryFormatted,
+          subcategoryFormatted,
         );
 
         if (sequenceNumber === null) {
@@ -827,8 +833,8 @@ class SequenceService {
   private static extractSequenceNumber(
     machineSequence: string,
     oldFormat: string,
-    categorySlug: string,
-    subcategorySlug: string,
+    categoryFormatted: string,
+    subcategoryFormatted: string,
   ): number | null {
     // Method 1: Try to reverse-engineer by matching the old format pattern
     if (oldFormat.includes('{sequence}')) {
@@ -837,8 +843,11 @@ class SequenceService {
         // Escape special regex characters first
         const pattern = oldFormat
           .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          .replace(/\\\{category\\\}/g, this.escapeRegex(categorySlug))
-          .replace(/\\\{subcategory\\\}/g, subcategorySlug || '[A-Z0-9-]*')
+          .replace(/\\\{category\\\}/g, this.escapeRegex(categoryFormatted))
+          .replace(
+            /\\\{subcategory\\\}/g,
+            subcategoryFormatted || '[A-Z0-9-().]*',
+          )
           .replace(/\\\{sequence\\\}/g, '(\\d+)');
 
         const regex = new RegExp(`^${pattern}$`, 'i');
@@ -926,6 +935,19 @@ class SequenceService {
   }
 
   /**
+   * Format category name for sequence (preserves special characters like parentheses and dots)
+   * Converts to uppercase and replaces spaces with hyphens, but keeps special characters
+   */
+  private static formatCategoryNameForSequence(categoryName: string): string {
+    return categoryName
+      .toUpperCase()
+      .trim()
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+      .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+  }
+
+  /**
    * Format sequence string based on configuration
    */
   private static formatSequence(
@@ -936,16 +958,20 @@ class SequenceService {
   ): string {
     let formattedSequence = format;
 
-    // Replace placeholders
+    // Replace placeholders - use category name instead of slug to preserve special characters
+    const categoryFormatted = this.formatCategoryNameForSequence(category.name);
     formattedSequence = formattedSequence.replace(
       '{category}',
-      category.slug.toUpperCase(),
+      categoryFormatted,
     );
 
     if (subcategory) {
+      const subcategoryFormatted = this.formatCategoryNameForSequence(
+        subcategory.name,
+      );
       formattedSequence = formattedSequence.replace(
         '{subcategory}',
-        subcategory.slug.toUpperCase(),
+        subcategoryFormatted,
       );
     } else {
       formattedSequence = formattedSequence.replace('{subcategory}', '');

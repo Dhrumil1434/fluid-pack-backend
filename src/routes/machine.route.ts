@@ -37,8 +37,8 @@ router.post(
   verifyJWT,
   checkPermission([ActionType.CREATE_MACHINE]),
   uploadMachineFiles.fields([
-    { name: 'images', maxCount: 5 },
-    { name: 'documents', maxCount: 10 },
+    { name: 'images', maxCount: 100 },
+    { name: 'documents', maxCount: 100 },
   ]),
   handleFileUploadError,
   parseJsonFields(['metadata']),
