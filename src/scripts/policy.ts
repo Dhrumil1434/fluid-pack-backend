@@ -50,7 +50,7 @@ export interface Policy {
 }
 
 export const defaultPolicy: Policy = {
-  roles: ['admin', 'manager1', 'technician', 'qc'],
+  roles: ['admin', 'manager1', 'technician', 'qc', 'sub-admin'],
   departments: ['dispatch', 'qa'],
   approvers: {
     defaultRoles: ['admin'],
@@ -202,6 +202,22 @@ export const defaultPolicy: Policy = {
       roles: ['qc'],
       permission: 'ALLOWED',
       priority: 60,
+    },
+
+    // Sub-admin read-only QC views (no edits/creates)
+    {
+      name: 'Sub-admin view QC entries',
+      action: 'VIEW_QC_ENTRY',
+      roles: ['sub-admin'],
+      permission: 'ALLOWED',
+      priority: 50,
+    },
+    {
+      name: 'Sub-admin view QC approvals',
+      action: 'VIEW_QC_APPROVAL',
+      roles: ['sub-admin'],
+      permission: 'ALLOWED',
+      priority: 50,
     },
     // Admin can do all QC operations
     {

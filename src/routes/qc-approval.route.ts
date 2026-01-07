@@ -20,35 +20,35 @@ const router = Router();
  * QC Approval Routes
  */
 
-// Get QC approval statistics - allow admin, manager1, qc
+// Get QC approval statistics - allow admin, manager1, qc, sub-admin
 router.get(
   '/statistics',
   verifyJWT,
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_APPROVAL]),
   QCApprovalController.getQCApprovalStatistics,
 );
 
-// Get all QC approvals - allow admin, manager1, qc
+// Get all QC approvals - allow admin, manager1, qc, sub-admin
 router.get(
   '/',
   verifyJWT,
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_APPROVAL]),
   QCApprovalController.getAllQCApprovals,
 );
 
-// Get QC approval by ID - allow admin, manager1, qc
+// Get QC approval by ID - allow admin, manager1, qc, sub-admin
 router.get(
   '/:id',
   verifyJWT,
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_APPROVAL]),
   validateRequest(qcApprovalIdParamSchema),
   QCApprovalController.getQCApprovalById,
 );
 
-// Create new QC approval - allow admin, manager1, qc
+// Create new QC approval - allow admin, manager1, qc (keep create restricted)
 router.post(
   '/',
   verifyJWT,
@@ -88,11 +88,11 @@ router.post(
   QCApprovalController.processQCApprovalAction,
 );
 
-// List approvals assigned to the current approver (by status) - allow admin, manager1, qc
+// List approvals assigned to the current approver (by status) - allow admin, manager1, qc, sub-admin (view-only)
 router.get(
   '/assigned/my',
   verifyJWT,
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_APPROVAL]),
   async (req, res, next) => {
     try {
@@ -135,11 +135,11 @@ router.get(
   },
 );
 
-// List approvals assigned to a specific approver by ID (admin use) - allow admin, manager1, qc
+// List approvals assigned to a specific approver by ID (admin use) - allow admin, manager1, qc, sub-admin (view-only)
 router.get(
   '/assigned/user/:approverId',
   verifyJWT,
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_APPROVAL]),
   async (req, res, next) => {
     try {
@@ -189,20 +189,20 @@ router.post(
   QCApprovalController.activateMachine,
 );
 
-// Get QC approvals by machine ID - allow admin, manager1, qc
+// Get QC approvals by machine ID - allow admin, manager1, qc, sub-admin
 router.get(
   '/machine/:machineId',
   verifyJWT,
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_APPROVAL]),
   QCApprovalController.getQCApprovalsByMachine,
 );
 
-// Get QC approvals by user ID - allow admin, manager1, qc
+// Get QC approvals by user ID - allow admin, manager1, qc, sub-admin
 router.get(
   '/user/:userId',
   verifyJWT,
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_APPROVAL]),
   QCApprovalController.getQCApprovalsByUser,
 );
@@ -226,11 +226,11 @@ router.delete(
   QCApprovalController.deleteDocument,
 );
 
-// Get search suggestions for autocomplete - allow admin, manager1, qc
+// Get search suggestions for autocomplete - allow admin, manager1, qc, sub-admin
 router.get(
   '/suggestions/search',
   verifyJWT,
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_APPROVAL]),
   QCApprovalController.getSearchSuggestions,
 );
