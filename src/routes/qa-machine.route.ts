@@ -55,10 +55,10 @@ router.post(
   QAMachineController.createQAMachineEntry,
 );
 
-// Get QC machine entry by ID - allow admin, manager1, qc
+// Get QC machine entry by ID - allow admin, manager1, qc, sub-admin
 router.get(
   '/:id',
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_ENTRY]),
   validateParams(qaMachineEntryIdParamSchema),
   QAMachineController.getQAMachineEntryById,
@@ -91,28 +91,28 @@ router.delete(
   QAMachineController.deleteQAMachineEntry,
 );
 
-// Get QC entries by machine ID - allow admin, manager1, qc
+// Get QC entries by machine ID - allow admin, manager1, qc, sub-admin
 router.get(
   '/machine/:machineId',
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_ENTRY]),
   validateParams(machineIdParamSchema),
   QAMachineController.getQAMachineEntriesByMachine,
 );
 
-// Get QC entries by user ID - allow admin, manager1, qc
+// Get QC entries by user ID - allow admin, manager1, qc, sub-admin
 router.get(
   '/user/:userId',
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_ENTRY]),
   validateParams(userIdParamSchema),
   QAMachineController.getQAMachineEntriesByUser,
 );
 
-// Validate multiple QC entry IDs - allow admin, manager1, qc
+// Validate multiple QC entry IDs - allow admin, manager1, qc, sub-admin
 router.post(
   '/validate-ids',
-  AuthRole(['admin', 'manager1', 'qc']),
+  AuthRole(['admin', 'manager1', 'qc', 'sub-admin']),
   checkPermission([ActionType.VIEW_QC_ENTRY]),
   validateRequest(validateQAMachineEntryIdsSchema),
   QAMachineController.validateQAMachineEntryIds,
